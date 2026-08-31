@@ -30,6 +30,45 @@ std::shared_ptr<TimelineItemModel> currentTimelineModel()
     return timeline ? timeline->model() : nullptr;
 }
 
+QString clipName(const std::shared_ptr<ProjectClip> &clip)
+{
+    if (!clip) return QString();
+    QString name = clip->getProducerProperty(QStringLiteral("kdenlive:clipname"));
+    if (name.isEmpty() && !clip->url().isEmpty()) name = QFileInfo(clip->url()).fileName();
+    return name;
+}
+
+QJsonObject sourceHealth(const QString &binId, const std::shared_ptr<ProjectClip> &clip)
+{
+    if (!clip) return {};
+    const bool fileBacked = clip->hasUrl();
+    const QString currentPath = fileBacked ? QFileInfo(clip->url()).absoluteFilePath() : QString();
+    const QString originalPath = fileBacked ? QFileInfo(clip->getOriginalUrl()).absoluteFilePath() : QString();
+    const QString proxyPath = clip->getProducerProperty(QStringLiteral("kdenlive:proxy"));
+    const bool sourceExists = !fileBacked || clip->sourceExists();
+    const FileStatus::ClipStatus status = clip->clipStatus();
+
+    QJsonObject result{{QStringLiteral("bin_id"), binId},
+                       {QStringLiteral("name"), clipName(clip)},
+                       {QStringLiteral("clip_type"), static_cast<int>(clip->clipType())},
+                       {QStringLiteral("file_backed"), fileBacked},
+                       {QStringLiteral("source_exists"), sourceExists},
+                       {QStringLiteral("clip_status"), static_cast<int>(status)},
+                       {QStringLiteral("has_proxy"), clip->hasProxy()},
+                       {QStringLiteral("proxy_path"), proxyPath},
+                       {QStringLiteral("has_audio"), clip->hasAudio()},
+                       {QStringLiteral("has_video"), clip->hasVideo()},
+                       {QStringLiteral("duration_frames"), clip->getFramePlaytime()},
+                       {QStringLiteral("timeline_instances"), clip->timelineInstances().size()}};
+    if (fileBacked) {
+        result.insert(QStringLiteral("path"), currentPath);
+        result.insert(QStringLiteral("original_path"), originalPath);
+        result.insert(QStringLiteral("path_exists"), QFileInfo(currentPath).exists());
+        result.insert(QStringLiteral("original_path_exists"), originalPath.isEmpty() ? false : QFileInfo(originalPath).exists());
+    }
+    return result;
+}
+
 QJsonObject listBin(const QJsonObject &)
 {
     if (!pCore) return err(QStringLiteral("Kdenlive core is unavailable."));
@@ -39,10 +78,8 @@ QJsonObject listBin(const QJsonObject &)
     for (const QString &binId : model->getAllClipIds()) {
         const std::shared_ptr<ProjectClip> clip = model->getClipByBinID(binId);
         if (!clip) continue;
-        QString name = clip->getProducerProperty(QStringLiteral("kdenlive:clipname"));
-        if (name.isEmpty() && !clip->url().isEmpty()) name = QFileInfo(clip->url()).fileName();
         clips.append(QJsonObject{{QStringLiteral("bin_id"), binId},
-                                 {QStringLiteral("name"), name},
+                                 {QStringLiteral("name"), clipName(clip)},
                                  {QStringLiteral("url"), clip->url()},
                                  {QStringLiteral("clip_type"), static_cast<int>(clip->clipType())},
                                  {QStringLiteral("duration_frames"), clip->getFramePlaytime()},
@@ -51,6 +88,38 @@ QJsonObject listBin(const QJsonObject &)
                                  {QStringLiteral("timeline_instances"), clip->timelineInstances().size()}});
     }
     return QJsonObject{{QStringLiteral("ok"), true}, {QStringLiteral("clips"), clips}};
+}
+
+QJsonObject inspectSource(const QJsonObject &input)
+{
+    if (!pCore) return err(QStringLiteral("Kdenlive core is unavailable."));
+    const QString binId = input.value(QStringLiteral("bin_id")).toString().trimmed();
+    if (binId.isEmpty()) return err(QStringLiteral("bin_id must not be empty"));
+    const std::shared_ptr<ProjectItemModel> model = pCore->projectItemModel();
+    if (!model) return err(QStringLiteral("Project bin model is unavailable."));
+    const std::shared_ptr<ProjectClip> clip = model->getClipByBinID(binId);
+    if (!clip) return err(QStringLiteral("Bin clip '%1' does not exist.").arg(binId));
+    QJsonObject result = sourceHealth(binId, clip);
+    result.insert(QStringLiteral("ok"), true);
+    return result;
+}
+
+QJsonObject listMissing(const QJsonObject &)
+{
+    if (!pCore) return err(QStringLiteral("Kdenlive core is unavailable."));
+    const std::shared_ptr<ProjectItemModel> model = pCore->projectItemModel();
+    if (!model) return err(QStringLiteral("Project bin model is unavailable."));
+    QJsonArray missing;
+    for (const QString &binId : model->getAllClipIds()) {
+        const std::shared_ptr<ProjectClip> clip = model->getClipByBinID(binId);
+        if (!clip || !clip->hasUrl()) continue;
+        const FileStatus::ClipStatus status = clip->clipStatus();
+        const bool unavailable = !clip->sourceExists() || status == FileStatus::StatusMissing || status == FileStatus::StatusProxyOnly;
+        if (unavailable) missing.append(sourceHealth(binId, clip));
+    }
+    return QJsonObject{{QStringLiteral("ok"), true},
+                       {QStringLiteral("missing_count"), missing.size()},
+                       {QStringLiteral("missing"), missing}};
 }
 
 QJsonObject listFolders(const QJsonObject &)
@@ -257,6 +326,16 @@ bool registerMutation(VibeCutToolSurface &surface, const QString &name, const QS
     return surface.registerTool(QJsonObject{{QStringLiteral("name"), name}, {QStringLiteral("description"), description},
                                             {QStringLiteral("input_schema"), schema}}, policy, handler, error);
 }
+
+bool registerReadOnly(VibeCutToolSurface &surface, const QString &name, const QString &description,
+                      const QJsonObject &schema, const VibeCutToolSurface::Handler &handler, QString *error)
+{
+    VibeCutToolPolicy policy;
+    policy.name = name;
+    policy.risk = VibeCutToolRisk::ReadOnly;
+    return surface.registerTool(QJsonObject{{QStringLiteral("name"), name}, {QStringLiteral("description"), description},
+                                            {QStringLiteral("input_schema"), schema}}, policy, handler, error);
+}
 } // namespace
 
 bool registerVibeCutBinTools(VibeCutToolSurface &surface, QString *error)
@@ -264,21 +343,24 @@ bool registerVibeCutBinTools(VibeCutToolSurface &surface, QString *error)
     const QJsonObject noArgs{{QStringLiteral("type"), QStringLiteral("object")},
                              {QStringLiteral("properties"), QJsonObject{}},
                              {QStringLiteral("additionalProperties"), false}};
-    const QJsonObject listSchema{{QStringLiteral("name"), QStringLiteral("bin_list")},
-                                 {QStringLiteral("description"), QStringLiteral("List project-bin media with stable bin ids, names, local URLs, producer type, duration, audio/video capability and timeline instance count. Read-only.")},
-                                 {QStringLiteral("input_schema"), noArgs}};
-    VibeCutToolPolicy listPolicy;
-    listPolicy.name = QStringLiteral("bin_list");
-    listPolicy.risk = VibeCutToolRisk::ReadOnly;
-    if (!surface.registerTool(listSchema, listPolicy, listBin, error)) return false;
+    if (!registerReadOnly(surface, QStringLiteral("bin_list"),
+                          QStringLiteral("List project-bin media with stable bin ids, names, local URLs, producer type, duration, audio/video capability and timeline instance count."),
+                          noArgs, listBin, error)) return false;
 
-    const QJsonObject foldersSchema{{QStringLiteral("name"), QStringLiteral("bin_folders_list")},
-                                    {QStringLiteral("description"), QStringLiteral("List project-bin folders with stable ids, names, parent folder ids and whether they contain clips. Read-only.")},
-                                    {QStringLiteral("input_schema"), noArgs}};
-    VibeCutToolPolicy foldersPolicy;
-    foldersPolicy.name = QStringLiteral("bin_folders_list");
-    foldersPolicy.risk = VibeCutToolRisk::ReadOnly;
-    if (!surface.registerTool(foldersSchema, foldersPolicy, listFolders, error)) return false;
+    const QJsonObject sourceInspectInput = objectSchema(
+        QJsonObject{{QStringLiteral("bin_id"), QJsonObject{{QStringLiteral("type"), QStringLiteral("string")}}}},
+        QJsonArray{QStringLiteral("bin_id")});
+    if (!registerReadOnly(surface, QStringLiteral("bin_source_inspect"),
+                          QStringLiteral("Inspect one bin asset's authoritative source health: file-backed/generated state, current/original paths, path existence, Kdenlive clip status, proxy state, A/V capability, duration and timeline usage."),
+                          sourceInspectInput, inspectSource, error)) return false;
+
+    if (!registerReadOnly(surface, QStringLiteral("bin_missing_list"),
+                          QStringLiteral("List file-backed project-bin assets whose original source is missing/unavailable or whose Kdenlive status is Missing/ProxyOnly, with source/proxy/path diagnostics for relink planning."),
+                          noArgs, listMissing, error)) return false;
+
+    if (!registerReadOnly(surface, QStringLiteral("bin_folders_list"),
+                          QStringLiteral("List project-bin folders with stable ids, names, parent folder ids and whether they contain clips."),
+                          noArgs, listFolders, error)) return false;
 
     const QJsonObject folderCreateInput = objectSchema(QJsonObject{
         {QStringLiteral("name"), QJsonObject{{QStringLiteral("type"), QStringLiteral("string")}}},
