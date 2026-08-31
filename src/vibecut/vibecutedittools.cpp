@@ -6,6 +6,7 @@
 
 #include "core.h"
 #include "mainwindow.h"
+#include "timeline2/model/timelinefunctions.hpp"
 #include "timeline2/model/timelineitemmodel.hpp"
 #include "timeline2/view/timelinewidget.h"
 #include "vibecuttoolsurface.h"
@@ -47,9 +48,8 @@ QJsonObject moveClip(const QJsonObject &input)
     if (!validClip(model, clipId, failure)) return failure;
     if (position < 0) return err(QStringLiteral("position_frame must be >= 0"));
 
-    const int targetTrack = input.contains(QStringLiteral("track_id"))
-                                ? input.value(QStringLiteral("track_id")).toInt(-1)
-                                : model->getClipTrackId(clipId);
+    const int targetTrack = input.contains(QStringLiteral("track_id")) ? input.value(QStringLiteral("track_id")).toInt(-1)
+                                                                       : model->getClipTrackId(clipId);
     if (!model->isTrack(targetTrack)) return err(QStringLiteral("Track id %1 does not exist.").arg(targetTrack));
     const int oldTrack = model->getClipTrackId(clipId);
     const int oldPosition = model->getClipPosition(clipId);
@@ -64,23 +64,55 @@ QJsonObject moveClip(const QJsonObject &input)
                        {QStringLiteral("verified"), true}};
 }
 
+QJsonObject splitClip(const QJsonObject &input)
+{
+    const int clipId = input.value(QStringLiteral("clip_id")).toInt(-1);
+    const int frame = input.value(QStringLiteral("frame")).toInt(-1);
+    std::shared_ptr<TimelineItemModel> model = currentModel();
+    QJsonObject failure;
+    if (!validClip(model, clipId, failure)) return failure;
+
+    const int start = model->getClipPosition(clipId);
+    const int duration = model->getClipPlaytime(clipId);
+    const int end = start + duration;
+    if (frame <= start || frame >= end) {
+        return err(QStringLiteral("Split frame %1 must be strictly inside clip %2's range [%3,%4).")
+                       .arg(frame).arg(clipId).arg(start).arg(end));
+    }
+    const int trackId = model->getClipTrackId(clipId);
+    const QString binId = model->getClipBinId(clipId);
+    if (!TimelineFunctions::requestClipCut(model, clipId, frame)) {
+        return err(QStringLiteral("Kdenlive rejected splitting clip %1 at frame %2.").arg(clipId).arg(frame));
+    }
+
+    const int rightId = model->getClipByStartPosition(trackId, frame);
+    const bool leftVerified = model->isClip(clipId) && model->getClipPosition(clipId) == start &&
+                              model->getClipPosition(clipId) + model->getClipPlaytime(clipId) == frame;
+    const bool rightVerified = rightId != -1 && model->isClip(rightId) && model->getClipPosition(rightId) == frame &&
+                               model->getClipBinId(rightId) == binId;
+    if (!leftVerified || !rightVerified) {
+        return err(QStringLiteral("Split returned success but the two live timeline sides could not be verified."));
+    }
+    return QJsonObject{{QStringLiteral("ok"), true}, {QStringLiteral("left_clip_id"), clipId},
+                       {QStringLiteral("right_clip_id"), rightId}, {QStringLiteral("frame"), frame},
+                       {QStringLiteral("track_id"), trackId}, {QStringLiteral("bin_id"), binId},
+                       {QStringLiteral("verified"), true}};
+}
+
 QJsonObject deleteClip(const QJsonObject &input)
 {
     const int clipId = input.value(QStringLiteral("clip_id")).toInt(-1);
     std::shared_ptr<TimelineItemModel> model = currentModel();
     QJsonObject failure;
     if (!validClip(model, clipId, failure)) return failure;
-
     const QString name = model->getClipName(clipId);
     const int position = model->getClipPosition(clipId);
     const int trackId = model->getClipTrackId(clipId);
-    if (!model->requestItemDeletion(clipId, true)) {
-        return err(QStringLiteral("Kdenlive rejected deleting clip %1.").arg(clipId));
-    }
+    if (!model->requestItemDeletion(clipId, true)) return err(QStringLiteral("Kdenlive rejected deleting clip %1.").arg(clipId));
     if (model->isClip(clipId)) return err(QStringLiteral("Delete returned success but clip %1 is still present on the live timeline.").arg(clipId));
-    return QJsonObject{{QStringLiteral("ok"), true}, {QStringLiteral("deleted_clip_id"), clipId},
-                       {QStringLiteral("name"), name}, {QStringLiteral("old_track_id"), trackId},
-                       {QStringLiteral("old_position_frame"), position}, {QStringLiteral("verified"), true}};
+    return QJsonObject{{QStringLiteral("ok"), true}, {QStringLiteral("deleted_clip_id"), clipId}, {QStringLiteral("name"), name},
+                       {QStringLiteral("old_track_id"), trackId}, {QStringLiteral("old_position_frame"), position},
+                       {QStringLiteral("verified"), true}};
 }
 
 QJsonObject trimClip(const QJsonObject &input, bool ripple)
@@ -97,23 +129,18 @@ QJsonObject trimClip(const QJsonObject &input, bool ripple)
     const int oldDuration = model->getClipPlaytime(clipId);
     const int oldPosition = model->getClipPosition(clipId);
     const bool right = side == QLatin1String("end");
-    int applied = -1;
-    if (ripple) {
-        applied = model->requestItemRippleResize(model, clipId, requestedDuration, right, true, false, -1, false);
-    } else {
-        applied = model->requestItemResize(clipId, requestedDuration, right, true, -1, false);
-    }
-    if (applied <= 0) return err(QStringLiteral("Kdenlive rejected the requested %1 trim for clip %2.").arg(ripple ? QStringLiteral("ripple") : QStringLiteral("standard")).arg(clipId));
-
+    int applied = ripple ? model->requestItemRippleResize(model, clipId, requestedDuration, right, true, false, -1, false)
+                         : model->requestItemResize(clipId, requestedDuration, right, true, -1, false);
+    if (applied <= 0) return err(QStringLiteral("Kdenlive rejected the requested %1 trim for clip %2.")
+                                     .arg(ripple ? QStringLiteral("ripple") : QStringLiteral("standard")).arg(clipId));
     const int liveDuration = model->getClipPlaytime(clipId);
     if (!model->isClip(clipId) || liveDuration != applied) {
         return err(QStringLiteral("Trim returned size %1 but live clip duration is %2; refusing to claim success.").arg(applied).arg(liveDuration));
     }
-    return QJsonObject{{QStringLiteral("ok"), true}, {QStringLiteral("clip_id"), clipId},
-                       {QStringLiteral("side"), side}, {QStringLiteral("ripple"), ripple},
-                       {QStringLiteral("old_duration_frames"), oldDuration}, {QStringLiteral("duration_frames"), liveDuration},
-                       {QStringLiteral("old_position_frame"), oldPosition}, {QStringLiteral("position_frame"), model->getClipPosition(clipId)},
-                       {QStringLiteral("verified"), true}};
+    return QJsonObject{{QStringLiteral("ok"), true}, {QStringLiteral("clip_id"), clipId}, {QStringLiteral("side"), side},
+                       {QStringLiteral("ripple"), ripple}, {QStringLiteral("old_duration_frames"), oldDuration},
+                       {QStringLiteral("duration_frames"), liveDuration}, {QStringLiteral("old_position_frame"), oldPosition},
+                       {QStringLiteral("position_frame"), model->getClipPosition(clipId)}, {QStringLiteral("verified"), true}};
 }
 
 QJsonObject objectSchema(const QJsonObject &properties, const QJsonArray &required)
@@ -130,9 +157,9 @@ bool add(VibeCutToolSurface &surface, const QString &name, const QString &descri
     policy.risk = risk;
     policy.reversible = true;
     policy.mutatesProject = true;
-    const QJsonObject schema{{QStringLiteral("name"), name}, {QStringLiteral("description"), description},
-                             {QStringLiteral("input_schema"), inputSchema}};
-    return surface.registerTool(schema, policy, handler, error);
+    return surface.registerTool(QJsonObject{{QStringLiteral("name"), name}, {QStringLiteral("description"), description},
+                                            {QStringLiteral("input_schema"), inputSchema}},
+                                policy, handler, error);
 }
 } // namespace
 
@@ -140,7 +167,6 @@ bool registerVibeCutEditTools(VibeCutToolSurface &surface, QString *error)
 {
     const QJsonObject clipId{{QStringLiteral("type"), QStringLiteral("integer")},
                              {QStringLiteral("description"), QStringLiteral("Stable timeline clip id from timeline_list_clips.")}};
-
     if (!add(surface, QStringLiteral("clip_move"),
              QStringLiteral("Move a timeline clip to an exact frame and optional track using Kdenlive's undoable TimelineModel API, then verify live position/track state."),
              objectSchema(QJsonObject{{QStringLiteral("clip_id"), clipId},
@@ -148,7 +174,12 @@ bool registerVibeCutEditTools(VibeCutToolSurface &surface, QString *error)
                                       {QStringLiteral("track_id"), QJsonObject{{QStringLiteral("type"), QStringLiteral("integer")}}}},
                           QJsonArray{QStringLiteral("clip_id"), QStringLiteral("position_frame")}),
              VibeCutToolRisk::ReversibleEdit, moveClip, error)) return false;
-
+    if (!add(surface, QStringLiteral("clip_split"),
+             QStringLiteral("Split a clip at an exact timeline frame using Kdenlive's grouped, undoable razor operation. Verifies both resulting clip sides before success."),
+             objectSchema(QJsonObject{{QStringLiteral("clip_id"), clipId},
+                                      {QStringLiteral("frame"), QJsonObject{{QStringLiteral("type"), QStringLiteral("integer")}, {QStringLiteral("minimum"), 0}}}},
+                          QJsonArray{QStringLiteral("clip_id"), QStringLiteral("frame")}),
+             VibeCutToolRisk::ReversibleEdit, splitClip, error)) return false;
     if (!add(surface, QStringLiteral("clip_trim"),
              QStringLiteral("Trim the start or end of a clip to an exact new duration in frames. Uses Kdenlive's undoable resize request and verifies the live duration."),
              objectSchema(QJsonObject{{QStringLiteral("clip_id"), clipId},
@@ -157,7 +188,6 @@ bool registerVibeCutEditTools(VibeCutToolSurface &surface, QString *error)
                                       {QStringLiteral("new_duration_frames"), QJsonObject{{QStringLiteral("type"), QStringLiteral("integer")}, {QStringLiteral("minimum"), 1}}}},
                           QJsonArray{QStringLiteral("clip_id"), QStringLiteral("side"), QStringLiteral("new_duration_frames")}),
              VibeCutToolRisk::ReversibleEdit, [](const QJsonObject &input) { return trimClip(input, false); }, error)) return false;
-
     if (!add(surface, QStringLiteral("clip_ripple_trim"),
              QStringLiteral("Ripple-trim a clip start/end to an exact new duration, allowing Kdenlive to move following material according to its native ripple semantics. Undoable and verified."),
              objectSchema(QJsonObject{{QStringLiteral("clip_id"), clipId},
@@ -166,9 +196,8 @@ bool registerVibeCutEditTools(VibeCutToolSurface &surface, QString *error)
                                       {QStringLiteral("new_duration_frames"), QJsonObject{{QStringLiteral("type"), QStringLiteral("integer")}, {QStringLiteral("minimum"), 1}}}},
                           QJsonArray{QStringLiteral("clip_id"), QStringLiteral("side"), QStringLiteral("new_duration_frames")}),
              VibeCutToolRisk::MajorEdit, [](const QJsonObject &input) { return trimClip(input, true); }, error)) return false;
-
     return add(surface, QStringLiteral("clip_delete"),
-               QStringLiteral("Delete a timeline clip using Kdenlive's native undoable deletion request and verify the clip is gone. This is reversible with Undo but treated as a major edit for trust policy."),
+               QStringLiteral("Delete a timeline clip using Kdenlive's native undoable deletion request and verify the clip is gone. Reversible with Undo but treated as a major edit for trust policy."),
                objectSchema(QJsonObject{{QStringLiteral("clip_id"), clipId}}, QJsonArray{QStringLiteral("clip_id")}),
                VibeCutToolRisk::MajorEdit, deleteClip, error);
 }
