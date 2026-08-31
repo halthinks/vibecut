@@ -1,5 +1,5 @@
-# SPDX-License-Identifier: BSD-2-Clause
 # SPDX-FileCopyrightText: Julius Künzel <julius.kuenzel@kde.org>, Jean-Baptiste Mardelle <jb@kdenlive.org>, Alberto Villa <avilla@FreeBSD.org>, Albert Astals Cid <aacid@kde.org>, Vincent Pinon <vpinon@kde.org>, Laurent Montel <montel@kde.org>, Vincent Pinon <vincent.pinon@asygn.com>, Nicolas Carion <french.ebook.lover@gmail.com>
+# SPDX-License-Identifier: BSD-2-Clause
 
 cmake_minimum_required(VERSION 3.16)
 
@@ -119,6 +119,7 @@ find_package(Qt${QT_MAJOR_VERSION}
     REQUIRED COMPONENTS
     Core Widgets
     Svg
+    Qml
     Quick
     QuickControls2
     Concurrent
@@ -276,4 +277,3 @@ feature_summary(WHAT ALL FATAL_ON_MISSING_REQUIRED_PACKAGES)
 # pre-commit hook
 include(KDEGitCommitHooks)
 kde_configure_git_pre_commit_hook(CHECKS CLANG_FORMAT)
-
