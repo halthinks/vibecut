@@ -4,6 +4,8 @@
 */
 #include "vibecutmodelprovider.h"
 
+#include <QJsonDocument>
+
 VibeCutAnthropicProvider::VibeCutAnthropicProvider()
     : m_apiKey(qEnvironmentVariable("ANTHROPIC_API_KEY").trimmed())
     , m_model(qEnvironmentVariable("VIBECUT_MODEL", QStringLiteral("claude-sonnet-5")).trimmed())
@@ -15,19 +17,13 @@ QString VibeCutAnthropicProvider::displayName() const { return QStringLiteral("A
 
 bool VibeCutAnthropicProvider::configured(QString *error) const
 {
-    if (error) {
-        error->clear();
-    }
+    if (error) error->clear();
     if (m_apiKey.isEmpty()) {
-        if (error) {
-            *error = QStringLiteral("ANTHROPIC_API_KEY is not set in the environment.");
-        }
+        if (error) *error = QStringLiteral("ANTHROPIC_API_KEY is not set in the environment.");
         return false;
     }
     if (m_model.isEmpty()) {
-        if (error) {
-            *error = QStringLiteral("VibeCut model name is empty.");
-        }
+        if (error) *error = QStringLiteral("VibeCut model name is empty.");
         return false;
     }
     return true;
@@ -44,34 +40,31 @@ VibeCutModelRequest VibeCutAnthropicProvider::buildRequest(const QString &system
     const QJsonObject systemBlock{{QStringLiteral("type"), QStringLiteral("text")},
                                   {QStringLiteral("text"), systemPrompt},
                                   {QStringLiteral("cache_control"), QJsonObject{{QStringLiteral("type"), QStringLiteral("ephemeral")}}}};
-    request.body = QJsonObject{
-        {QStringLiteral("model"), m_model},
-        {QStringLiteral("max_tokens"), maxTokens},
-        {QStringLiteral("stream"), true},
-        {QStringLiteral("thinking"), QJsonObject{{QStringLiteral("type"), QStringLiteral("adaptive")}}},
-        {QStringLiteral("system"), QJsonArray{systemBlock}},
-        {QStringLiteral("tools"), tools},
-        {QStringLiteral("messages"), messages},
-    };
+    request.body = QJsonObject{{QStringLiteral("model"), m_model},
+                               {QStringLiteral("max_tokens"), maxTokens},
+                               {QStringLiteral("stream"), true},
+                               {QStringLiteral("thinking"), QJsonObject{{QStringLiteral("type"), QStringLiteral("adaptive")}}},
+                               {QStringLiteral("system"), QJsonArray{systemBlock}},
+                               {QStringLiteral("tools"), tools},
+                               {QStringLiteral("messages"), messages}};
     return request;
+}
+
+QJsonObject VibeCutAnthropicProvider::normalizeStreamEvent(const QByteArray &data)
+{
+    return QJsonDocument::fromJson(data).object();
 }
 
 bool VibeCutModelProviderRegistry::registerProvider(const QString &id, const Factory &factory, QString *error)
 {
-    if (error) {
-        error->clear();
-    }
+    if (error) error->clear();
     const QString key = id.trimmed().toLower();
     if (key.isEmpty() || !factory) {
-        if (error) {
-            *error = QStringLiteral("Provider registration requires an id and factory.");
-        }
+        if (error) *error = QStringLiteral("Provider registration requires an id and factory.");
         return false;
     }
     if (m_factories.contains(key)) {
-        if (error) {
-            *error = QStringLiteral("Model provider '%1' is already registered.").arg(key);
-        }
+        if (error) *error = QStringLiteral("Model provider '%1' is already registered.").arg(key);
         return false;
     }
     m_factories.insert(key, factory);
@@ -87,16 +80,12 @@ QStringList VibeCutModelProviderRegistry::providerIds() const
 
 std::unique_ptr<VibeCutModelProvider> VibeCutModelProviderRegistry::create(const QString &id, QString *error) const
 {
-    if (error) {
-        error->clear();
-    }
+    if (error) error->clear();
     const QString key = id.trimmed().toLower();
     const auto factory = m_factories.constFind(key);
     if (factory == m_factories.constEnd()) {
-        if (error) {
-            *error = QStringLiteral("Unknown VibeCut model provider '%1'. Registered providers: %2")
-                         .arg(key, providerIds().join(QStringLiteral(", ")));
-        }
+        if (error) *error = QStringLiteral("Unknown VibeCut model provider '%1'. Registered providers: %2")
+                                .arg(key, providerIds().join(QStringLiteral(", ")));
         return std::unique_ptr<VibeCutModelProvider>();
     }
     return factory.value()();
@@ -106,24 +95,28 @@ std::unique_ptr<VibeCutModelProvider> VibeCutModelProviderRegistry::createConfig
 {
     const QString requested = qEnvironmentVariable("VIBECUT_PROVIDER", QStringLiteral("anthropic"));
     std::unique_ptr<VibeCutModelProvider> provider = create(requested, error);
-    if (!provider) {
-        return provider;
-    }
+    if (!provider) return provider;
     QString configurationError;
     if (!provider->configured(&configurationError)) {
-        if (error) {
-            *error = configurationError;
-        }
+        if (error) *error = configurationError;
         return std::unique_ptr<VibeCutModelProvider>();
     }
     return provider;
 }
 
-VibeCutModelProviderRegistry VibeCutModelProviderRegistry::builtIns()
+void VibeCutModelProviderRegistry::ensureBuiltIns()
 {
-    VibeCutModelProviderRegistry registry;
-    registry.registerProvider(QStringLiteral("anthropic"), []() {
+    if (m_builtInsReady) return;
+    m_builtInsReady = true;
+    QString ignored;
+    registerProvider(QStringLiteral("anthropic"), []() {
         return std::unique_ptr<VibeCutModelProvider>(new VibeCutAnthropicProvider());
-    });
+    }, &ignored);
+}
+
+VibeCutModelProviderRegistry &VibeCutModelProviderRegistry::global()
+{
+    static VibeCutModelProviderRegistry registry;
+    registry.ensureBuiltIns();
     return registry;
 }
