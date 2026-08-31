@@ -26,15 +26,21 @@ std::shared_ptr<TimelineItemModel> currentModel()
     return timeline ? timeline->model() : nullptr;
 }
 
+double currentFps()
+{
+    return pCore ? pCore->getCurrentFps() : 0.0;
+}
+
 QJsonObject listGuides(const QJsonObject &)
 {
     const std::shared_ptr<TimelineItemModel> model = currentModel();
     if (!model) return err(QStringLiteral("No timeline is open."));
     const std::shared_ptr<MarkerListModel> guides = model->getGuideModel();
     if (!guides) return err(QStringLiteral("The active timeline has no guide model."));
+    const double fps = currentFps();
+    if (fps <= 0.0) return err(QStringLiteral("Project frame rate is unavailable."));
 
     QJsonArray result;
-    const double fps = model->getProfile().fps();
     for (const CommentedTime &guide : guides->getAllMarkers()) {
         result.append(QJsonObject{{QStringLiteral("frame"), guide.time().frames(fps)},
                                   {QStringLiteral("duration_frames"), guide.duration().frames(fps)},
@@ -59,7 +65,8 @@ QJsonObject addGuide(const QJsonObject &input, bool range)
     if (!model) return err(QStringLiteral("No timeline is open."));
     const std::shared_ptr<MarkerListModel> guides = model->getGuideModel();
     if (!guides) return err(QStringLiteral("The active timeline has no guide model."));
-    const double fps = model->getProfile().fps();
+    const double fps = currentFps();
+    if (fps <= 0.0) return err(QStringLiteral("Project frame rate is unavailable."));
     const GenTime position(frame, fps);
     const bool changed = range ? guides->addRangeMarker(position, GenTime(durationFrames, fps), comment, type)
                                : guides->addMarker(position, comment, type);
@@ -84,7 +91,8 @@ QJsonObject removeGuide(const QJsonObject &input)
     if (!model) return err(QStringLiteral("No timeline is open."));
     const std::shared_ptr<MarkerListModel> guides = model->getGuideModel();
     if (!guides) return err(QStringLiteral("The active timeline has no guide model."));
-    const double fps = model->getProfile().fps();
+    const double fps = currentFps();
+    if (fps <= 0.0) return err(QStringLiteral("Project frame rate is unavailable."));
     const GenTime position(frame, fps);
     if (!guides->hasMarker(frame)) return err(QStringLiteral("There is no guide at frame %1.").arg(frame));
     if (!guides->removeMarker(position)) return err(QStringLiteral("Kdenlive rejected removing the guide at frame %1.").arg(frame));
