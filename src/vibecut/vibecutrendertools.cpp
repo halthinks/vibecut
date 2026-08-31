@@ -47,10 +47,7 @@ public:
         }
     }
 
-    void start()
-    {
-        startNext();
-    }
+    void start() { startNext(); }
 
 private:
     void cleanupTemporaryInputs()
@@ -138,9 +135,7 @@ private:
         connect(m_process, &QProcess::readyRead, this, [this]() {
             if (!m_process || !m_tools || !m_tools->jobManager()) return;
             const QString output = QString::fromUtf8(m_process->readAll()).trimmed();
-            if (!output.isEmpty()) {
-                m_lastOutput = (m_lastOutput + QLatin1Char('\n') + output).right(3000);
-            }
+            if (!output.isEmpty()) m_lastOutput = (m_lastOutput + QLatin1Char('\n') + output).right(3000);
         });
         connect(m_process, &QProcess::errorOccurred, this, [this](QProcess::ProcessError error) {
             if (error == QProcess::FailedToStart && !m_cancelRequested) {
@@ -196,6 +191,14 @@ QJsonObject listPresets(const QJsonObject &)
     return QJsonObject{{QStringLiteral("ok"), true}, {QStringLiteral("presets"), presets}};
 }
 
+void cleanupPreparedJobs(const std::vector<RenderRequest::RenderJob> &jobs)
+{
+    for (const RenderRequest::RenderJob &job : jobs) {
+        if (!job.playlistPath.isEmpty()) QFile::remove(job.playlistPath);
+        if (!job.subtitlePath.isEmpty()) QFile::remove(job.subtitlePath);
+    }
+}
+
 QJsonObject startRender(VibeCutTools *tools, const QJsonObject &input)
 {
     if (!tools || !tools->jobManager()) return err(QStringLiteral("VibeCut JobManager is unavailable."));
@@ -225,11 +228,9 @@ QJsonObject startRender(VibeCutTools *tools, const QJsonObject &input)
         return err(QStringLiteral("Could not create output directory: %1").arg(outputDir.absolutePath()));
     }
     const bool overwrite = input.value(QStringLiteral("overwrite")).toBool(false);
-    if (QFile::exists(outputFile) && !overwrite) {
+    const bool outputExists = QFile::exists(outputFile);
+    if (outputExists && !overwrite) {
         return err(QStringLiteral("Output file already exists. Set overwrite=true only when the user explicitly approved replacement: %1").arg(outputFile));
-    }
-    if (QFile::exists(outputFile) && overwrite && !QFile::remove(outputFile)) {
-        return err(QStringLiteral("Could not remove existing output file before approved overwrite: %1").arg(outputFile));
     }
 
     RenderRequest request;
@@ -244,9 +245,18 @@ QJsonObject startRender(VibeCutTools *tools, const QJsonObject &input)
 
     std::vector<RenderRequest::RenderJob> jobs = request.process();
     if (!request.errorMessages().isEmpty()) {
+        cleanupPreparedJobs(jobs);
         return err(QStringLiteral("Render preparation failed: %1").arg(request.errorMessages().join(QStringLiteral("; "))));
     }
     if (jobs.empty()) return err(QStringLiteral("Render preparation produced no jobs."));
+
+    // Preserve the existing output until Kdenlive has successfully generated
+    // the renderer jobs/playlist. Only an explicit approved overwrite removes
+    // it, immediately before the renderer process begins.
+    if (outputExists && overwrite && !QFile::remove(outputFile)) {
+        cleanupPreparedJobs(jobs);
+        return err(QStringLiteral("Render jobs were prepared, but the approved existing output could not be removed: %1").arg(outputFile));
+    }
 
     const QString jobId = tools->jobManager()->createJob(QStringLiteral("render"), QStringLiteral("Render %1").arg(QFileInfo(outputFile).fileName()), true);
     tools->jobManager()->markRunning(jobId, QStringLiteral("Prepared %1 Kdenlive render job(s).").arg(jobs.size()));
