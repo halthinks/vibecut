@@ -6,6 +6,7 @@
 #include "vibecuttoolsurface.h"
 
 #include "vibecutedittools.h"
+#include "vibecutmarkertools.h"
 #include "vibecuttools.h"
 
 #include <QDebug>
@@ -20,13 +21,16 @@ QJsonObject errorResult(const QString &message)
 VibeCutToolSurface::VibeCutToolSurface(VibeCutTools *baseTools)
     : m_baseTools(baseTools)
 {
-    // Core timeline mutations are part of VibeCut's canonical surface rather
-    // than optional agent wiring: every planner/runtime sees the same edit
-    // vocabulary, while the implementations remain isolated from the legacy
-    // vibecuttools.cpp monolith.
+    // Core project/timeline capabilities are part of VibeCut's canonical
+    // governed surface rather than agent-specific wiring. Implementations stay
+    // isolated from the legacy vibecuttools.cpp monolith.
     QString error;
     if (!registerVibeCutEditTools(*this, &error)) {
         qWarning().noquote() << QStringLiteral("[VibeCut] core edit tools unavailable: %1").arg(error);
+    }
+    error.clear();
+    if (!registerVibeCutMarkerTools(*this, &error)) {
+        qWarning().noquote() << QStringLiteral("[VibeCut] guide tools unavailable: %1").arg(error);
     }
 }
 
