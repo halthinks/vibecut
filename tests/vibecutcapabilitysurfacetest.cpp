@@ -16,6 +16,8 @@ TEST_CASE("canonical VibeCut surface exposes governed editing breadth", "[vibecu
         QStringLiteral("effect_add"),
         QStringLiteral("effect_remove"),
         QStringLiteral("effect_parameter_set"),
+        QStringLiteral("group_create"),
+        QStringLiteral("group_ungroup"),
         QStringLiteral("guide_add"),
         QStringLiteral("guide_range_add"),
         QStringLiteral("guide_remove"),
