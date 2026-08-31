@@ -120,3 +120,8 @@ VibeCutModelProviderRegistry &VibeCutModelProviderRegistry::global()
     registry.ensureBuiltIns();
     return registry;
 }
+
+VibeCutModelProviderRegistry VibeCutModelProviderRegistry::builtIns()
+{
+    return global();
+}
