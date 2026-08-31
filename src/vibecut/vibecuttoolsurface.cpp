@@ -7,6 +7,7 @@
 
 #include "vibecutedittools.h"
 #include "vibecutmarkertools.h"
+#include "vibecutsubtitleedittools.h"
 #include "vibecuttools.h"
 
 #include <QDebug>
@@ -31,6 +32,10 @@ VibeCutToolSurface::VibeCutToolSurface(VibeCutTools *baseTools)
     error.clear();
     if (!registerVibeCutMarkerTools(*this, &error)) {
         qWarning().noquote() << QStringLiteral("[VibeCut] guide tools unavailable: %1").arg(error);
+    }
+    error.clear();
+    if (!registerVibeCutSubtitleEditTools(*this, &error)) {
+        qWarning().noquote() << QStringLiteral("[VibeCut] subtitle edit tools unavailable: %1").arg(error);
     }
 }
 
