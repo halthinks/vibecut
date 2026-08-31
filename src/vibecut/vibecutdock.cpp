@@ -5,6 +5,7 @@
 
 #include "vibecutdock.h"
 #include "vibecutagent.h"
+#include "vibecutsecretstore.h"
 #include "vibecuttools.h"
 
 #include "core.h"
@@ -17,6 +18,7 @@
 #include <QComboBox>
 #include <QHash>
 #include <QHBoxLayout>
+#include <QInputDialog>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QLabel>
@@ -61,6 +63,7 @@ VibeCutDock::VibeCutDock(QWidget *parent)
     , m_status(new QLabel(this))
     , m_progress(new QProgressBar(this))
     , m_trustMode(new QComboBox(this))
+    , m_credentials(new QPushButton(i18n("Credentials"), this))
     , m_newChat(new QPushButton(i18n("New Chat"), this))
     , m_approvePlan(new QPushButton(i18n("Approve Plan"), this))
     , m_cancelPlan(new QPushButton(i18n("Cancel"), this))
@@ -87,6 +90,8 @@ VibeCutDock::VibeCutDock(QWidget *parent)
     m_trustMode->setToolTip(i18n("Review: approve every side effect. Auto: reversible edits can auto-run; major/external changes still ask. Turbo: governed changes auto-run except explicitly confirmation-required or irreversible actions."));
     m_trustMode->setCurrentIndex(0);
 
+    m_credentials->setToolTip(i18n("Store or replace the Anthropic API key in KWallet when available. Environment variables remain supported."));
+    m_credentials->setFlat(true);
     m_newChat->setToolTip(i18n("Start a fresh conversation. Long VibeCut sessions are compacted automatically at complete exchange boundaries."));
     m_newChat->setFlat(true);
     m_approvePlan->setToolTip(i18n("Execute the reviewed plan against the current project revision."));
@@ -98,6 +103,7 @@ VibeCutDock::VibeCutDock(QWidget *parent)
     statusRow->addWidget(m_status, 1);
     statusRow->addWidget(m_progress, 1);
     statusRow->addWidget(m_trustMode);
+    statusRow->addWidget(m_credentials);
     statusRow->addWidget(m_newChat);
 
     auto *planRow = new QHBoxLayout;
@@ -116,6 +122,7 @@ VibeCutDock::VibeCutDock(QWidget *parent)
     layout->addLayout(inputRow);
 
     connect(m_send, &QPushButton::clicked, this, &VibeCutDock::submit);
+    connect(m_credentials, &QPushButton::clicked, this, &VibeCutDock::manageCredentials);
     connect(m_newChat, &QPushButton::clicked, this, &VibeCutDock::newChat);
     connect(m_approvePlan, &QPushButton::clicked, m_agent, &VibeCutAgent::approvePendingPlan);
     connect(m_cancelPlan, &QPushButton::clicked, m_agent, &VibeCutAgent::cancelPendingPlan);
@@ -200,7 +207,7 @@ VibeCutDock::VibeCutDock(QWidget *parent)
     });
 
     if (!m_agent->hasApiKey()) {
-        appendLine(i18n("VibeCut model provider is not configured. Set ANTHROPIC_API_KEY (or install/register another provider) and restart."), QStringLiteral("#c33"));
+        appendLine(i18n("VibeCut model provider is not configured. Use Credentials to store an Anthropic key in KWallet when available, or set ANTHROPIC_API_KEY in the environment."), QStringLiteral("#c33"));
         m_input->setEnabled(false);
         m_send->setEnabled(false);
         m_status->setText(QStringLiteral("No model provider"));
@@ -271,6 +278,37 @@ void VibeCutDock::newChat()
     if (m_agent->hasApiKey()) appendWelcome();
 }
 
+void VibeCutDock::manageCredentials()
+{
+    if (m_agent->busy() || m_agent->hasPendingPlan()) {
+        appendLine(i18n("Finish the current VibeCut operation before changing credentials."), QStringLiteral("#c80"));
+        return;
+    }
+    if (!VibeCutSecretStore::available()) {
+        appendLine(i18n("KWallet is not available in this build. Set ANTHROPIC_API_KEY in the environment instead."), QStringLiteral("#c80"));
+        return;
+    }
+
+    bool accepted = false;
+    const QString key = QInputDialog::getText(this, i18n("VibeCut Credentials"), i18n("Anthropic API key:"), QLineEdit::Password,
+                                              QString(), &accepted).trimmed();
+    if (!accepted || key.isEmpty()) return;
+
+    QString error;
+    if (!VibeCutSecretStore::writeSecret(QStringLiteral("anthropic_api_key"), key, &error)) {
+        appendLine(i18n("⚠ Could not store the key: %1", error), QStringLiteral("#c33"));
+        return;
+    }
+    if (!m_agent->reloadModelProvider(&error)) {
+        appendLine(i18n("⚠ Key stored, but the provider could not reload: %1", error), QStringLiteral("#c33"));
+        return;
+    }
+
+    appendLine(i18n("✓ Anthropic API key stored in KWallet and provider reloaded."), QStringLiteral("#2a8"));
+    if (m_transcript->document()->isEmpty()) appendWelcome();
+    setBusyUi(false);
+}
+
 void VibeCutDock::runNoiseSuggestion()
 {
     cancelPendingSelection();
@@ -312,6 +350,7 @@ void VibeCutDock::setBusyUi(bool busy)
     const bool reviewing = m_agent->hasPendingPlan();
     m_input->setEnabled(hasProvider && !busy && !reviewing);
     m_send->setEnabled(hasProvider && !busy && !reviewing);
+    m_credentials->setEnabled(!busy && !reviewing);
     m_newChat->setEnabled(!busy);
     m_trustMode->setEnabled(!busy && !reviewing);
     m_progress->setVisible(busy);
@@ -341,6 +380,7 @@ QString VibeCutDock::describeTool(const QString &name, const QString &argsJson) 
     if (name == QLatin1String("media_search")) return i18n("Searching the project media index…");
     if (name == QLatin1String("jobs_list")) return i18n("Checking VibeCut background jobs…");
     if (name == QLatin1String("edit_plan_propose")) return i18n("Preparing a governed edit plan…");
+    if (name == QLatin1String("vibescript_plan")) return i18n("Evaluating a bounded VibeScript plan…");
     if (name == QLatin1String("ask_user")) return QString();
     if (name == QLatin1String("speech_status")) return i18n("Checking speech-to-text status…");
     if (name == QLatin1String("speech_setup")) return i18n("Preparing Whisper setup…");
@@ -372,7 +412,9 @@ QString VibeCutDock::describeToolResult(const QString &name, const QString &resu
         const int models = result.value(QStringLiteral("models_installed")).toArray().size();
         return ready ? i18n("→ Whisper is ready (%1 model(s) installed).", models) : i18n("→ Whisper is not set up yet.");
     }
-    if (name == QLatin1String("edit_plan_propose")) return i18n("→ Plan prepared; governance decides whether review is required before execution.");
+    if (name == QLatin1String("edit_plan_propose") || name == QLatin1String("vibescript_plan")) {
+        return i18n("→ Plan prepared; governance decides whether review is required before execution.");
+    }
     return QString();
 }
 
