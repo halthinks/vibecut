@@ -4,6 +4,7 @@
 #include "core.h"
 #include "mainwindow.h"
 #include "timeline2/model/timelineitemmodel.hpp"
+#include "timeline2/view/timelinecontroller.h"
 #include "timeline2/view/timelinewidget.h"
 #include "vibecuttoolsurface.h"
 
@@ -15,10 +16,15 @@ QJsonObject err(const QString &message)
     return QJsonObject{{QStringLiteral("ok"), false}, {QStringLiteral("error"), message}};
 }
 
-std::shared_ptr<TimelineItemModel> currentModel()
+TimelineWidget *currentTimeline()
 {
     if (!pCore || !pCore->window()) return nullptr;
-    TimelineWidget *timeline = pCore->window()->getCurrentTimeline();
+    return pCore->window()->getCurrentTimeline();
+}
+
+std::shared_ptr<TimelineItemModel> currentModel()
+{
+    TimelineWidget *timeline = currentTimeline();
     return timeline ? timeline->model() : nullptr;
 }
 
@@ -27,17 +33,26 @@ bool locked(const std::shared_ptr<TimelineItemModel> &model, int trackId)
     return model && model->isTrack(trackId) && model->data(model->makeTrackIndexFromID(trackId), TimelineModel::IsLockedRole).toBool();
 }
 
+bool disabled(const std::shared_ptr<TimelineItemModel> &model, int trackId)
+{
+    return model && model->isTrack(trackId) && model->data(model->makeTrackIndexFromID(trackId), TimelineModel::IsDisabledRole).toBool();
+}
+
 QJsonObject listTracks(const QJsonObject &)
 {
     const std::shared_ptr<TimelineItemModel> model = currentModel();
     if (!model) return err(QStringLiteral("No timeline is open."));
     QJsonArray tracks;
     for (int trackId : model->getAllTracksIds()) {
+        const bool audio = model->isAudioTrack(trackId);
+        const bool isDisabled = disabled(model, trackId);
         tracks.append(QJsonObject{{QStringLiteral("track_id"), trackId},
                                   {QStringLiteral("name"), model->getTrackFullName(trackId)},
                                   {QStringLiteral("position"), model->getTrackPosition(trackId)},
-                                  {QStringLiteral("audio"), model->isAudioTrack(trackId)},
+                                  {QStringLiteral("audio"), audio},
                                   {QStringLiteral("locked"), locked(model, trackId)},
+                                  {QStringLiteral("enabled"), !isDisabled},
+                                  {QStringLiteral(audio ? "muted" : "hidden"), isDisabled},
                                   {QStringLiteral("clip_count"), model->getTrackClipsCount(trackId)},
                                   {QStringLiteral("composition_count"), model->getTrackCompositionsCount(trackId)}});
     }
@@ -74,16 +89,12 @@ QJsonObject renameTrack(const QJsonObject &input)
     if (!model->isTrack(trackId)) return err(QStringLiteral("Track id %1 does not exist.").arg(trackId));
     if (name.isEmpty()) return err(QStringLiteral("name must not be empty"));
     const QString oldName = model->getTrackFullName(trackId);
-    if (oldName == name) {
-        return QJsonObject{{QStringLiteral("ok"), true}, {QStringLiteral("track_id"), trackId},
-                           {QStringLiteral("name"), name}, {QStringLiteral("changed"), false}, {QStringLiteral("verified"), true}};
-    }
     model->setTrackName(trackId, name);
     const QString liveName = model->getTrackFullName(trackId);
-    if (liveName != name) return err(QStringLiteral("Track rename did not verify on the live timeline."));
+    if (!liveName.endsWith(name)) return err(QStringLiteral("Track rename did not verify on the live timeline."));
     return QJsonObject{{QStringLiteral("ok"), true}, {QStringLiteral("track_id"), trackId},
                        {QStringLiteral("old_name"), oldName}, {QStringLiteral("name"), liveName},
-                       {QStringLiteral("changed"), true}, {QStringLiteral("verified"), true}};
+                       {QStringLiteral("changed"), oldName != liveName}, {QStringLiteral("verified"), true}};
 }
 
 QJsonObject moveTrack(const QJsonObject &input)
@@ -125,6 +136,34 @@ QJsonObject setTrackLock(const QJsonObject &input)
     }
     return QJsonObject{{QStringLiteral("ok"), true}, {QStringLiteral("track_id"), trackId},
                        {QStringLiteral("old_locked"), old}, {QStringLiteral("locked"), desired},
+                       {QStringLiteral("changed"), true}, {QStringLiteral("verified"), true}};
+}
+
+QJsonObject setTrackEnabled(const QJsonObject &input)
+{
+    TimelineWidget *timeline = currentTimeline();
+    const std::shared_ptr<TimelineItemModel> model = timeline ? timeline->model() : nullptr;
+    TimelineController *controller = timeline ? timeline->controller() : nullptr;
+    if (!model || !controller) return err(QStringLiteral("No timeline is open."));
+    const int trackId = input.value(QStringLiteral("track_id")).toInt(-1);
+    const bool enabled = input.value(QStringLiteral("enabled")).toBool();
+    if (!model->isTrack(trackId)) return err(QStringLiteral("Track id %1 does not exist.").arg(trackId));
+    const bool oldEnabled = !disabled(model, trackId);
+    if (oldEnabled == enabled) {
+        return QJsonObject{{QStringLiteral("ok"), true}, {QStringLiteral("track_id"), trackId},
+                           {QStringLiteral("enabled"), enabled}, {QStringLiteral("changed"), false}, {QStringLiteral("verified"), true}};
+    }
+    // Kdenlive's hideTrack argument selects the enabled MLT hide mask: true ->
+    // audio=1/video=2 (normal), false -> 3 (muted/hidden). The controller also
+    // creates the native undo/redo command and refreshes timeline duration.
+    controller->hideTrack(trackId, enabled, false);
+    const bool liveEnabled = !disabled(model, trackId);
+    if (liveEnabled != enabled) {
+        return err(QStringLiteral("Track enable/mute/visibility change did not verify on the live timeline."));
+    }
+    return QJsonObject{{QStringLiteral("ok"), true}, {QStringLiteral("track_id"), trackId},
+                       {QStringLiteral("audio"), model->isAudioTrack(trackId)},
+                       {QStringLiteral("old_enabled"), oldEnabled}, {QStringLiteral("enabled"), liveEnabled},
                        {QStringLiteral("changed"), true}, {QStringLiteral("verified"), true}};
 }
 
@@ -176,7 +215,7 @@ bool registerVibeCutTrackTools(VibeCutToolSurface &surface, QString *error)
                              {QStringLiteral("properties"), QJsonObject{}},
                              {QStringLiteral("additionalProperties"), false}};
     const QJsonObject listSchema{{QStringLiteral("name"), QStringLiteral("tracks_list")},
-                                 {QStringLiteral("description"), QStringLiteral("List active timeline tracks with stable ids, names, order, audio/video type, lock state, clip count and composition count. Read-only; use before track edits instead of guessing ids/order.")},
+                                 {QStringLiteral("description"), QStringLiteral("List active timeline tracks with stable ids, names, order, audio/video type, lock and enabled/muted/hidden state, clip count and composition count. Read-only; use before track edits instead of guessing ids/order.")},
                                  {QStringLiteral("input_schema"), noArgs}};
     VibeCutToolPolicy listPolicy;
     listPolicy.name = QStringLiteral("tracks_list");
@@ -188,16 +227,14 @@ bool registerVibeCutTrackTools(VibeCutToolSurface &surface, QString *error)
         {QStringLiteral("audio"), QJsonObject{{QStringLiteral("type"), QStringLiteral("boolean")}}},
         {QStringLiteral("position"), QJsonObject{{QStringLiteral("type"), QStringLiteral("integer")}, {QStringLiteral("minimum"), -1}}}},
         QJsonArray{});
-    if (!addTool(surface, QStringLiteral("track_create"),
-                 QStringLiteral("Create an undoable audio or video track at an optional timeline position and verify the resulting live track id/type."),
+    if (!addTool(surface, QStringLiteral("track_create"), QStringLiteral("Create an undoable audio or video track and verify its live id/type."),
                  createInput, VibeCutToolRisk::ReversibleEdit, createTrack, error)) return false;
 
     const QJsonObject renameInput = objectSchema(QJsonObject{
         {QStringLiteral("track_id"), QJsonObject{{QStringLiteral("type"), QStringLiteral("integer")}}},
         {QStringLiteral("name"), QJsonObject{{QStringLiteral("type"), QStringLiteral("string")}}}},
         QJsonArray{QStringLiteral("track_id"), QStringLiteral("name")});
-    if (!addTool(surface, QStringLiteral("track_rename"),
-                 QStringLiteral("Rename an existing track through Kdenlive's native undoable setTrackName path and verify the live name."),
+    if (!addTool(surface, QStringLiteral("track_rename"), QStringLiteral("Rename an existing track through Kdenlive's native undoable setTrackName path."),
                  renameInput, VibeCutToolRisk::ReversibleEdit, renameTrack, error)) return false;
 
     const QJsonObject moveInput = objectSchema(QJsonObject{
@@ -205,22 +242,28 @@ bool registerVibeCutTrackTools(VibeCutToolSurface &surface, QString *error)
         {QStringLiteral("direction"), QJsonObject{{QStringLiteral("type"), QStringLiteral("string")},
                                                   {QStringLiteral("enum"), QJsonArray{QStringLiteral("up"), QStringLiteral("down")}}}}},
         QJsonArray{QStringLiteral("track_id"), QStringLiteral("direction")});
-    if (!addTool(surface, QStringLiteral("track_move"),
-                 QStringLiteral("Move an existing track one step up/down among tracks of the same type using Kdenlive's native undoable track move, then verify its order changed."),
+    if (!addTool(surface, QStringLiteral("track_move"), QStringLiteral("Move an existing track one step up/down using Kdenlive's native undoable track move."),
                  moveInput, VibeCutToolRisk::ReversibleEdit, moveTrack, error)) return false;
 
     const QJsonObject lockInput = objectSchema(QJsonObject{
         {QStringLiteral("track_id"), QJsonObject{{QStringLiteral("type"), QStringLiteral("integer")}}},
         {QStringLiteral("locked"), QJsonObject{{QStringLiteral("type"), QStringLiteral("boolean")}}}},
         QJsonArray{QStringLiteral("track_id"), QStringLiteral("locked")});
-    if (!addTool(surface, QStringLiteral("track_set_locked"),
-                 QStringLiteral("Lock or unlock a track through Kdenlive's native setTrackLockedState path, which creates its own undo/redo command; verify the live IsLocked state afterward."),
+    if (!addTool(surface, QStringLiteral("track_set_locked"), QStringLiteral("Lock or unlock a track through Kdenlive's native undoable lock path."),
                  lockInput, VibeCutToolRisk::ReversibleEdit, setTrackLock, error)) return false;
 
-    const QJsonObject deleteInput = objectSchema(QJsonObject{
-        {QStringLiteral("track_id"), QJsonObject{{QStringLiteral("type"), QStringLiteral("integer")}}}},
-        QJsonArray{QStringLiteral("track_id")});
+    const QJsonObject enabledInput = objectSchema(QJsonObject{
+        {QStringLiteral("track_id"), QJsonObject{{QStringLiteral("type"), QStringLiteral("integer")}}},
+        {QStringLiteral("enabled"), QJsonObject{{QStringLiteral("type"), QStringLiteral("boolean")},
+                                                 {QStringLiteral("description"), QStringLiteral("false mutes an audio track or hides a video track; true restores it.")}}}},
+        QJsonArray{QStringLiteral("track_id"), QStringLiteral("enabled")});
+    if (!addTool(surface, QStringLiteral("track_set_enabled"),
+                 QStringLiteral("Enable/disable a track through Kdenlive's native hideTrack path. disabled means muted for audio tracks and hidden for video tracks; undoable and live-state verified."),
+                 enabledInput, VibeCutToolRisk::ReversibleEdit, setTrackEnabled, error)) return false;
+
+    const QJsonObject deleteInput = objectSchema(QJsonObject{{QStringLiteral("track_id"), QJsonObject{{QStringLiteral("type"), QStringLiteral("integer")}}}},
+                                                   QJsonArray{QStringLiteral("track_id")});
     return addTool(surface, QStringLiteral("track_delete"),
-                   QStringLiteral("Delete an entire track using Kdenlive's native undoable track deletion. This also deletes clips/compositions on that track, so it is governed as a major edit and reports affected counts."),
+                   QStringLiteral("Delete an entire track through Kdenlive's native undoable deletion. Also deletes clips/compositions on that track, so this is a major edit."),
                    deleteInput, VibeCutToolRisk::MajorEdit, deleteTrack, error);
 }
