@@ -13,6 +13,8 @@ TEST_CASE("canonical VibeCut surface exposes governed editing breadth", "[vibecu
         QStringLiteral("clip_move"),
         QStringLiteral("clip_split"),
         QStringLiteral("clip_trim"),
+        QStringLiteral("effect_remove"),
+        QStringLiteral("effect_parameter_set"),
         QStringLiteral("guide_add"),
         QStringLiteral("guide_range_add"),
         QStringLiteral("guide_remove"),
@@ -28,6 +30,9 @@ TEST_CASE("canonical VibeCut surface exposes governed editing breadth", "[vibecu
         CHECK(policies.value(name).mutatesProject);
         CHECK(policies.value(name).risk == VibeCutToolRisk::ReversibleEdit);
     }
+
+    REQUIRE(policies.contains(QStringLiteral("effects_inspect")));
+    CHECK(policies.value(QStringLiteral("effects_inspect")).risk == VibeCutToolRisk::ReadOnly);
 
     REQUIRE(policies.contains(QStringLiteral("clip_ripple_trim")));
     CHECK(policies.value(QStringLiteral("clip_ripple_trim")).risk == VibeCutToolRisk::MajorEdit);
