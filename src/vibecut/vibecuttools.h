@@ -17,6 +17,7 @@
 #include <memory>
 
 class TimelineItemModel;
+class VibeCutProjectRevisionTracker;
 
 /** @brief Native-mode tool surface exposed to the assistant.
  *
@@ -51,6 +52,10 @@ public:
      *  separate from provider-specific JSON so the planner/executor can make
      *  trust decisions without knowing anything about Anthropic. */
     QHash<QString, VibeCutToolPolicy> policies() const;
+
+    /** Monotonic token for the live project state. A plan captures this value
+     *  before approval and must still match immediately before execution. */
+    quint64 projectRevision() const;
 
     /** Dispatch @p name with @p input; always returns an object with "ok". */
     QJsonObject invoke(const QString &name, const QJsonObject &input);
@@ -136,4 +141,5 @@ private:
     SpeechStage m_speechStage = SpeechStage::Idle;
     QString m_pendingModel; // the model being set up while m_speechStage != Idle
     bool m_subtitleJobRunning = false;
+    mutable VibeCutProjectRevisionTracker *m_revisionTracker = nullptr;
 };
