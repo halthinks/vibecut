@@ -11,6 +11,7 @@
 #include "timeline2/model/timelineitemmodel.hpp"
 #include "timeline2/view/timelinecontroller.h"
 #include "timeline2/view/timelinewidget.h"
+#include "vibecuttools.h"
 #include "vibecuttoolsurface.h"
 
 #include <QJsonArray>
@@ -123,6 +124,15 @@ QJsonObject searchSubtitles(const QJsonObject &input)
     };
 }
 
+QJsonObject startNormalizedSubtitleJob(VibeCutToolSurface *surface, const QJsonObject &normalized)
+{
+    VibeCutTools *tools = surface ? surface->baseTools() : nullptr;
+    if (!tools) {
+        return err(QStringLiteral("Subtitle runtime is unavailable."));
+    }
+    return tools->startAsyncSubtitleGeneration(normalized);
+}
+
 QJsonObject scopedSubtitleGeneration(VibeCutToolSurface *surface, const QJsonObject &input)
 {
     if (!surface) {
@@ -136,13 +146,13 @@ QJsonObject scopedSubtitleGeneration(VibeCutToolSurface *surface, const QJsonObj
     }
     normalized.remove(QStringLiteral("scope"));
 
-    // An explicit clip id is already an explicit scope; preserve the native
-    // handler's validation and behavior.
+    // An explicit clip id is already an explicit scope; the async runtime will
+    // validate it against live state.
     if (normalized.contains(QStringLiteral("clip_id"))) {
-        return surface->invokeBase(QStringLiteral("generate_subtitles"), normalized);
+        return startNormalizedSubtitleJob(surface, normalized);
     }
     if (scope == QLatin1String("whole_project")) {
-        return surface->invokeBase(QStringLiteral("generate_subtitles"), normalized);
+        return startNormalizedSubtitleJob(surface, normalized);
     }
 
     TimelineWidget *timeline = currentTimeline();
@@ -155,7 +165,7 @@ QJsonObject scopedSubtitleGeneration(VibeCutToolSurface *surface, const QJsonObj
     const int selected = controller ? controller->getMainSelectedClip() : -1;
     if (selected != -1 && model->isClip(selected)) {
         normalized.insert(QStringLiteral("clip_id"), selected);
-        return surface->invokeBase(QStringLiteral("generate_subtitles"), normalized);
+        return startNormalizedSubtitleJob(surface, normalized);
     }
 
     QList<int> candidates;
@@ -174,7 +184,7 @@ QJsonObject scopedSubtitleGeneration(VibeCutToolSurface *surface, const QJsonObj
 
     if (candidates.size() == 1) {
         normalized.insert(QStringLiteral("clip_id"), candidates.first());
-        return surface->invokeBase(QStringLiteral("generate_subtitles"), normalized);
+        return startNormalizedSubtitleJob(surface, normalized);
     }
     if (candidates.isEmpty()) {
         return err(QStringLiteral("There are no timeline clips to transcribe."));
@@ -252,7 +262,7 @@ QJsonObject subtitleGenerationSchema()
         {QStringLiteral("description"),
          QStringLiteral("Transcribe audio with Whisper and add subtitles. Scope is conservative by default: use the selected clip or only clip; "
                         "never silently transcribe a multi-clip whole project. If scope is ambiguous, ask the user whether to choose a clip or the "
-                        "whole project. Runs in the background after its audio-export preparation step.")},
+                        "whole project. Audio export and Whisper transcription run asynchronously, and stale results are rejected if the project changes.")},
         {QStringLiteral("input_schema"), inputSchema},
     };
 }
