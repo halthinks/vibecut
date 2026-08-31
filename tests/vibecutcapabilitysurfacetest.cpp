@@ -70,12 +70,18 @@ TEST_CASE("canonical VibeCut surface exposes governed editing breadth", "[vibecu
         CHECK_FALSE(policies.value(name).mutatesProject);
     }
 
-    REQUIRE(policies.contains(QStringLiteral("clip_ripple_trim")));
-    CHECK(policies.value(QStringLiteral("clip_ripple_trim")).risk == VibeCutToolRisk::MajorEdit);
-    REQUIRE(policies.contains(QStringLiteral("clip_delete")));
-    CHECK(policies.value(QStringLiteral("clip_delete")).risk == VibeCutToolRisk::MajorEdit);
-    REQUIRE(policies.contains(QStringLiteral("track_delete")));
-    CHECK(policies.value(QStringLiteral("track_delete")).risk == VibeCutToolRisk::MajorEdit);
+    const QStringList major = {
+        QStringLiteral("bin_replace_source"),
+        QStringLiteral("clip_ripple_trim"),
+        QStringLiteral("clip_delete"),
+        QStringLiteral("track_delete"),
+    };
+    for (const QString &name : major) {
+        INFO(name.toStdString());
+        REQUIRE(policies.contains(name));
+        CHECK(policies.value(name).risk == VibeCutToolRisk::MajorEdit);
+        CHECK(policies.value(name).mutatesProject);
+    }
 
     REQUIRE(policies.contains(QStringLiteral("render_start")));
     CHECK(policies.value(QStringLiteral("render_start")).risk == VibeCutToolRisk::ExternalSideEffect);
