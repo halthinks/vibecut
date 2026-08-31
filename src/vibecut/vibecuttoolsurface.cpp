@@ -13,6 +13,7 @@
 #include "vibecutmemorytools.h"
 #include "vibecutmixtools.h"
 #include "vibecutpolicyoverrides.h"
+#include "vibecutpreflighttools.h"
 #include "vibecutrendertools.h"
 #include "vibecutroutingtools.h"
 #include "vibecutselectiontools.h"
@@ -61,6 +62,10 @@ VibeCutToolSurface::VibeCutToolSurface(VibeCutTools *baseTools)
     error.clear();
     if (!registerVibeCutMixTools(*this, &error)) {
         qWarning().noquote() << QStringLiteral("[VibeCut] mix tools unavailable: %1").arg(error);
+    }
+    error.clear();
+    if (!registerVibeCutPreflightTools(*this, &error)) {
+        qWarning().noquote() << QStringLiteral("[VibeCut] preflight tools unavailable: %1").arg(error);
     }
     error.clear();
     if (!registerVibeCutRoutingTools(*this, &error)) {
