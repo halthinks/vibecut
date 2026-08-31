@@ -4,6 +4,8 @@
 */
 #include "vibecutsecretstore.h"
 
+#include <memory>
+
 #ifdef VIBECUT_HAVE_KWALLET
 #include <KWallet>
 #include <QApplication>
@@ -114,7 +116,11 @@ bool VibeCutSecretStore::removeSecret(const QString &key, QString *error)
         if (error) *error = QStringLiteral("KWallet folder could not be selected.");
         return false;
     }
-    return wallet->removeEntry(cleanKey) == 0;
+    if (wallet->removeEntry(cleanKey) != 0) {
+        if (error) *error = QStringLiteral("Secret could not be removed from KWallet.");
+        return false;
+    }
+    return true;
 #else
     if (error) *error = QStringLiteral("KWallet support is not available in this build.");
     return false;
