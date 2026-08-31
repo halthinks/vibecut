@@ -10,6 +10,7 @@ set(kdenlive_SRCS
   vibecut/vibecutedittools.cpp
   vibecut/vibecuteffecttools.cpp
   vibecut/vibecuteval.cpp
+  vibecut/vibecutgrouptools.cpp
   vibecut/vibecuthooks.cpp
   vibecut/vibecutjobmanager.cpp
   vibecut/vibecutjobtools.cpp
