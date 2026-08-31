@@ -22,6 +22,8 @@ TEST_CASE("canonical VibeCut surface exposes governed editing breadth", "[vibecu
         QStringLiteral("subtitle_edit"),
         QStringLiteral("subtitle_delete"),
         QStringLiteral("title_create"),
+        QStringLiteral("track_create"),
+        QStringLiteral("track_move"),
         QStringLiteral("transition_add"),
         QStringLiteral("transition_move"),
         QStringLiteral("transition_resize"),
@@ -35,20 +37,26 @@ TEST_CASE("canonical VibeCut surface exposes governed editing breadth", "[vibecu
         CHECK(policies.value(name).risk == VibeCutToolRisk::ReversibleEdit);
     }
 
-    REQUIRE(policies.contains(QStringLiteral("effects_available")));
-    CHECK(policies.value(QStringLiteral("effects_available")).risk == VibeCutToolRisk::ReadOnly);
-    REQUIRE(policies.contains(QStringLiteral("effects_inspect")));
-    CHECK(policies.value(QStringLiteral("effects_inspect")).risk == VibeCutToolRisk::ReadOnly);
+    const QStringList readOnly = {
+        QStringLiteral("effects_available"),
+        QStringLiteral("effects_inspect"),
+        QStringLiteral("tracks_list"),
+        QStringLiteral("transitions_list"),
+        QStringLiteral("render_presets_list"),
+    };
+    for (const QString &name : readOnly) {
+        INFO(name.toStdString());
+        REQUIRE(policies.contains(name));
+        CHECK(policies.value(name).risk == VibeCutToolRisk::ReadOnly);
+    }
 
     REQUIRE(policies.contains(QStringLiteral("clip_ripple_trim")));
     CHECK(policies.value(QStringLiteral("clip_ripple_trim")).risk == VibeCutToolRisk::MajorEdit);
     REQUIRE(policies.contains(QStringLiteral("clip_delete")));
     CHECK(policies.value(QStringLiteral("clip_delete")).risk == VibeCutToolRisk::MajorEdit);
+    REQUIRE(policies.contains(QStringLiteral("track_delete")));
+    CHECK(policies.value(QStringLiteral("track_delete")).risk == VibeCutToolRisk::MajorEdit);
 
-    REQUIRE(policies.contains(QStringLiteral("transitions_list")));
-    CHECK(policies.value(QStringLiteral("transitions_list")).risk == VibeCutToolRisk::ReadOnly);
-    REQUIRE(policies.contains(QStringLiteral("render_presets_list")));
-    CHECK(policies.value(QStringLiteral("render_presets_list")).risk == VibeCutToolRisk::ReadOnly);
     REQUIRE(policies.contains(QStringLiteral("render_start")));
     CHECK(policies.value(QStringLiteral("render_start")).risk == VibeCutToolRisk::ExternalSideEffect);
     CHECK(policies.value(QStringLiteral("render_start")).asynchronous);
