@@ -6,6 +6,7 @@ set(kdenlive_SRCS
   vibecut/vibecutagent.cpp
   vibecut/vibecutcontracts.cpp
   vibecut/vibecutconversationcontext.cpp
+  vibecut/vibecutjobmanager.cpp
   vibecut/vibecutplangate.cpp
   vibecut/vibecutprojectrevision.cpp
   vibecut/vibecutprojectstate.cpp
