@@ -25,6 +25,7 @@ set(kdenlive_SRCS
   vibecut/vibecutplanruntime.cpp
   vibecut/vibecutplantools.cpp
   vibecut/vibecutpolicyoverrides.cpp
+  vibecut/vibecutpreflighttools.cpp
   vibecut/vibecutprojectmemory.cpp
   vibecut/vibecutprojectrevision.cpp
   vibecut/vibecutprojectrules.cpp
