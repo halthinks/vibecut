@@ -22,8 +22,8 @@
 #include <QLineEdit>
 #include <QProgressBar>
 #include <QPushButton>
-#include <QTextCursor>
 #include <QTextBrowser>
+#include <QTextCursor>
 #include <QUrl>
 #include <QVBoxLayout>
 #include <QVector>
@@ -43,7 +43,7 @@ const QVector<Suggestion> &suggestions()
     static const QVector<Suggestion> list = {
         {QStringLiteral("denoise"), QStringLiteral("Remove background noise from the selected clip"), kNoisePrompt},
         {QStringLiteral("subtitles"), QStringLiteral("Generate subtitles"),
-         QStringLiteral("Generate subtitles for this project. Set up Whisper first if it isn't ready yet.")},
+         QStringLiteral("Generate subtitles. Prefer the selected clip; ask me before using the whole project if the scope is ambiguous. Set up Whisper first if needed.")},
         {QStringLiteral("list-clips"), QStringLiteral("What clips are on my timeline?"),
          QStringLiteral("List the clips on my timeline.")},
         {QStringLiteral("help"), QStringLiteral("What can you help me with?"),
@@ -57,8 +57,8 @@ TimelineController *currentTimelineController()
     if (!pCore || !pCore->window()) {
         return nullptr;
     }
-    TimelineWidget *tl = pCore->window()->getCurrentTimeline();
-    return tl ? tl->controller() : nullptr;
+    TimelineWidget *timeline = pCore->window()->getCurrentTimeline();
+    return timeline ? timeline->controller() : nullptr;
 }
 } // namespace
 
@@ -68,6 +68,8 @@ VibeCutDock::VibeCutDock(QWidget *parent)
     , m_status(new QLabel(this))
     , m_progress(new QProgressBar(this))
     , m_newChat(new QPushButton(i18n("New Chat"), this))
+    , m_approvePlan(new QPushButton(i18n("Approve Plan"), this))
+    , m_cancelPlan(new QPushButton(i18n("Cancel"), this))
     , m_input(new QLineEdit(this))
     , m_send(new QPushButton(i18n("Send"), this))
     , m_tools(new VibeCutTools(this))
@@ -81,19 +83,28 @@ VibeCutDock::VibeCutDock(QWidget *parent)
     m_transcript->setTextInteractionFlags(Qt::TextBrowserInteraction);
     m_input->setPlaceholderText(i18n("Ask VibeCut to edit the timeline…"));
 
-    m_progress->setRange(0, 0); // indeterminate: we don't get token-level progress from the API
+    m_progress->setRange(0, 0);
     m_progress->setTextVisible(false);
     m_progress->setMaximumHeight(4);
     m_progress->setVisible(false);
 
-    m_newChat->setToolTip(i18n("Start a fresh conversation - the panel keeps all history for as long as it's "
-                               "open, with no automatic limit."));
+    m_newChat->setToolTip(i18n("Start a fresh conversation. Long VibeCut sessions are compacted automatically at complete exchange boundaries."));
     m_newChat->setFlat(true);
+
+    m_approvePlan->setToolTip(i18n("Execute the reviewed plan against the current project revision."));
+    m_cancelPlan->setToolTip(i18n("Discard the proposed plan without changing the project."));
+    m_approvePlan->setVisible(false);
+    m_cancelPlan->setVisible(false);
 
     auto *statusRow = new QHBoxLayout;
     statusRow->addWidget(m_status, 1);
     statusRow->addWidget(m_progress, 1);
     statusRow->addWidget(m_newChat);
+
+    auto *planRow = new QHBoxLayout;
+    planRow->addStretch(1);
+    planRow->addWidget(m_cancelPlan);
+    planRow->addWidget(m_approvePlan);
 
     auto *inputRow = new QHBoxLayout;
     inputRow->addWidget(m_input, 1);
@@ -102,37 +113,38 @@ VibeCutDock::VibeCutDock(QWidget *parent)
     auto *layout = new QVBoxLayout(this);
     layout->addWidget(m_transcript, 1);
     layout->addLayout(statusRow);
+    layout->addLayout(planRow);
     layout->addLayout(inputRow);
 
     connect(m_send, &QPushButton::clicked, this, &VibeCutDock::submit);
     connect(m_newChat, &QPushButton::clicked, this, &VibeCutDock::newChat);
+    connect(m_approvePlan, &QPushButton::clicked, m_agent, &VibeCutAgent::approvePendingPlan);
+    connect(m_cancelPlan, &QPushButton::clicked, m_agent, &VibeCutAgent::cancelPendingPlan);
     connect(m_input, &QLineEdit::returnPressed, this, &VibeCutDock::submit);
     connect(m_transcript, &QTextBrowser::anchorClicked, this, &VibeCutDock::onSuggestionClicked);
 
-    connect(m_agent, &VibeCutAgent::statusChanged, this, [this](const QString &s) {
-        m_status->setText(s);
-        setBusyUi(s != QStringLiteral("Ready"));
+    connect(m_agent, &VibeCutAgent::statusChanged, this, [this](const QString &status) {
+        m_status->setText(status);
+        setBusyUi(m_agent->busy());
     });
-    connect(m_agent, &VibeCutAgent::assistantTextDelta, this, [this](const QString &t) {
+    connect(m_agent, &VibeCutAgent::assistantTextDelta, this, [this](const QString &text) {
         if (!m_streamStarted) {
             m_transcript->append(QStringLiteral("VibeCut: "));
             m_streamStarted = true;
         }
         m_transcript->moveCursor(QTextCursor::End);
-        m_transcript->insertPlainText(t);
+        m_transcript->insertPlainText(text);
         m_transcript->moveCursor(QTextCursor::End);
     });
-    connect(m_agent, &VibeCutAgent::assistantMessage, this, [this](const QString &t) {
+    connect(m_agent, &VibeCutAgent::assistantMessage, this, [this](const QString &text) {
         if (!m_streamStarted) {
-            // assistantMessage("") only ever arrives after at least one real
-            // tool call this exchange (the agent turns a truly empty,
-            // nothing-happened turn into errorOccurred instead) - so this is
-            // a closing marker for what the lines above already showed, not
-            // an independent claim that something worked.
-            appendLine(t.isEmpty() ? i18n("✓ Finished (see above).") : QStringLiteral("VibeCut: %1").arg(t),
-                       t.isEmpty() ? QStringLiteral("#2a8") : QString());
+            appendLine(text.isEmpty() ? i18n("✓ Finished (see verified steps above).") : QStringLiteral("VibeCut: %1").arg(text),
+                       text.isEmpty() ? QStringLiteral("#2a8") : QString());
         }
         m_streamStarted = false;
+        if (!m_agent->hasPendingPlan()) {
+            appendNextStepSuggestions();
+        }
     });
     connect(m_agent, &VibeCutAgent::toolInvoked, this, [this](const QString &name, const QString &args) {
         const QString friendly = describeTool(name, args);
@@ -147,8 +159,6 @@ VibeCutDock::VibeCutDock(QWidget *parent)
         }
     });
     connect(m_agent, &VibeCutAgent::toolCompleted, this, [this](const QString &name, const QString &resultJson) {
-        // Ground truth for read-only tools, shown regardless of whether the
-        // model bothers to narrate it - see DESIGN_SPECS.md §3.
         const QString summary = describeToolResult(name, resultJson);
         if (!summary.isEmpty()) {
             appendLine(summary, QStringLiteral("#888"));
@@ -160,15 +170,35 @@ VibeCutDock::VibeCutDock(QWidget *parent)
             }
         }
     });
-    connect(m_agent, &VibeCutAgent::userQuestionRaised, this, [this](const QString &q) {
-        appendLine(QStringLiteral("VibeCut asks: %1").arg(q), QStringLiteral("#c80"));
+    connect(m_agent, &VibeCutAgent::userQuestionRaised, this, [this](const QString &question) {
+        appendLine(QStringLiteral("VibeCut asks: %1").arg(question), QStringLiteral("#c80"));
     });
     connect(m_agent, &VibeCutAgent::backgroundProgress, this, [this](const QString &message) {
         appendLine(QStringLiteral("⏳ %1").arg(message), QStringLiteral("#888"));
     });
-    connect(m_agent, &VibeCutAgent::errorOccurred, this, [this](const QString &e) {
-        appendLine(QStringLiteral("⚠ %1").arg(e), QStringLiteral("#c33"));
+    connect(m_agent, &VibeCutAgent::errorOccurred, this, [this](const QString &error) {
+        appendLine(QStringLiteral("⚠ %1").arg(error), QStringLiteral("#c33"));
         m_streamStarted = false;
+        setBusyUi(m_agent->busy());
+    });
+    connect(m_agent, &VibeCutAgent::planProposed, this, [this](const QString &planId, const QString &summary) {
+        m_pendingPlanSummary = summary;
+        appendLine(i18n("Review plan %1:\n%2", planId, summary), QStringLiteral("#c80"));
+        appendLine(i18n("No project changes have been made yet."), QStringLiteral("#888"));
+        setPlanReviewVisible(true);
+        setBusyUi(false);
+    });
+    connect(m_agent, &VibeCutAgent::planProgress, this, [this](const QString &message) {
+        appendLine(QStringLiteral("▶ %1").arg(message), QStringLiteral("#888"));
+        setPlanReviewVisible(false);
+        setBusyUi(true);
+    });
+    connect(m_agent, &VibeCutAgent::planFinished, this, [this](const QString &, bool success, const QString &summary) {
+        setPlanReviewVisible(false);
+        m_pendingPlanSummary.clear();
+        appendLine(success ? i18n("✓ %1", summary) : i18n("■ %1", summary), success ? QStringLiteral("#2a8") : QStringLiteral("#c80"));
+        setBusyUi(false);
+        appendNextStepSuggestions();
     });
 
     if (!m_agent->hasApiKey()) {
@@ -185,9 +215,10 @@ VibeCutDock::VibeCutDock(QWidget *parent)
 void VibeCutDock::appendWelcome()
 {
     QString html = QStringLiteral("<b>%1</b><br>%2<br>")
-                       .arg(i18n("Hi, I'm VibeCut."), i18n("I can act on your live timeline. Try one of these, or type your own request below:"));
-    for (const Suggestion &s : suggestions()) {
-        html += QStringLiteral("• <a href=\"vibecut://%1\">%2</a><br>").arg(s.id, s.label.toHtmlEscaped());
+                       .arg(i18n("Hi, I'm VibeCut."),
+                            i18n("I can inspect the live project immediately and propose reviewable plans before I change it. Try one of these:"));
+    for (const Suggestion &suggestion : suggestions()) {
+        html += QStringLiteral("• <a href=\"vibecut://%1\">%2</a><br>").arg(suggestion.id, suggestion.label.toHtmlEscaped());
     }
     m_transcript->append(html);
     m_transcript->moveCursor(QTextCursor::End);
@@ -197,15 +228,8 @@ void VibeCutDock::onSuggestionClicked(const QUrl &url)
 {
     const QString id = url.host();
 
-    // These two bypass the model entirely - a deterministic offer the code
-    // itself makes when it knows setup is needed, not something that
-    // depends on the model choosing to act or the user finding a menu.
     if (id == QLatin1String("speech-install")) {
-        appendLine(i18n("Installing Whisper…"), QStringLiteral("#888"));
-        const QJsonObject result = m_tools->invoke(QStringLiteral("speech_setup"), QJsonObject{});
-        if (!result.value(QStringLiteral("ok")).toBool()) {
-            appendLine(i18n("⚠ %1", result.value(QStringLiteral("error")).toString()), QStringLiteral("#c33"));
-        }
+        sendPrompt(QStringLiteral("Set up Whisper speech-to-text with the recommended model."));
         return;
     }
     if (id == QLatin1String("speech-settings")) {
@@ -214,18 +238,32 @@ void VibeCutDock::onSuggestionClicked(const QUrl &url)
         }
         return;
     }
+    if (id == QLatin1String("search-subtitles")) {
+        if (!m_agent->busy() && !m_agent->hasPendingPlan()) {
+            m_input->setText(QStringLiteral("Find where I say "));
+            m_input->setFocus();
+            m_input->setCursorPosition(m_input->text().size());
+        }
+        return;
+    }
+    if (id == QLatin1String("jobs")) {
+        if (!m_agent->busy() && !m_agent->hasPendingPlan()) {
+            sendPrompt(QStringLiteral("Show me the current VibeCut background jobs and their status."));
+        }
+        return;
+    }
 
-    if (m_agent->busy()) {
+    if (m_agent->busy() || m_agent->hasPendingPlan()) {
         return;
     }
     if (id == QLatin1String("denoise")) {
         runNoiseSuggestion();
         return;
     }
-    for (const Suggestion &s : suggestions()) {
-        if (s.id == id) {
+    for (const Suggestion &suggestion : suggestions()) {
+        if (suggestion.id == id) {
             cancelPendingSelection();
-            sendPrompt(s.prompt);
+            sendPrompt(suggestion.prompt);
             return;
         }
     }
@@ -234,14 +272,14 @@ void VibeCutDock::onSuggestionClicked(const QUrl &url)
 void VibeCutDock::offerSpeechSetup()
 {
     appendLine(i18n("Whisper speech-to-text isn't set up. "
-                     "<a href=\"vibecut://speech-install\">Install it now</a> · "
+                     "<a href=\"vibecut://speech-install\">Prepare a setup plan</a> · "
                      "<a href=\"vibecut://speech-settings\">Open Speech-to-Text settings</a>"));
 }
 
 void VibeCutDock::submit()
 {
     const QString text = m_input->text().trimmed();
-    if (text.isEmpty() || m_agent->busy()) {
+    if (text.isEmpty() || m_agent->busy() || m_agent->hasPendingPlan()) {
         return;
     }
     m_input->clear();
@@ -254,6 +292,8 @@ void VibeCutDock::newChat()
     cancelPendingSelection();
     m_agent->resetConversation();
     m_streamStarted = false;
+    m_pendingPlanSummary.clear();
+    setPlanReviewVisible(false);
     m_transcript->clear();
     if (m_agent->hasApiKey()) {
         appendWelcome();
@@ -269,8 +309,8 @@ void VibeCutDock::runNoiseSuggestion()
         return;
     }
 
-    TimelineController *ctl = currentTimelineController();
-    if (!ctl) {
+    TimelineController *controller = currentTimelineController();
+    if (!controller) {
         appendLine(i18n("Open a project and add a clip to the timeline first."), QStringLiteral("#c33"));
         return;
     }
@@ -278,14 +318,11 @@ void VibeCutDock::runNoiseSuggestion()
     m_pendingPrompt = kNoisePrompt;
     m_awaitingSelection = true;
     m_status->setText(i18n("Waiting for a clip…"));
-    appendLine(i18n("No clip selected — click the clip with your audio in the timeline and I'll apply it automatically."),
+    appendLine(i18n("No clip selected — click the clip with your audio in the timeline and I'll prepare the edit plan automatically."),
                QStringLiteral("#c80"));
 
-    m_selectionConn = connect(ctl, &TimelineController::selectionChanged, this, [this]() {
-        if (!m_awaitingSelection) {
-            return;
-        }
-        if (m_tools->selectedClipId() == -1) {
+    m_selectionConn = connect(controller, &TimelineController::selectionChanged, this, [this]() {
+        if (!m_awaitingSelection || m_tools->selectedClipId() == -1) {
             return;
         }
         const QString prompt = m_pendingPrompt;
@@ -314,12 +351,33 @@ void VibeCutDock::sendPrompt(const QString &text)
 void VibeCutDock::setBusyUi(bool busy)
 {
     const bool hasKey = m_agent->hasApiKey();
-    m_input->setEnabled(hasKey && !busy);
-    m_send->setEnabled(hasKey && !busy);
+    const bool reviewing = m_agent->hasPendingPlan();
+    m_input->setEnabled(hasKey && !busy && !reviewing);
+    m_send->setEnabled(hasKey && !busy && !reviewing);
+    m_newChat->setEnabled(!busy);
     m_progress->setVisible(busy);
-    if (!busy && hasKey) {
+    m_approvePlan->setEnabled(reviewing && !busy);
+    m_cancelPlan->setEnabled(reviewing && !busy);
+    if (!busy && !reviewing && hasKey) {
         m_input->setFocus();
     }
+}
+
+void VibeCutDock::setPlanReviewVisible(bool visible)
+{
+    m_approvePlan->setVisible(visible);
+    m_cancelPlan->setVisible(visible);
+}
+
+void VibeCutDock::appendNextStepSuggestions()
+{
+    if (!m_agent->hasApiKey() || m_agent->busy() || m_agent->hasPendingPlan()) {
+        return;
+    }
+    m_transcript->append(i18n("Next: <a href=\"vibecut://search-subtitles\">search subtitles</a> · "
+                              "<a href=\"vibecut://list-clips\">review timeline clips</a> · "
+                              "<a href=\"vibecut://jobs\">check background jobs</a>"));
+    m_transcript->moveCursor(QTextCursor::End);
 }
 
 QString VibeCutDock::describeTool(const QString &name, const QString &argsJson) const
@@ -330,17 +388,26 @@ QString VibeCutDock::describeTool(const QString &name, const QString &argsJson) 
     if (name == QLatin1String("timeline_get_selection")) {
         return i18n("Checking what's selected…");
     }
+    if (name == QLatin1String("subtitles_search")) {
+        return i18n("Searching the existing subtitles…");
+    }
+    if (name == QLatin1String("jobs_list")) {
+        return i18n("Checking VibeCut background jobs…");
+    }
+    if (name == QLatin1String("edit_plan_propose")) {
+        return i18n("Preparing a reviewable edit plan…");
+    }
     if (name == QLatin1String("ask_user")) {
-        return QString(); // the actual question is shown via userQuestionRaised
+        return QString();
     }
     if (name == QLatin1String("speech_status")) {
         return i18n("Checking speech-to-text status…");
     }
     if (name == QLatin1String("speech_setup")) {
-        return i18n("Starting Whisper speech-to-text setup…");
+        return i18n("Preparing Whisper setup…");
     }
     if (name == QLatin1String("generate_subtitles")) {
-        return i18n("Exporting audio and starting Whisper transcription…");
+        return i18n("Starting the approved subtitle pipeline…");
     }
     if (name == QLatin1String("effect_apply")) {
         static const QHash<QString, QString> friendlyNames = {
@@ -358,19 +425,28 @@ QString VibeCutDock::describeToolResult(const QString &name, const QString &resu
 {
     const QJsonObject result = QJsonDocument::fromJson(resultJson.toUtf8()).object();
     if (!result.value(QStringLiteral("ok")).toBool()) {
-        return QString(); // toolFailed already shows the failure line
+        return QString();
     }
     if (name == QLatin1String("timeline_get_selection")) {
-        const int cid = result.value(QStringLiteral("selected_clip_id")).toInt(-1);
-        return cid == -1 ? i18n("→ Nothing is selected on the timeline.") : i18n("→ Clip %1 is selected.", cid);
+        const int clipId = result.value(QStringLiteral("selected_clip_id")).toInt(-1);
+        return clipId == -1 ? i18n("→ Nothing is selected on the timeline.") : i18n("→ Clip %1 is selected.", clipId);
     }
     if (name == QLatin1String("timeline_list_clips")) {
         return i18n("→ %1 clip(s) on the timeline.", result.value(QStringLiteral("clips")).toArray().size());
+    }
+    if (name == QLatin1String("subtitles_search")) {
+        return i18n("→ %1 subtitle match(es).", result.value(QStringLiteral("match_count")).toInt());
+    }
+    if (name == QLatin1String("jobs_list")) {
+        return i18n("→ %1 VibeCut job(s).", result.value(QStringLiteral("jobs")).toArray().size());
     }
     if (name == QLatin1String("speech_status")) {
         const bool ready = result.value(QStringLiteral("dependencies_installed")).toBool();
         const int models = result.value(QStringLiteral("models_installed")).toArray().size();
         return ready ? i18n("→ Whisper is ready (%1 model(s) installed).", models) : i18n("→ Whisper is not set up yet.");
+    }
+    if (name == QLatin1String("edit_plan_propose")) {
+        return i18n("→ Plan prepared; review it below before anything changes.");
     }
     return QString();
 }
