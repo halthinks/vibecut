@@ -10,6 +10,7 @@ TEST_CASE("canonical VibeCut surface exposes governed editing breadth", "[vibecu
     const auto policies = surface.policies();
 
     const QStringList reversible = {
+        QStringLiteral("bin_folder_create"),
         QStringLiteral("bin_import_file"),
         QStringLiteral("bin_insert_timeline"),
         QStringLiteral("clip_move"),
@@ -50,6 +51,7 @@ TEST_CASE("canonical VibeCut surface exposes governed editing breadth", "[vibecu
 
     const QStringList readOnly = {
         QStringLiteral("bin_list"),
+        QStringLiteral("bin_folders_list"),
         QStringLiteral("effects_available"),
         QStringLiteral("effects_inspect"),
         QStringLiteral("mix_inspect"),
