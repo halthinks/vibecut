@@ -6,6 +6,7 @@
 #include "vibecuttoolsurface.h"
 
 #include "vibecutedittools.h"
+#include "vibecuteffecttools.h"
 #include "vibecutmarkertools.h"
 #include "vibecutmemorytools.h"
 #include "vibecutpolicyoverrides.h"
@@ -30,6 +31,10 @@ VibeCutToolSurface::VibeCutToolSurface(VibeCutTools *baseTools)
     QString error;
     if (!registerVibeCutEditTools(*this, &error)) {
         qWarning().noquote() << QStringLiteral("[VibeCut] core edit tools unavailable: %1").arg(error);
+    }
+    error.clear();
+    if (!registerVibeCutEffectTools(*this, &error)) {
+        qWarning().noquote() << QStringLiteral("[VibeCut] effect tools unavailable: %1").arg(error);
     }
     error.clear();
     if (!registerVibeCutMarkerTools(*this, &error)) {
