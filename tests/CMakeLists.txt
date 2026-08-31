@@ -47,6 +47,7 @@ set(KdenliveTest_SOURCES
     vibecutprojectrulestest.cpp
     vibecuttest.cpp
     vibecuttoolpolicytest.cpp
+    vibecuttoolsurfacetest.cpp
 )
 
 include(ECMAddTests)

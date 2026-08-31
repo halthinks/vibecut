@@ -13,5 +13,6 @@ set(kdenlive_SRCS
   vibecut/vibecutprojectstate.cpp
   vibecut/vibecuttoolpolicies.cpp
   vibecut/vibecuttools.cpp
+  vibecut/vibecuttoolsurface.cpp
   vibecut/vibecutdock.cpp
   PARENT_SCOPE)
