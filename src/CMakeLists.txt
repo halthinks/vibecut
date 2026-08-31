@@ -137,7 +137,7 @@ ecm_target_qml_sources(kdenliveLib
     monitor/view/MonitorCornerScene.qml
     monitor/view/MonitorGeometryScene.qml
     monitor/view/MonitorOverlay.qml
-    monitor/view/MonitorRotoScene.qml
+    monitor/view/MonitorRoto.qml
     monitor/view/MonitorSafeZone.qml
     monitor/view/MonitorSplit.qml
     monitor/view/MonitorSplitTracks.qml
@@ -275,6 +275,11 @@ target_link_libraries(kdenliveLib PUBLIC
     ${CMAKE_THREAD_LIBS_INIT}
     kiss_fft
     )
+
+if(TARGET KF${KF_MAJOR}::Wallet)
+  target_link_libraries(kdenliveLib PUBLIC KF${KF_MAJOR}::Wallet)
+  target_compile_definitions(kdenliveLib PRIVATE VIBECUT_HAVE_KWALLET)
+endif()
 
 if(KF6_VERSION VERSION_GREATER_EQUAL "6.8.0")
   target_link_libraries(kdenliveLib PUBLIC KF${KF_MAJOR}::I18nQml)
