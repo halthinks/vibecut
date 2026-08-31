@@ -5,6 +5,7 @@
 #include "doc/kdenlivedoc.h"
 #include "kdenlivesettings.h"
 #include "render/renderrequest.h"
+#include "renderpresets/renderpresetmodel.hpp"
 #include "renderpresets/renderpresetrepository.hpp"
 #include "vibecutjobmanager.h"
 #include "vibecuttools.h"
