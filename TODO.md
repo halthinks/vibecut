@@ -1,110 +1,411 @@
-# VibeCut — Roadmap
+# VibeCut — Full Product Roadmap
 
-Living implementation roadmap. `VIBECUT_ARCHITECTURE.md` is the authoritative architecture contract, `DESIGN_SPECS.md` contains standing product/behavior rules, and `CLAUDE.md` remains the operational handoff. This file tracks what is actually done versus what is still open.
+Living implementation roadmap for the governed agentic video editor. `VIBECUT_ARCHITECTURE.md` is the architecture contract, `DESIGN_SPECS.md` contains product/behavior rules, and `CLAUDE.md` remains the operational handoff.
 
-## Landed on `agent/vibecut-architecture-slices`
+This roadmap is ordered by dependency and product value. A later phase may be researched before an earlier one is complete, but **merge/release authority follows the gates below**. GitHub Actions are intentionally not part of the validation path; verification is repository-local.
 
-- [x] **Subtitle read/search access.** `subtitles_search` returns stable subtitle ids, layers, text and frame ranges without mutating the project.
-- [x] **Scope-safe subtitle generation.** `generate_subtitles` prefers explicit clip → selected clip → sole clip and refuses to silently transcribe an ambiguous multi-clip whole project. Whole-project scope must be explicit.
-- [x] **Non-blocking subtitle audio export.** The VibeCut subtitle pipeline chains asynchronous MLT audio export → Whisper → import instead of blocking the GUI thread.
-- [x] **Stale-result protection for long transcription.** Subtitle import checks captured project state before committing.
-- [x] **Contextual next-step suggestions.** The dock offers deterministic follow-up actions instead of a meaningless flat Done state.
-- [x] **Plan → authorize → execute-with-checkpoints.** Compound mutations become a revision-bound `EditPlan`; the deterministic runtime executes dependency order only after trust-policy authorization.
-- [x] **Review / Auto / Turbo trust modes.** Reversible edits, major edits, external effects and irreversible work have distinct policies.
-- [x] **Per-tool project policy overrides.** `.vibecutpolicy.json` supports `deny`, `always_confirm`, and `auto_allow`; denied tools are hidden from model schemas and rejected again by the execution gate. Irreversible confirmation cannot be bypassed.
-- [x] **Project revision / stale-plan gate.** Monotonic revision tracking survives undo → new-edit index reuse.
-- [x] **Transactional synchronous checkpoints.** Contiguous project mutations use the Kdenlive undo stack; failed synchronous checkpoints roll back.
-- [x] **Project before/after evidence.** Mutating plans capture coarse project snapshots and append a final diff.
-- [x] **Shared asynchronous JobManager.** Stable job ids, state, progress, cancellation request and terminal result are available to plan execution and UI/tool surfaces.
-- [x] **Governed job cancellation API.** `job_cancel` requests cancellation through JobManager; cancellable implementations such as render honor the request.
-- [x] **Whisper setup JobManager bridge.** Legacy setup now returns a trackable job so compound setup → subtitle plans can wait correctly.
-- [x] **Bounded conversation context.** Complete model/tool exchanges are compacted without corrupting tool protocol.
-- [x] **Project-local rules.** `.vibecutrules` is loaded beside the project with bounded size/error handling and cannot replace immutable base governance instructions.
-- [x] **Durable project memory.** `.vibecutmemory.json` stores bounded provenance-labelled project facts separately from rules/chat; malformed or unsupported memory fails closed. `project_memory_list/put/forget` are governed tools.
-- [x] **Composable governed tool surface.** New capabilities live in isolated modules; native tools can be decorated without growing the legacy `vibecuttools.cpp` monolith.
-- [x] **Lifecycle/context hooks.** `VibeCutHooks` exposes model/tool/plan/job/trust/error events plus named structured context providers.
-- [x] **Model-provider registry seam.** Provider request construction and streaming-event normalization are provider-owned; Anthropic remains the built-in provider.
-- [x] **Optional KWallet secret backend + dock credential control.** Anthropic credentials load from the environment first and then the VibeCut KWallet folder when KF Wallet is present. The dock can write the key to KWallet and hot-reload the provider without restart; credentials never enter projects, model context or hooks.
-- [x] **VibeScript bounded sandbox.** `vibescript_plan` evaluates JavaScript in a no-host-access `QJSEngine`, enforces source/time bounds including infinite-loop interruption, requires a JSON plan result, and submits that result to the same governed plan runtime. Scripts receive no QObject/filesystem/network/process/Kdenlive bindings.
-- [x] **Media-intelligence index contract.** `media_search` retrieves time-ranged evidence across clip names and subtitle/transcript text; future extractors share the same document contract.
-- [x] **Core native timeline edit vocabulary.** Verified `clip_move`, `clip_split`, `clip_trim`, `clip_ripple_trim`, and `clip_delete` use Kdenlive's own undoable APIs.
-- [x] **Installed effect discovery/application.** `effects_available` enumerates actual installed Kdenlive effects; `effect_add` applies individual installed effects through `EffectStackModel` with live row/id verification. Effect groups remain intentionally excluded until child-by-child verification is defined.
-- [x] **Effect-stack introspection and editing.** `effects_inspect` exposes stable effect ids, rows, parameters and XML; `effect_remove` and `effect_parameter_set` are verified and undoable, including duplicate-effect row identity.
-- [x] **Guides/range guides.** Read/add/remove project guides and range guides for candidate cuts, B-roll, semantic notes and review regions.
-- [x] **Subtitle editing.** Verified `subtitle_edit` and `subtitle_delete` by stable subtitle id.
-- [x] **Transition/composition lifecycle.** Discover installed transition ids plus verified native `transition_add`, `transition_move`, `transition_resize`, and `transition_remove`.
-- [x] **Same-track mix lifecycle.** `mix_inspect`, `mix_add_previous`, `mix_resize`, and `mix_remove` operate on Kdenlive's native same-track mix model using the right-hand clip as the stable owner. Resize/remove use Kdenlive's own undo paths and live-state verification.
-- [x] **Native simple-title create/update.** Create a real Kdenlive title bin asset and safely update VibeCut-created simple titles with producer-property undo/redo and timeline-instance reload. Complex hand-built Kdenlive titles are intentionally protected.
-- [x] **Project-bin media baseline.** `bin_list`, undoable local-file `bin_import_file`, and verified `bin_insert_timeline` use Kdenlive's native project/timeline models. No shell or network import path is exposed.
-- [x] **Project-bin source replacement.** `bin_replace_source` uses Kdenlive's native `Bin::replaceSingleClip` → `EditClipCommand` path, so replacing a source for every timeline instance is a governed MajorEdit with normal Undo and live path verification. Non-file-backed generator/title assets are rejected.
-- [x] **Project-bin folder management baseline.** `bin_folders_list`, undoable `bin_folder_create`, and `bin_move_to_folder` expose native inventory/create/reorganization. Moves use Kdenlive's `MoveBinClipCommand` and verify the live parent folder after redo.
-- [x] **Grouping and multi-selection.** Native verified `group_create` / `group_ungroup` plus ephemeral `selection_list`, `selection_set`, and `selection_clear` allow controlled multi-item editing without durable selection state.
-- [x] **Track lifecycle and state.** `tracks_list`, undoable `track_create`, `track_rename`, `track_move`, `track_set_locked`, `track_set_enabled`, and major-risk `track_delete` use Kdenlive native APIs and verify live state. `track_set_enabled=false` maps to mute for audio tracks and hide for video tracks through the same controller path used by the UI.
-- [x] **Insertion target routing.** Ephemeral `routing_status`, `audio_target_set`, and `video_target_set` use Kdenlive's own target-routing APIs. Audio stream reassignment is accepted only when Kdenlive reports that stream as currently assignable; these tools change future insertion targeting, not existing project content.
-- [x] **Native render/export baseline.** Discover installed presets and render asynchronously through `RenderRequest` / `kdenlive_render` with JobManager lifecycle and final-file verification.
-- [x] **Safer render overwrite semantics.** Existing approved output is not removed before Kdenlive has successfully prepared render jobs.
-- [x] **Local zero-CI verification lane.** `scripts/vibecut-verify.sh` configures/builds locally and runs the `vibecut*` tests with `ctest`; no GitHub Actions are required.
-- [x] **Architecture/product front door.** README and `VIBECUT_ARCHITECTURE.md` describe the governed agentic editor instead of the original one-tool prototype.
-- [x] **Expanded regression harness.** Contracts, planning, trust, revision, context compaction, jobs, hooks, media index, native capability registration, effects, VibeScript watchdog, durable memory, and policy uniqueness are in the local test target.
+## North-star product
 
-## Immediate hardening before merge / upstream work
+VibeCut should let a user describe editorial intent at the level a human editor thinks, while preserving the things professional editors cannot give up:
 
-- [ ] **Run a clean local Kdenlive compile and VibeCut test gate.** Execute `bash scripts/vibecut-verify.sh` on a machine with Kdenlive build dependencies. Fix every compile/link/test failure before merging the integration branch. GitHub Actions are intentionally not part of this gate.
-- [ ] **Hands-on smoke project.** Test inspect → plan → approve → edit → verify → Undo across clips, effects, guides, titles, transitions, same-track mixes, bin import/insertion/replacement/folders, grouping, track state/routing and subtitles.
-- [ ] **Long-job smoke tests.** Run Whisper and render while interacting with the editor; test cancellation and final-state evidence.
-- [ ] **Trust/policy smoke tests.** Verify Review, Auto, Turbo and `.vibecutpolicy.json` behavior with reversible edits, major edits, render, deny, auto-allow and always-confirm overrides.
-- [ ] **Update operational handoff.** Reconcile `CLAUDE.md` and stale DEVLOG/KDENLIVE_INTERNALS notes against this branch after the first successful local build.
+- exact project/timeline state;
+- predictable authority and confirmation;
+- reversible native edits;
+- stale-plan protection;
+- inspectable evidence;
+- deterministic execution after model reasoning;
+- long-job progress/cancellation;
+- truthful distinction between observation, inference, proposal, execution and verified result;
+- provider independence;
+- local/project-specific memory and rules;
+- extensibility without rebuilding the agent core.
 
-## Editing breadth still to deepen
+The end-state interaction is not “LLM calls random Kdenlive functions.” It is:
 
-- [ ] Effect-group expansion/application with child-by-child verification.
-- [ ] Mix transition-parameter editing and more advanced mix ownership/neighbor operations beyond the conservative previous-neighbor creation path.
-- [ ] Complex title element editing, reusable title styles/templates, and richer layout primitives.
-- [ ] Richer missing-media/relink recovery workflows and source-state inspection beyond current list/import/replace/insert/folder organization support.
-- [ ] Richer audio routing/mixer controls beyond insertion-target stream assignment and track mute/enable.
-- [ ] More explicit multi-selection operations such as selection-aware bulk move/delete where Kdenlive semantics can be verified transactionally.
-- [ ] Render output optimization helper that recommends installed presets based on destination constraints rather than just exposing preset selection.
+`intent → inspect → understand → propose EditPlan → authorize → execute native Kdenlive operations → verify → expose diff/evidence → continue`.
 
-## Media intelligence
+---
 
-The common `VibeCutMediaIndex` exists. The remaining work is extractor depth, not another retrieval architecture.
+# PHASE 0 — Governed agent kernel — LANDED
 
-- [ ] Speaker diarization and speaker-indexed transcript evidence.
-- [ ] Scene/shot boundary extraction.
-- [ ] Silence, loudness/noise and general audio-event analysis.
-- [ ] OCR / on-screen text extraction.
-- [ ] Face/subject/object evidence where appropriate and privacy-safe.
-- [ ] Visual/CLIP embeddings and reference-style similarity.
-- [ ] Semantic transcript/clip embeddings and persistent incremental indexing.
-- [ ] Evidence provenance/versioning for derived media-analysis records.
+## Goal
+Turn the original chat-driven prototype into a state-aware execution system that can safely operate a professional NLE.
 
-## Higher-level agent editing
+## Landed
+- [x] Revision-bound `EditPlan` contract.
+- [x] Plan → authorize → execute-with-checkpoints runtime.
+- [x] Review / Auto / Turbo trust modes.
+- [x] Per-tool `.vibecutpolicy.json` overrides: `deny`, `always_confirm`, `auto_allow`.
+- [x] Irreversible work cannot bypass confirmation.
+- [x] Monotonic project revision / stale-plan protection.
+- [x] Kdenlive undo-stack checkpoints for synchronous project mutations.
+- [x] Rollback on failed synchronous checkpoints.
+- [x] Project before/after snapshots and diffs.
+- [x] Distinction between project mutations and external side effects.
+- [x] Shared asynchronous `JobManager` with stable IDs, progress, cancellation request and terminal result.
+- [x] Governed `job_cancel`.
+- [x] Bounded conversation compaction preserving complete tool exchanges.
+- [x] `.vibecutrules` project-local instructions.
+- [x] `.vibecutmemory.json` durable bounded project memory with provenance and fail-closed parsing.
+- [x] Lifecycle/context hooks for model/tool/plan/job/trust/error events.
+- [x] Provider registry and provider-owned request/stream normalization.
+- [x] Optional KWallet secret backend plus dock credential editor/hot reload.
+- [x] `vibescript_plan` bounded JavaScript sandbox that may only produce governed plans.
+- [x] Local zero-CI verification script: `scripts/vibecut-verify.sh`.
 
-- [ ] Interview/repeated-take cleanup from transcript + media evidence.
-- [ ] Rough-cut generation with reviewable candidate-cut plans.
-- [ ] Shorts/highlight extraction.
-- [ ] B-roll opportunity detection and guide placement.
-- [ ] Auto color-grade preset selection with before/after review.
-- [ ] Reference-style matching using the media-intelligence layer.
-- [ ] Finishing passes: titles, transitions, subtitles, loudness/audio cleanup, render recommendation.
+## User outcome
+The AI is no longer trusted just because it generated text. Plans are state-bound, governed, undo-aware and verifiable.
 
-## External integrations / feature wishlist
+---
 
-- [ ] Stock footage search/import behind explicit external/network authority.
-- [ ] Image/video generation provider adapters.
-- [ ] Ollama/local-model provider integration using the provider registry.
-- [ ] Local WebUI/provider integrations where useful.
-- [ ] YouTube/publishing adapters with explicit external-side-effect approval and credential isolation.
+# PHASE 1 — Native professional editing vocabulary — MOSTLY LANDED
+
+## Goal
+Give the governed runtime enough authoritative Kdenlive-native tools to perform real editing rather than special-case demos.
+
+## Timeline editing — LANDED
+- [x] `clip_move`.
+- [x] `clip_split`.
+- [x] `clip_trim`.
+- [x] `clip_ripple_trim`.
+- [x] `clip_delete`.
+- [x] Stable item selection inspection/set/clear.
+- [x] Native group/ungroup.
+
+## Guides and subtitles — LANDED
+- [x] Guide/range-guide add/read/remove.
+- [x] Subtitle search/read.
+- [x] Scope-safe subtitle generation.
+- [x] Non-blocking audio export → Whisper → subtitle import.
+- [x] Stale-result protection before subtitle import.
+- [x] Subtitle edit/delete by stable ID.
+
+## Effects — BASELINE LANDED
+- [x] Enumerate installed effects instead of inventing IDs.
+- [x] Add individual installed effect.
+- [x] Inspect effect stack with row, stable effect ID, parameters and Kdenlive XML.
+- [x] Edit existing effect parameters with undo/redo and verification.
+- [x] Remove effect with duplicate-row-safe identity.
+- [ ] Expand/apply effect groups with child-by-child verification.
+- [ ] Keyframe-aware parameter editing as a first-class governed tool set.
+- [ ] Effect-stack copy/paste presets across selected clips with evidence of every child operation.
+
+## Transitions/compositions — BASELINE LANDED
+- [x] Discover installed transitions/compositions.
+- [x] Add transition/composition.
+- [x] Move transition/composition.
+- [x] Resize transition/composition.
+- [x] Remove transition/composition.
+- [ ] Inspect/edit transition parameter models.
+- [ ] A-track / composition-track assignment controls.
+
+## Same-track mixes — BASELINE LANDED
+- [x] `mix_inspect`.
+- [x] Conservative previous-neighbor `mix_add_previous`.
+- [x] `mix_resize`.
+- [x] `mix_remove`.
+- [ ] Mix type switching.
+- [ ] Mix parameter editing.
+- [ ] Explicit previous/next-neighbor ownership operations.
+- [ ] Mix alignment/cut controls exposed directly rather than only through resize.
+
+## Titles — SAFE BASELINE LANDED
+- [x] Create a real Kdenlive title asset and insert it in timeline.
+- [x] Safely update VibeCut-created simple titles.
+- [ ] Inspect arbitrary title document elements.
+- [ ] Edit specific text/shape/image elements without replacing the whole title.
+- [ ] Reusable title styles/templates.
+- [ ] Lower-third/title-card primitives.
+- [ ] Brand/style packs.
+
+## Tracks — BASELINE LANDED
+- [x] List tracks with stable IDs/type/name/order/state/counts.
+- [x] Create track.
+- [x] Rename track.
+- [x] Move track.
+- [x] Lock/unlock track.
+- [x] Enable/disable track: audio mute / video hide through native UI path.
+- [x] Major-risk track delete with affected counts.
+- [x] Insertion-target routing status.
+- [x] Assign current source audio stream to a target track only when Kdenlive reports it assignable.
+- [x] Set/clear video insertion target.
+- [ ] Rich mixer controls: gain, pan/balance, monitor/record state, master/track effects.
+- [ ] More explicit routing state for multi-stream sources and future inserts.
+
+## Bin/media — STRONG BASELINE LANDED
+- [x] Bin inventory with IDs, paths, type, duration, A/V capability and instance count.
+- [x] Local-file import with native undo.
+- [x] Insert existing bin asset into timeline.
+- [x] Replace source behind an existing file-backed bin asset as undoable MajorEdit.
+- [x] Reject generator/title/non-file-backed assets from file replacement.
+- [x] Folder inventory.
+- [x] Folder creation with native undo.
+- [x] Move existing clip between folders with `MoveBinClipCommand` and parent verification.
+- [ ] Missing-media/source-state inspection with actionable diagnostics.
+- [ ] Missing-media recovery/relink workflow supporting one clip and batches.
+- [ ] Proxy/source-state inspection and governed proxy actions.
+- [ ] Bin clip rename/description/tag/rating operations where useful to editorial search.
+- [ ] Folder move/delete with cycle/dependency checks.
+
+## Render/export — BASELINE LANDED
+- [x] Discover installed render presets.
+- [x] Native `RenderRequest` / `kdenlive_render` execution.
+- [x] Shared JobManager progress/cancellation.
+- [x] Final output existence/non-empty verification.
+- [x] Safer overwrite: do not remove existing approved output until job preparation succeeds.
+- [ ] Destination-aware render recommendation.
+- [ ] Preflight checks: missing media, unsupported preset, insufficient output path, project warnings.
+- [ ] Export profile policy: YouTube, review proxy, archive master, social vertical, audio-only, etc.
+
+---
+
+# PHASE 2 — HARD GATE: compile, tests, smoke and repair — NEXT RELEASE BLOCKER
+
+## Goal
+Convert “source-implemented” into “known-good application.” No merge to `vibecut`, no upstream PR, and no release claim before this gate.
+
+## Required repository-local gate
+- [ ] Run `bash scripts/vibecut-verify.sh` on a host with Kdenlive build dependencies.
+- [ ] Fix every compiler error.
+- [ ] Fix every linker error.
+- [ ] Fix every `vibecut*` test failure.
+- [ ] Re-run from a clean build directory.
+
+## Hands-on smoke matrix
+- [ ] Launch app and VibeCut dock.
+- [ ] Enter/reload model credential through KWallet path.
+- [ ] Inspect project and produce a plan.
+- [ ] Approve plan and verify edit diff.
+- [ ] Undo/redo each native edit family.
+- [ ] Clip move/split/trim/ripple/delete.
+- [ ] Effects inspect/add/edit/remove.
+- [ ] Guides.
+- [ ] Subtitle search/generate/edit/delete.
+- [ ] Titles create/update.
+- [ ] Transitions and same-track mixes.
+- [ ] Bin import/insert/replace/folders/move.
+- [ ] Track create/rename/move/lock/mute-hide/delete/routing.
+- [ ] Render/start/cancel/verify.
+- [ ] Whisper/start/cancel/final import.
+
+## Governance smoke matrix
+- [ ] Review mode asks where required.
+- [ ] Auto mode runs safe reversible work while respecting major/external gates.
+- [ ] Turbo still honors irreversible confirmation.
+- [ ] `.vibecutpolicy.json` deny hides tool from schemas and rejects direct invocation.
+- [ ] `always_confirm` overrides mode.
+- [ ] `auto_allow` cannot bypass irreversible safety.
+- [ ] Stale plan rejects after user/project mutation.
+- [ ] External-only job does not open a project undo macro.
+
+## Acceptance gate
+**Only after the entire Phase 2 gate passes:** merge the integration branch to `vibecut`, update operational handoff docs, and decide whether to create an upstream PR.
+
+---
+
+# PHASE 3 — Source health and project resilience
+
+## Goal
+Make VibeCut dependable on real-world messy editing projects.
+
+- [ ] `bin_source_inspect`: source exists, canonical path, original/proxy path, status, proxy state, A/V capabilities, duration and timeline use.
+- [ ] `bin_missing_list`: enumerate missing/offline assets.
+- [ ] `bin_relink_source`: governed relink for missing assets with type/path validation.
+- [ ] Batch relink by directory/path mapping with reviewable plan.
+- [ ] Project preflight: missing media, empty output dir, unsupported render, stale proxy, offline generated asset, unrenderable state.
+- [ ] Bin/project normalization checks before long operations.
+- [ ] Better checkpoint evidence for source-replacement and relink operations.
+
+### User outcome
+A user can open a broken project and ask: “What is missing, where was it expected, and fix everything you can from this folder.”
+
+---
+
+# PHASE 4 — Rich media intelligence
+
+## Goal
+Move from understanding timeline structure/transcripts to understanding audiovisual content.
+
+## Common evidence contract
+- [x] `VibeCutMediaIndex` common search/document contract.
+- [ ] Evidence provenance/version/producer model.
+- [ ] Incremental extractor refresh keyed by media hash + extractor version.
+- [ ] Derived-evidence confidence/quality fields.
+- [ ] Persistent media intelligence cache separate from conversational memory.
+
+## Audio/speech extractors
+- [ ] Speaker diarization.
+- [ ] Speaker naming/identity association when user supplies labels.
+- [ ] Silence/dead-air detection.
+- [ ] Loudness measurements and clipping detection.
+- [ ] Noise/room-tone characterization.
+- [ ] Music/speech/audio-event segmentation.
+- [ ] Repeated-take similarity from transcript/audio evidence.
+
+## Visual extractors
+- [ ] Shot/scene boundary detection.
+- [ ] OCR/on-screen text.
+- [ ] Face/person/subject evidence where appropriate and privacy-safe.
+- [ ] Object/location/action tags.
+- [ ] Camera-motion/shot-scale/composition descriptors.
+- [ ] Visual embeddings / CLIP-style similarity.
+- [ ] Duplicate/near-duplicate shot detection.
+- [ ] Blur/black-frame/flash/freeze/error-frame detection.
+
+## Semantic retrieval
+- [ ] Transcript embeddings.
+- [ ] Visual-semantic embeddings.
+- [ ] Cross-modal search.
+- [ ] Search ranking by exact text + semantic similarity + editorial relevance + recency/quality.
+
+### User outcome
+Requests like “find the cleanest answer from Sarah,” “find every shot of the engine housing,” or “show dead air longer than 600 ms” become evidence-backed operations.
+
+---
+
+# PHASE 5 — Editorial reasoning and autonomous edit synthesis
+
+## Goal
+Stop making the user specify frame-level commands and begin solving editorial problems while still producing reviewable deterministic plans.
+
+- [ ] Interview/repeated-take cleanup.
+- [ ] Silence/dead-air cleanup with configurable editorial cadence.
+- [ ] Rough-cut generation from transcript + scene + quality evidence.
+- [ ] Highlight/shorts extraction.
+- [ ] B-roll opportunity detection.
+- [ ] B-roll guide placement before mutation.
+- [ ] Candidate cut scoring and alternative plans.
+- [ ] Narrative ordering/sectioning suggestions.
+- [ ] Speaker balance and pacing diagnostics.
+- [ ] Basic continuity warnings.
+- [ ] Auto finishing pass: subtitles, titles, transitions, audio cleanup, render recommendation.
+- [ ] Reference-style matching based on extracted visual/audio style evidence.
+
+## Acceptance principle
+The model may propose high-level editorial intent, but final execution still resolves to explicit governed native tool operations with preconditions and evidence.
+
+---
+
+# PHASE 6 — Evaluation and quality assurance
+
+## Goal
+Make VibeCut performance measurable rather than anecdotal.
+
+- [x] Evaluation harness seam.
+- [ ] Golden editing fixtures/projects.
+- [ ] Plan correctness tests.
+- [ ] Stale-plan regression tests.
+- [ ] Undo fidelity tests.
+- [ ] Tool hallucination rate tests.
+- [ ] “Claimed success vs verified success” metric.
+- [ ] Long-job cancellation correctness.
+- [ ] Media-search precision/recall fixtures.
+- [ ] Rough-cut quality rubric and human review harness.
+- [ ] Provider comparison using same tasks/evidence budget.
+- [ ] Token/latency/cost accounting by editing outcome.
+- [ ] Regression scorecard required for releases.
+
+---
+
+# PHASE 7 — Provider and deployment ecosystem
+
+## Goal
+Let users choose intelligence providers without changing the editor architecture.
+
+- [x] Provider registry seam.
+- [x] Built-in Anthropic path.
+- [ ] Ollama/local model adapter.
+- [ ] OpenAI adapter if desired.
+- [ ] Other hosted-provider adapters.
+- [ ] Local multimodal model adapter for extraction tasks.
+- [ ] Provider capability declaration: text/tool/multimodal/context/streaming/cost.
+- [ ] Provider failover policy.
+- [ ] User-selectable provider/model settings UI.
+- [ ] Per-task provider routing: planner vs media extractor vs transcription.
+
+---
+
+# PHASE 8 — External content and publishing
+
+## Goal
+Extend VibeCut from editing local assets to governed acquisition and delivery.
+
+- [ ] Stock footage search/import adapters (e.g. Pexels-class provider) behind explicit network authority.
+- [ ] Image generation adapter.
+- [ ] Video generation adapter.
+- [ ] Music/SFX search providers.
+- [ ] YouTube upload/publish adapter.
+- [ ] Other publishing destinations.
+- [ ] Upload metadata/title/description/thumbnail plan.
+- [ ] External-side-effect approval before publication.
+- [ ] Credential isolation per provider.
+- [ ] Retry/idempotency/job tracking for uploads.
+
+---
+
+# PHASE 9 — Advanced editing systems
+
+## Goal
+Expand into areas that are major subsystems rather than simple tools.
+
 - [ ] CapCut-style reusable meme/template system.
-- [ ] Fusion-style node compositor — large standalone subsystem, not required for the governed agent kernel.
-- [ ] TUI/secondary frontend — another frontend over the same agent/runtime contracts, not a second backend.
+- [ ] Motion-graphics templates and parameterized title/effect packs.
+- [ ] Multicam analysis and switching assistance.
+- [ ] Advanced audio mix/ducking/normalization workflows.
+- [ ] Color-match / look-transfer assistance.
+- [ ] Proxy/offline workflow management.
+- [ ] Sequence/nested-timeline operations.
+- [ ] Bulk conform/reframe for landscape/vertical/square variants.
 
-## Machine-specific cleanup
+---
 
-- [ ] Ensure Whisper `turbo` is downloaded on the actual test machine (code prefers/supports it; repository state cannot guarantee host model cache contents).
-- [ ] Remove/retire vestigial `speech_system_python` / `speech_system_python_path` config only after confirming no remaining upstream path depends on them.
-- [ ] Remove one-off manual Whisper test venvs on the host after the VibeCut-owned environment is verified.
+# PHASE 10 — Optional long-horizon platforms
 
-## Priority principle
+These are intentionally not prerequisites for the governed agent editor.
 
-The core product is the governed agent runtime plus native editing vocabulary. New work should be prioritized by **how much real editing time it removes while preserving inspectability, verification, undo and human authority**, not by how flashy the individual feature sounds.
+- [ ] Fusion-style node compositor as a separate large subsystem over the same governance/job/provider contracts.
+- [ ] TUI/secondary frontend over the same backend/runtime.
+- [ ] Remote/headless editing service using the same EditPlan/tool contracts.
+- [ ] Collaborative review/approval frontend.
+
+---
+
+# Release sequence
+
+## R0 — Architecture branch
+Current state: governed kernel + broad native editing vocabulary. Not release-qualified until Phase 2 passes.
+
+## R1 — Verified governed editor
+Requires Phase 2 complete. Merge to `vibecut` only after clean compile/tests/smoke.
+
+## R2 — Resilient project editor
+Adds Phase 3 missing-media/source-health/preflight.
+
+## R3 — Media-aware editor
+Adds Phase 4 extractors and persistent evidence.
+
+## R4 — Editorial copilot
+Adds first Phase 5 rough-cut/cleanup/highlight workflows with evaluation gates.
+
+## R5 — Autonomous governed editor
+Large multi-step editorial plans, finishing passes and evidence-backed review.
+
+## R6+ — Ecosystem
+Provider breadth, acquisition/publishing, templates, advanced media systems and optional alternate frontends.
+
+---
+
+# Immediate execution order from current branch
+
+1. **Source health:** implement source inspection / missing-media inventory first because it is low-risk, directly useful, and feeds render/preflight reliability.
+2. **Local compile/test gate:** run `scripts/vibecut-verify.sh`; repair every compile/link/test failure before increasing C++ breadth further.
+3. **Hands-on smoke matrix** across every native tool family.
+4. **Operational docs** (`CLAUDE.md`, DEVLOG/KDENLIVE_INTERNALS) reconciled to the verified build.
+5. **Merge to `vibecut`** only after the gate passes.
+6. Begin **media intelligence** with evidence/versioning + silence/shot/transcript-derived features before higher-level autonomous editing.
+
+---
+
+# Priority principle
+
+The core product is the governed agent runtime plus native editing vocabulary plus media evidence. New work should be prioritized by **how much real editing time it removes while preserving inspectability, verification, undo, truthfulness and human authority**.
