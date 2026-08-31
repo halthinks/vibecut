@@ -24,8 +24,9 @@ std::shared_ptr<TimelineItemModel> currentTimeline()
     TimelineWidget *timeline = pCore->window()->getCurrentTimeline();
     return timeline ? timeline->model() : nullptr;
 }
+} // namespace
 
-QJsonObject projectPreflight(const QJsonObject &)
+QJsonObject vibeCutProjectPreflight()
 {
     if (!pCore || !pCore->currentDoc()) return err(QStringLiteral("No project document is open."));
     const std::shared_ptr<ProjectItemModel> bin = pCore->projectItemModel();
@@ -98,7 +99,6 @@ QJsonObject projectPreflight(const QJsonObject &)
     }
     return result;
 }
-} // namespace
 
 bool registerVibeCutPreflightTools(VibeCutToolSurface &surface, QString *error)
 {
@@ -111,5 +111,5 @@ bool registerVibeCutPreflightTools(VibeCutToolSurface &surface, QString *error)
     VibeCutToolPolicy policy;
     policy.name = QStringLiteral("project_preflight");
     policy.risk = VibeCutToolRisk::ReadOnly;
-    return surface.registerTool(schema, policy, projectPreflight, error);
+    return surface.registerTool(schema, policy, [](const QJsonObject &) { return vibeCutProjectPreflight(); }, error);
 }
