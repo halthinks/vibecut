@@ -7,6 +7,7 @@
 
 #include "vibecutedittools.h"
 #include "vibecutmarkertools.h"
+#include "vibecutmemorytools.h"
 #include "vibecutrendertools.h"
 #include "vibecutsubtitleedittools.h"
 #include "vibecuttitletools.h"
@@ -32,6 +33,10 @@ VibeCutToolSurface::VibeCutToolSurface(VibeCutTools *baseTools)
     error.clear();
     if (!registerVibeCutMarkerTools(*this, &error)) {
         qWarning().noquote() << QStringLiteral("[VibeCut] guide tools unavailable: %1").arg(error);
+    }
+    error.clear();
+    if (!registerVibeCutMemoryTools(*this, &error)) {
+        qWarning().noquote() << QStringLiteral("[VibeCut] project memory tools unavailable: %1").arg(error);
     }
     error.clear();
     if (!registerVibeCutSubtitleEditTools(*this, &error)) {
