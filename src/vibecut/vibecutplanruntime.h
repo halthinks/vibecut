@@ -16,10 +16,9 @@ class VibeCutToolSurface;
 
 /** Stateful plan -> approve -> checkpointed execution runtime.
  *
- * Model output becomes a VibeCutEditPlan first. Execution is deterministic,
- * revision-guarded, policy-aware, groups contiguous synchronous edits into an
- * undo macro, and pauses on trackable async jobs until JobManager reports a
- * terminal state.
+ * Project mutations are revision-guarded and grouped into Kdenlive undo
+ * macros. External side effects (render, setup, publish, etc.) are governed
+ * and job-tracked but never masquerade as undoable timeline mutations.
  */
 class VibeCutPlanRuntime : public QObject
 {
@@ -66,6 +65,7 @@ private:
     bool m_hasPending = false;
     bool m_executing = false;
     bool m_macroOpen = false;
+    bool m_planMutatesProject = false;
     QStringList m_executionOrder;
     int m_executionIndex = 0;
     quint64 m_expectedRevision = 0;
