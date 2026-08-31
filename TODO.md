@@ -24,10 +24,11 @@ Living implementation roadmap. `VIBECUT_ARCHITECTURE.md` is the authoritative ar
 - [x] **Composable governed tool surface.** New capabilities live in isolated modules; native tools can be decorated without growing the legacy `vibecuttools.cpp` monolith.
 - [x] **Lifecycle/context hooks.** `VibeCutHooks` exposes model/tool/plan/job/trust/error events plus named structured context providers.
 - [x] **Model-provider registry seam.** Provider request construction and streaming-event normalization are provider-owned; Anthropic remains the built-in provider.
-- [x] **Optional KWallet secret backend.** Anthropic credentials load from the environment first and then the VibeCut KWallet folder when KF Wallet is present; credentials never enter projects, model context or hooks. Provider hot reload is implemented for a future settings control.
+- [x] **Optional KWallet secret backend + dock credential control.** Anthropic credentials load from the environment first and then the VibeCut KWallet folder when KF Wallet is present. The dock can write the key to KWallet and hot-reload the provider without restart; credentials never enter projects, model context or hooks.
 - [x] **VibeScript bounded sandbox.** `vibescript_plan` evaluates JavaScript in a no-host-access `QJSEngine`, enforces source/time bounds including infinite-loop interruption, requires a JSON plan result, and submits that result to the same governed plan runtime. Scripts receive no QObject/filesystem/network/process/Kdenlive bindings.
 - [x] **Media-intelligence index contract.** `media_search` retrieves time-ranged evidence across clip names and subtitle/transcript text; future extractors share the same document contract.
 - [x] **Core native timeline edit vocabulary.** Verified `clip_move`, `clip_split`, `clip_trim`, `clip_ripple_trim`, and `clip_delete` use Kdenlive's own undoable APIs.
+- [x] **Effect-stack introspection and editing.** `effects_inspect` exposes the live clip effect stack with stable effect ids, rows, parameters and XML; `effect_remove` and `effect_parameter_set` are verified and undoable, including duplicate-effect row identity.
 - [x] **Guides/range guides.** Read/add/remove project guides and range guides for candidate cuts, B-roll, semantic notes and review regions.
 - [x] **Subtitle editing.** Verified `subtitle_edit` and `subtitle_delete` by stable subtitle id.
 - [x] **Transitions.** Discover actual installed Kdenlive transition ids/names and insert verified compositions through the native controller.
@@ -36,26 +37,24 @@ Living implementation roadmap. `VIBECUT_ARCHITECTURE.md` is the authoritative ar
 - [x] **Safer render overwrite semantics.** Existing approved output is not removed before Kdenlive has successfully prepared render jobs.
 - [x] **Local zero-CI verification lane.** `scripts/vibecut-verify.sh` configures/builds locally and runs the `vibecut*` tests with `ctest`; no GitHub Actions are required.
 - [x] **Architecture/product front door.** README and `VIBECUT_ARCHITECTURE.md` describe the governed agentic editor instead of the original one-tool prototype.
-- [x] **Expanded regression harness.** Contracts, planning, trust, revision, context compaction, jobs, hooks, media index, native tool registration, VibeScript watchdog, durable memory, and capability-policy uniqueness are in the local test target.
+- [x] **Expanded regression harness.** Contracts, planning, trust, revision, context compaction, jobs, hooks, media index, native tool registration, effects, VibeScript watchdog, durable memory, and capability-policy uniqueness are in the local test target.
 
 ## Immediate hardening before merge / upstream work
 
 - [ ] **Run a clean local Kdenlive compile and VibeCut test gate.** Execute `bash scripts/vibecut-verify.sh` on a machine with Kdenlive build dependencies. Fix every compile/link/test failure before merging the integration branch. GitHub Actions are intentionally not part of this gate.
-- [ ] **Hands-on smoke project.** Test inspect → plan → approve → edit → verify → Undo for move/split/trim/delete/guides/title/transition/subtitles.
+- [ ] **Hands-on smoke project.** Test inspect → plan → approve → edit → verify → Undo for move/split/trim/delete/effects/guides/title/transition/subtitles.
 - [ ] **Long-job smoke tests.** Run Whisper and render while interacting with the editor; test cancellation and final-state evidence.
 - [ ] **Trust/policy smoke tests.** Verify Review, Auto, Turbo and `.vibecutpolicy.json` behavior with reversible edits, major edits, render, deny, auto-allow and always-confirm overrides.
-- [ ] **KWallet settings control.** Secret backend and provider hot reload are landed; add the small user-facing credential editor after the first successful compile rather than expanding the dock before compile validation.
 - [ ] **Update operational handoff.** Reconcile `CLAUDE.md` and stale DEVLOG/KDENLIVE_INTERNALS notes against this branch after the first successful local build.
 
 ## Editing breadth still to deepen
 
-- [ ] Effect parameter discovery/editing beyond the current denoise allowlist.
+- [ ] Arbitrary installed-effect discovery/application beyond the current denoise application allowlist. Existing applied effects can already be inspected, parameter-edited and removed.
 - [ ] Transition edit/remove and mix-specific operations.
 - [ ] Title edit/update after creation, reusable title styles/templates, and richer layout primitives.
 - [ ] Bin/media insertion, replacement and relinking through governed native APIs.
 - [ ] Group/ungroup and multi-selection operations.
 - [ ] Track creation/deletion/move/lock/mute/visibility and audio routing controls.
-- [ ] Composition/effect stack introspection so the agent can answer exactly what is already applied.
 - [ ] Render output optimization helper that recommends installed presets based on destination constraints rather than just exposing preset selection.
 
 ## Media intelligence
