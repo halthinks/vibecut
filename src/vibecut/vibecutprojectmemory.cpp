@@ -85,6 +85,10 @@ QJsonArray VibeCutProjectMemory::loadForProjectUrl(const QUrl &projectUrl, QStri
         if (error) *error = QStringLiteral("Invalid project memory JSON in %1: %2").arg(path, parseError.errorString());
         return QJsonArray();
     }
+    if (document.object().value(QStringLiteral("version")).toInt(1) != 1) {
+        if (error) *error = QStringLiteral("Unsupported project memory version in %1.").arg(path);
+        return QJsonArray();
+    }
     const QJsonArray entries = document.object().value(QStringLiteral("entries")).toArray();
     if (entries.size() > MaxEntries) {
         if (error) *error = QStringLiteral("Project memory contains more than %1 entries.").arg(MaxEntries);
@@ -104,7 +108,13 @@ QJsonArray VibeCutProjectMemory::loadCurrent(QString *error)
 
 QString VibeCutProjectMemory::contextText(QString *error)
 {
-    const QJsonArray entries = loadCurrent(error);
+    QString loadError;
+    const QJsonArray entries = loadCurrent(&loadError);
+    if (!loadError.isEmpty()) {
+        if (error) *error = loadError;
+        return QString();
+    }
+    if (error) error->clear();
     QStringList lines;
     for (const QJsonValue &value : entries) {
         const QJsonObject entry = value.toObject();
@@ -129,8 +139,12 @@ bool VibeCutProjectMemory::putCurrent(const QString &text, const QString &source
         return false;
     }
 
-    QJsonArray entries = loadCurrent(error);
-    if (error && !error->isEmpty()) return false;
+    QString loadError;
+    QJsonArray entries = loadCurrent(&loadError);
+    if (!loadError.isEmpty()) {
+        if (error) *error = loadError;
+        return false;
+    }
     for (const QJsonValue &value : entries) {
         if (value.toObject().value(QStringLiteral("text")).toString() == cleanText) {
             if (id) *id = value.toObject().value(QStringLiteral("id")).toString();
@@ -138,7 +152,7 @@ bool VibeCutProjectMemory::putCurrent(const QString &text, const QString &source
         }
     }
     if (entries.size() >= MaxEntries) {
-        entries.removeFirst();
+        entries.removeAt(0);
     }
     const QString newId = QUuid::createUuid().toString(QUuid::WithoutBraces);
     entries.append(QJsonObject{{QStringLiteral("id"), newId},
@@ -158,8 +172,12 @@ bool VibeCutProjectMemory::forgetCurrent(const QString &id, QString *error)
         if (error) *error = QStringLiteral("Memory id must not be empty.");
         return false;
     }
-    QJsonArray entries = loadCurrent(error);
-    if (error && !error->isEmpty()) return false;
+    QString loadError;
+    const QJsonArray entries = loadCurrent(&loadError);
+    if (!loadError.isEmpty()) {
+        if (error) *error = loadError;
+        return false;
+    }
     QJsonArray filtered;
     bool removed = false;
     for (const QJsonValue &value : entries) {
