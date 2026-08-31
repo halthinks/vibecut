@@ -6,7 +6,9 @@
 #include "vibecutagent.h"
 #include "vibecutconversationcontext.h"
 #include "vibecutprojectrules.h"
+#include "vibecutsubtitletools.h"
 #include "vibecuttools.h"
+#include "vibecuttoolsurface.h"
 
 #include <QDebug>
 #include <QJsonDocument>
@@ -62,15 +64,24 @@ VibeCutAgent::VibeCutAgent(VibeCutTools *tools, QObject *parent)
     : QObject(parent)
     , m_nam(new QNetworkAccessManager(this))
     , m_tools(tools)
+    , m_toolSurface(new VibeCutToolSurface(tools))
     , m_model(QString::fromLatin1(kModel))
     , m_systemPrompt(kSystemPrompt)
 {
     m_apiKey = qEnvironmentVariable("ANTHROPIC_API_KEY").trimmed();
     connect(m_tools, &VibeCutTools::userQuestionRaised, this, &VibeCutAgent::userQuestionRaised);
     connect(m_tools, &VibeCutTools::backgroundProgress, this, &VibeCutAgent::backgroundProgress);
+
+    QString extensionError;
+    if (!registerVibeCutSubtitleTools(*m_toolSurface, &extensionError)) {
+        qWarning().noquote() << QStringLiteral("[VibeCut] subtitle tools unavailable: %1").arg(extensionError);
+    }
 }
 
-VibeCutAgent::~VibeCutAgent() = default;
+VibeCutAgent::~VibeCutAgent()
+{
+    delete m_toolSurface;
+}
 
 bool VibeCutAgent::hasApiKey() const
 {
@@ -160,7 +171,7 @@ void VibeCutAgent::startRequest()
         // (with their signature) unchanged, so no other change is needed.
         {QStringLiteral("thinking"), QJsonObject{{QStringLiteral("type"), QStringLiteral("adaptive")}}},
         {QStringLiteral("system"), QJsonArray{systemBlock}},
-        {QStringLiteral("tools"), m_tools->schemas()},
+        {QStringLiteral("tools"), m_toolSurface->schemas()},
         {QStringLiteral("messages"), m_messages},
     };
 
@@ -318,7 +329,7 @@ void VibeCutAgent::finishTurn()
             const QJsonObject input = block.value(QStringLiteral("input")).toObject();
             Q_EMIT toolInvoked(name, QString::fromUtf8(compact(input)));
 
-            const QJsonObject result = m_tools->invoke(name, input);
+            const QJsonObject result = m_toolSurface->invoke(name, input);
             Q_EMIT toolCompleted(name, QString::fromUtf8(compact(result)));
             if (!result.value(QStringLiteral("ok")).toBool()) {
                 Q_EMIT toolFailed(name, result.value(QStringLiteral("error")).toString(QStringLiteral("unknown error")));
