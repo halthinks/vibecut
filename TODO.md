@@ -36,8 +36,11 @@ Living implementation roadmap. `VIBECUT_ARCHITECTURE.md` is the authoritative ar
 - [x] **Same-track mix lifecycle.** `mix_inspect`, `mix_add_previous`, `mix_resize`, and `mix_remove` operate on Kdenlive's native same-track mix model using the right-hand clip as the stable owner. Resize/remove use Kdenlive's own undo paths and live-state verification.
 - [x] **Native simple-title create/update.** Create a real Kdenlive title bin asset and safely update VibeCut-created simple titles with producer-property undo/redo and timeline-instance reload. Complex hand-built Kdenlive titles are intentionally protected.
 - [x] **Project-bin media baseline.** `bin_list`, undoable local-file `bin_import_file`, and verified `bin_insert_timeline` use Kdenlive's native project/timeline models. No shell or network import path is exposed.
+- [x] **Project-bin source replacement.** `bin_replace_source` uses Kdenlive's native `Bin::replaceSingleClip` → `EditClipCommand` path, so replacing a source for every timeline instance is a governed MajorEdit with normal Undo and live path verification.
+- [x] **Project-bin folder baseline.** `bin_folders_list` and undoable `bin_folder_create` expose native folder inventory/creation through `ProjectItemModel::requestAddFolder`.
 - [x] **Grouping and multi-selection.** Native verified `group_create` / `group_ungroup` plus ephemeral `selection_list`, `selection_set`, and `selection_clear` allow controlled multi-item editing without durable selection state.
 - [x] **Track lifecycle and state.** `tracks_list`, undoable `track_create`, `track_rename`, `track_move`, `track_set_locked`, `track_set_enabled`, and major-risk `track_delete` use Kdenlive native APIs and verify live state. `track_set_enabled=false` maps to mute for audio tracks and hide for video tracks through the same controller path used by the UI.
+- [x] **Insertion target routing.** Ephemeral `routing_status`, `audio_target_set`, and `video_target_set` use Kdenlive's own target-routing APIs. Audio stream reassignment is accepted only when Kdenlive reports that stream as currently assignable; these tools change future insertion targeting, not existing project content.
 - [x] **Native render/export baseline.** Discover installed presets and render asynchronously through `RenderRequest` / `kdenlive_render` with JobManager lifecycle and final-file verification.
 - [x] **Safer render overwrite semantics.** Existing approved output is not removed before Kdenlive has successfully prepared render jobs.
 - [x] **Local zero-CI verification lane.** `scripts/vibecut-verify.sh` configures/builds locally and runs the `vibecut*` tests with `ctest`; no GitHub Actions are required.
@@ -47,7 +50,7 @@ Living implementation roadmap. `VIBECUT_ARCHITECTURE.md` is the authoritative ar
 ## Immediate hardening before merge / upstream work
 
 - [ ] **Run a clean local Kdenlive compile and VibeCut test gate.** Execute `bash scripts/vibecut-verify.sh` on a machine with Kdenlive build dependencies. Fix every compile/link/test failure before merging the integration branch. GitHub Actions are intentionally not part of this gate.
-- [ ] **Hands-on smoke project.** Test inspect → plan → approve → edit → verify → Undo across clips, effects, guides, titles, transitions, same-track mixes, bin import/insertion, grouping, track state and subtitles.
+- [ ] **Hands-on smoke project.** Test inspect → plan → approve → edit → verify → Undo across clips, effects, guides, titles, transitions, same-track mixes, bin import/insertion/replacement/folders, grouping, track state/routing and subtitles.
 - [ ] **Long-job smoke tests.** Run Whisper and render while interacting with the editor; test cancellation and final-state evidence.
 - [ ] **Trust/policy smoke tests.** Verify Review, Auto, Turbo and `.vibecutpolicy.json` behavior with reversible edits, major edits, render, deny, auto-allow and always-confirm overrides.
 - [ ] **Update operational handoff.** Reconcile `CLAUDE.md` and stale DEVLOG/KDENLIVE_INTERNALS notes against this branch after the first successful local build.
@@ -57,8 +60,8 @@ Living implementation roadmap. `VIBECUT_ARCHITECTURE.md` is the authoritative ar
 - [ ] Effect-group expansion/application with child-by-child verification.
 - [ ] Mix transition-parameter editing and more advanced mix ownership/neighbor operations beyond the conservative previous-neighbor creation path.
 - [ ] Complex title element editing, reusable title styles/templates, and richer layout primitives.
-- [ ] Bin/media replacement, relinking, folder management and source-state inspection beyond the current import/list/insert baseline.
-- [ ] Audio target/routing controls beyond basic track mute/enable state.
+- [ ] Move/reorganize existing bin assets between folders with explicit undo verification; richer missing-media/relink recovery workflows and source-state inspection beyond current list/import/replace/insert/folder-create support.
+- [ ] Richer audio routing/mixer controls beyond insertion-target stream assignment and track mute/enable.
 - [ ] More explicit multi-selection operations such as selection-aware bulk move/delete where Kdenlive semantics can be verified transactionally.
 - [ ] Render output optimization helper that recommends installed presets based on destination constraints rather than just exposing preset selection.
 
