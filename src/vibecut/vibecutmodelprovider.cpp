@@ -3,11 +3,24 @@
     SPDX-License-Identifier: GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL
 */
 #include "vibecutmodelprovider.h"
+#include "vibecutsecretstore.h"
 
 #include <QJsonDocument>
 
+namespace {
+QString loadAnthropicKey()
+{
+    const QString environmentKey = qEnvironmentVariable("ANTHROPIC_API_KEY").trimmed();
+    if (!environmentKey.isEmpty()) {
+        return environmentKey;
+    }
+    QString ignored;
+    return VibeCutSecretStore::readSecret(QStringLiteral("anthropic_api_key"), &ignored).trimmed();
+}
+}
+
 VibeCutAnthropicProvider::VibeCutAnthropicProvider()
-    : m_apiKey(qEnvironmentVariable("ANTHROPIC_API_KEY").trimmed())
+    : m_apiKey(loadAnthropicKey())
     , m_model(qEnvironmentVariable("VIBECUT_MODEL", QStringLiteral("claude-sonnet-5")).trimmed())
 {
 }
@@ -19,7 +32,11 @@ bool VibeCutAnthropicProvider::configured(QString *error) const
 {
     if (error) error->clear();
     if (m_apiKey.isEmpty()) {
-        if (error) *error = QStringLiteral("ANTHROPIC_API_KEY is not set in the environment.");
+        if (error) {
+            *error = VibeCutSecretStore::available()
+                         ? QStringLiteral("No Anthropic API key is configured. Set ANTHROPIC_API_KEY or store the key in VibeCut's KWallet entry.")
+                         : QStringLiteral("ANTHROPIC_API_KEY is not set in the environment.");
+        }
         return false;
     }
     if (m_model.isEmpty()) {
