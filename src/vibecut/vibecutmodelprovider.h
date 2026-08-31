@@ -24,9 +24,8 @@ struct VibeCutModelRequest {
 /** Provider boundary for the agent runtime.
  *
  * Tool schemas use VibeCut's canonical {name,description,input_schema} shape.
- * Providers translate transport/request formats as needed and normalize their
- * streaming events into the canonical Anthropic-like event objects consumed by
- * the agent loop (content_block_*, message_delta, message_stop, error).
+ * Providers translate request formats as needed and expose a normalization
+ * hook for provider-specific streaming events.
  */
 class VibeCutModelProvider
 {
@@ -69,6 +68,9 @@ public:
     /** Process-wide registry. External integrations register provider factories
      * here before constructing VibeCutAgent; built-ins are installed once. */
     static VibeCutModelProviderRegistry &global();
+    /** Compatibility/value snapshot used by existing construction/tests. It
+     * includes providers registered in the global registry at call time. */
+    static VibeCutModelProviderRegistry builtIns();
 
 private:
     void ensureBuiltIns();
