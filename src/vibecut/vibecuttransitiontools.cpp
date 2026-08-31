@@ -65,13 +65,13 @@ QJsonObject addTransition(const QJsonObject &input)
         return err(QStringLiteral("Kdenlive rejected transition '%1' on track %2 at frame %3.")
                        .arg(transitionId).arg(trackId).arg(position));
     }
-    if (model->getCompositionPosition(compositionId) != position || model->getCompositionTrackId(compositionId) != trackId) {
+    if (model->getItemPosition(compositionId) != position || model->getItemTrackId(compositionId) != trackId) {
         return err(QStringLiteral("Transition insertion returned id %1 but live composition position/track did not match.").arg(compositionId));
     }
     return QJsonObject{{QStringLiteral("ok"), true}, {QStringLiteral("composition_id"), compositionId},
                        {QStringLiteral("transition_id"), transitionId}, {QStringLiteral("track_id"), trackId},
                        {QStringLiteral("position_frame"), position},
-                       {QStringLiteral("duration_frames"), model->getCompositionPlaytime(compositionId)},
+                       {QStringLiteral("duration_frames"), model->getItemPlaytime(compositionId)},
                        {QStringLiteral("verified"), true}};
 }
 } // namespace
