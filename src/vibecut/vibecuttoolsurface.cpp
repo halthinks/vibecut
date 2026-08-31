@@ -13,6 +13,7 @@
 #include "vibecutrendertools.h"
 #include "vibecutsubtitleedittools.h"
 #include "vibecuttitletools.h"
+#include "vibecuttracktools.h"
 #include "vibecuttransitiontools.h"
 #include "vibecuttools.h"
 
@@ -51,6 +52,10 @@ VibeCutToolSurface::VibeCutToolSurface(VibeCutTools *baseTools)
     error.clear();
     if (!registerVibeCutTitleTools(*this, &error)) {
         qWarning().noquote() << QStringLiteral("[VibeCut] title tools unavailable: %1").arg(error);
+    }
+    error.clear();
+    if (!registerVibeCutTrackTools(*this, &error)) {
+        qWarning().noquote() << QStringLiteral("[VibeCut] track tools unavailable: %1").arg(error);
     }
     error.clear();
     if (!registerVibeCutTransitionTools(*this, &error)) {
@@ -134,20 +139,19 @@ bool VibeCutToolSurface::overrideBaseTool(const QJsonObject &schema, const VibeC
 
 QJsonArray VibeCutToolSurface::schemas() const
 {
-    const QHash<QString, VibeCutToolPolicy> effectivePolicies = policies();
     QJsonArray result;
+    const VibeCutPolicyOverrides overrides = VibeCutPolicyOverrides::loadCurrent();
     if (m_baseTools) {
         for (const QJsonValue &value : m_baseTools->schemas()) {
             const QJsonObject baseSchema = value.toObject();
             const QString name = baseSchema.value(QStringLiteral("name")).toString();
-            if (effectivePolicies.contains(name) && !effectivePolicies.value(name).enabled) continue;
+            if (overrides.isDenied(name)) continue;
             const auto override = m_overrides.constFind(name);
             result.append(override != m_overrides.constEnd() ? override.value().schema : baseSchema);
         }
     }
     for (const QString &name : m_extensionOrder) {
-        if (effectivePolicies.contains(name) && !effectivePolicies.value(name).enabled) continue;
-        result.append(m_extensions.value(name).schema);
+        if (!overrides.isDenied(name)) result.append(m_extensions.value(name).schema);
     }
     return result;
 }
@@ -157,21 +161,13 @@ QHash<QString, VibeCutToolPolicy> VibeCutToolSurface::policies() const
     QHash<QString, VibeCutToolPolicy> result = m_baseTools ? m_baseTools->policies() : QHash<QString, VibeCutToolPolicy>();
     for (auto it = m_overrides.constBegin(); it != m_overrides.constEnd(); ++it) result.insert(it.key(), it.value().policy);
     for (const QString &name : m_extensionOrder) result.insert(name, m_extensions.value(name).policy);
-    QString error;
-    result = VibeCutPolicyOverrides::applyCurrent(result, &error);
-    if (!error.isEmpty()) {
-        qWarning().noquote() << QStringLiteral("[VibeCut] project policy overrides ignored: %1").arg(error);
-    }
-    return result;
+    return VibeCutPolicyOverrides::loadCurrent().apply(result);
 }
 
 QJsonObject VibeCutToolSurface::invoke(const QString &name, const QJsonObject &input) const
 {
-    const QHash<QString, VibeCutToolPolicy> effectivePolicies = policies();
-    const auto policy = effectivePolicies.constFind(name);
-    if (policy != effectivePolicies.constEnd() && !policy.value().enabled) {
-        return errorResult(QStringLiteral("Tool '%1' is denied by .vibecutpolicy.json.").arg(name));
-    }
+    const VibeCutPolicyOverrides overrides = VibeCutPolicyOverrides::loadCurrent();
+    if (overrides.isDenied(name)) return errorResult(QStringLiteral("Tool '%1' is denied by .vibecutpolicy.json").arg(name));
     const auto override = m_overrides.constFind(name);
     if (override != m_overrides.constEnd()) return override.value().handler(input);
     const auto extension = m_extensions.constFind(name);
