@@ -28,33 +28,37 @@ Living implementation roadmap. `VIBECUT_ARCHITECTURE.md` is the authoritative ar
 - [x] **VibeScript bounded sandbox.** `vibescript_plan` evaluates JavaScript in a no-host-access `QJSEngine`, enforces source/time bounds including infinite-loop interruption, requires a JSON plan result, and submits that result to the same governed plan runtime. Scripts receive no QObject/filesystem/network/process/Kdenlive bindings.
 - [x] **Media-intelligence index contract.** `media_search` retrieves time-ranged evidence across clip names and subtitle/transcript text; future extractors share the same document contract.
 - [x] **Core native timeline edit vocabulary.** Verified `clip_move`, `clip_split`, `clip_trim`, `clip_ripple_trim`, and `clip_delete` use Kdenlive's own undoable APIs.
-- [x] **Effect-stack introspection and editing.** `effects_inspect` exposes the live clip effect stack with stable effect ids, rows, parameters and XML; `effect_remove` and `effect_parameter_set` are verified and undoable, including duplicate-effect row identity.
+- [x] **Installed effect discovery/application.** `effects_available` enumerates actual installed Kdenlive effects; `effect_add` applies individual installed effects through `EffectStackModel` with live row/id verification. Effect groups remain intentionally excluded until child-by-child verification is defined.
+- [x] **Effect-stack introspection and editing.** `effects_inspect` exposes stable effect ids, rows, parameters and XML; `effect_remove` and `effect_parameter_set` are verified and undoable, including duplicate-effect row identity.
 - [x] **Guides/range guides.** Read/add/remove project guides and range guides for candidate cuts, B-roll, semantic notes and review regions.
 - [x] **Subtitle editing.** Verified `subtitle_edit` and `subtitle_delete` by stable subtitle id.
-- [x] **Transitions.** Discover actual installed Kdenlive transition ids/names and insert verified compositions through the native controller.
-- [x] **Native title creation.** Build a real Kdenlive title document/bin asset, insert it on the timeline, and verify both bin and timeline state.
+- [x] **Transition/composition lifecycle.** Discover installed transition ids plus verified native `transition_add`, `transition_move`, `transition_resize`, and `transition_remove`.
+- [x] **Native simple-title create/update.** Create a real Kdenlive title bin asset and safely update VibeCut-created simple titles with producer-property undo/redo and timeline-instance reload. Complex hand-built Kdenlive titles are intentionally protected.
+- [x] **Project-bin media baseline.** `bin_list`, undoable local-file `bin_import_file`, and verified `bin_insert_timeline` use Kdenlive's native project/timeline models. No shell or network import path is exposed.
+- [x] **Grouping and multi-selection.** Native verified `group_create` / `group_ungroup` plus ephemeral `selection_list`, `selection_set`, and `selection_clear` allow controlled multi-item editing without durable selection state.
+- [x] **Track lifecycle baseline.** `tracks_list`, undoable `track_create`, `track_move`, `track_set_locked`, and major-risk `track_delete` use Kdenlive native APIs and verify live state.
 - [x] **Native render/export baseline.** Discover installed presets and render asynchronously through `RenderRequest` / `kdenlive_render` with JobManager lifecycle and final-file verification.
 - [x] **Safer render overwrite semantics.** Existing approved output is not removed before Kdenlive has successfully prepared render jobs.
 - [x] **Local zero-CI verification lane.** `scripts/vibecut-verify.sh` configures/builds locally and runs the `vibecut*` tests with `ctest`; no GitHub Actions are required.
 - [x] **Architecture/product front door.** README and `VIBECUT_ARCHITECTURE.md` describe the governed agentic editor instead of the original one-tool prototype.
-- [x] **Expanded regression harness.** Contracts, planning, trust, revision, context compaction, jobs, hooks, media index, native tool registration, effects, VibeScript watchdog, durable memory, and capability-policy uniqueness are in the local test target.
+- [x] **Expanded regression harness.** Contracts, planning, trust, revision, context compaction, jobs, hooks, media index, native capability registration, effects, VibeScript watchdog, durable memory, and policy uniqueness are in the local test target.
 
 ## Immediate hardening before merge / upstream work
 
 - [ ] **Run a clean local Kdenlive compile and VibeCut test gate.** Execute `bash scripts/vibecut-verify.sh` on a machine with Kdenlive build dependencies. Fix every compile/link/test failure before merging the integration branch. GitHub Actions are intentionally not part of this gate.
-- [ ] **Hands-on smoke project.** Test inspect → plan → approve → edit → verify → Undo for move/split/trim/delete/effects/guides/title/transition/subtitles.
+- [ ] **Hands-on smoke project.** Test inspect → plan → approve → edit → verify → Undo across clips, effects, guides, titles, transitions, bin import/insertion, grouping, tracks and subtitles.
 - [ ] **Long-job smoke tests.** Run Whisper and render while interacting with the editor; test cancellation and final-state evidence.
 - [ ] **Trust/policy smoke tests.** Verify Review, Auto, Turbo and `.vibecutpolicy.json` behavior with reversible edits, major edits, render, deny, auto-allow and always-confirm overrides.
 - [ ] **Update operational handoff.** Reconcile `CLAUDE.md` and stale DEVLOG/KDENLIVE_INTERNALS notes against this branch after the first successful local build.
 
 ## Editing breadth still to deepen
 
-- [ ] Arbitrary installed-effect discovery/application beyond the current denoise application allowlist. Existing applied effects can already be inspected, parameter-edited and removed.
-- [ ] Transition edit/remove and mix-specific operations.
-- [ ] Title edit/update after creation, reusable title styles/templates, and richer layout primitives.
-- [ ] Bin/media insertion, replacement and relinking through governed native APIs.
-- [ ] Group/ungroup and multi-selection operations.
-- [ ] Track creation/deletion/move/lock/mute/visibility and audio routing controls.
+- [ ] Effect-group expansion/application with child-by-child verification.
+- [ ] Mix-specific operations and transition parameter editing.
+- [ ] Complex title element editing, reusable title styles/templates, and richer layout primitives.
+- [ ] Bin/media replacement, relinking, folder management and source-state inspection beyond the current import/list/insert baseline.
+- [ ] Track mute/visibility/audio-routing controls after their native undo/state semantics are verified.
+- [ ] More explicit multi-selection operations such as selection-aware bulk move/delete where Kdenlive semantics can be verified transactionally.
 - [ ] Render output optimization helper that recommends installed presets based on destination constraints rather than just exposing preset selection.
 
 ## Media intelligence
@@ -82,7 +86,7 @@ The common `VibeCutMediaIndex` exists. The remaining work is extractor depth, no
 
 ## External integrations / feature wishlist
 
-- [ ] Stock footage search/import (for example Pexels adapter) behind explicit external/network authority.
+- [ ] Stock footage search/import behind explicit external/network authority.
 - [ ] Image/video generation provider adapters.
 - [ ] Ollama/local-model provider integration using the provider registry.
 - [ ] Local WebUI/provider integrations where useful.
