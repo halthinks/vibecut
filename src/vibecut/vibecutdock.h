@@ -2,13 +2,13 @@
     SPDX-FileCopyrightText: 2026 vibecut contributors
     SPDX-License-Identifier: GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL
 */
-
 #pragma once
 
 #include <QMetaObject>
 #include <QString>
 #include <QWidget>
 
+class QComboBox;
 class QLabel;
 class QLineEdit;
 class QProgressBar;
@@ -18,7 +18,7 @@ class QUrl;
 class VibeCutAgent;
 class VibeCutTools;
 
-/** @brief The VibeCut assistant dock: chat, tool evidence and plan review. */
+/** The VibeCut assistant dock: chat, evidence, trust policy and plan review. */
 class VibeCutDock : public QWidget
 {
     Q_OBJECT
@@ -46,6 +46,7 @@ private:
     QTextBrowser *m_transcript;
     QLabel *m_status;
     QProgressBar *m_progress;
+    QComboBox *m_trustMode;
     QPushButton *m_newChat;
     QPushButton *m_approvePlan;
     QPushButton *m_cancelPlan;
@@ -57,7 +58,6 @@ private:
     bool m_streamStarted = false;
     QString m_pendingPlanSummary;
 
-    // "Apply as soon as a clip is selected" flow for the denoise suggestion.
     QString m_pendingPrompt;
     bool m_awaitingSelection = false;
     QMetaObject::Connection m_selectionConn;
