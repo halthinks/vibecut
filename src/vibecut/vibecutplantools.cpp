@@ -6,6 +6,7 @@
 #include "vibecutplantools.h"
 
 #include "vibecutplanruntime.h"
+#include "vibecutscript.h"
 #include "vibecuttoolsurface.h"
 
 #include <QJsonArray>
@@ -73,5 +74,8 @@ bool registerVibeCutPlanTools(VibeCutToolSurface &surface, VibeCutPlanRuntime *r
     policy.name = QStringLiteral("edit_plan_propose");
     policy.risk = VibeCutToolRisk::ReadOnly;
 
-    return surface.registerTool(schema, policy, [runtime](const QJsonObject &input) { return runtime->propose(input); }, error);
+    if (!surface.registerTool(schema, policy, [runtime](const QJsonObject &input) { return runtime->propose(input); }, error)) {
+        return false;
+    }
+    return registerVibeCutScriptTools(surface, runtime, error);
 }
