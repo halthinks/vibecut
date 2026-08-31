@@ -87,8 +87,7 @@ VibeCutAgent::VibeCutAgent(VibeCutTools *tools, QObject *parent)
     , m_hooks(new VibeCutHooks(this))
     , m_systemPrompt(kSystemPrompt)
 {
-    VibeCutModelProviderRegistry providers = VibeCutModelProviderRegistry::builtIns();
-    m_provider = providers.createConfigured(&m_providerError);
+    m_provider = VibeCutModelProviderRegistry::global().createConfigured(&m_providerError);
 
     connect(m_tools, &VibeCutTools::userQuestionRaised, this, &VibeCutAgent::userQuestionRaised);
     connect(m_tools, &VibeCutTools::backgroundProgress, this, [this](const QString &message) {
@@ -351,7 +350,17 @@ void VibeCutAgent::onReadyRead()
 
 void VibeCutAgent::handleEvent(const SseParser::Event &event)
 {
-    const QJsonObject object = QJsonDocument::fromJson(event.data).object();
+    if (!m_provider) {
+        fail(QStringLiteral("The active VibeCut model provider disappeared during a streaming response."));
+        return;
+    }
+    const QJsonObject object = m_provider->normalizeStreamEvent(event.data);
+    if (object.isEmpty()) {
+        // Providers may intentionally normalize transport-only events (for
+        // example keep-alives) to an empty object. Ignore those rather than
+        // teaching the core loop provider-specific event names.
+        return;
+    }
     const QString type = object.value(QStringLiteral("type")).toString();
 
     if (type == QLatin1String("content_block_start")) {
