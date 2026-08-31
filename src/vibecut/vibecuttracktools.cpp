@@ -22,18 +22,22 @@ std::shared_ptr<TimelineItemModel> currentModel()
     return timeline ? timeline->model() : nullptr;
 }
 
+bool locked(const std::shared_ptr<TimelineItemModel> &model, int trackId)
+{
+    return model && model->isTrack(trackId) && model->data(model->makeTrackIndexFromID(trackId), TimelineModel::IsLockedRole).toBool();
+}
+
 QJsonObject listTracks(const QJsonObject &)
 {
     const std::shared_ptr<TimelineItemModel> model = currentModel();
     if (!model) return err(QStringLiteral("No timeline is open."));
     QJsonArray tracks;
     for (int trackId : model->getAllTracksIds()) {
-        const QModelIndex index = model->makeTrackIndexFromID(trackId);
         tracks.append(QJsonObject{{QStringLiteral("track_id"), trackId},
                                   {QStringLiteral("name"), model->getTrackFullName(trackId)},
                                   {QStringLiteral("position"), model->getTrackPosition(trackId)},
                                   {QStringLiteral("audio"), model->isAudioTrack(trackId)},
-                                  {QStringLiteral("locked"), model->data(index, TimelineModel::IsLockedRole).toBool()},
+                                  {QStringLiteral("locked"), locked(model, trackId)},
                                   {QStringLiteral("clip_count"), model->getTrackClipsCount(trackId)},
                                   {QStringLiteral("composition_count"), model->getTrackCompositionsCount(trackId)}});
     }
@@ -80,6 +84,27 @@ QJsonObject moveTrack(const QJsonObject &input)
     return QJsonObject{{QStringLiteral("ok"), true}, {QStringLiteral("track_id"), trackId},
                        {QStringLiteral("direction"), direction}, {QStringLiteral("old_position"), oldPosition},
                        {QStringLiteral("position"), newPosition}, {QStringLiteral("verified"), true}};
+}
+
+QJsonObject setTrackLock(const QJsonObject &input)
+{
+    const std::shared_ptr<TimelineItemModel> model = currentModel();
+    if (!model) return err(QStringLiteral("No timeline is open."));
+    const int trackId = input.value(QStringLiteral("track_id")).toInt(-1);
+    const bool desired = input.value(QStringLiteral("locked")).toBool();
+    if (!model->isTrack(trackId)) return err(QStringLiteral("Track id %1 does not exist.").arg(trackId));
+    const bool old = locked(model, trackId);
+    if (old == desired) {
+        return QJsonObject{{QStringLiteral("ok"), true}, {QStringLiteral("track_id"), trackId},
+                           {QStringLiteral("locked"), desired}, {QStringLiteral("changed"), false}, {QStringLiteral("verified"), true}};
+    }
+    model->setTrackLockedState(trackId, desired);
+    if (locked(model, trackId) != desired) {
+        return err(QStringLiteral("Track lock change did not verify on the live timeline."));
+    }
+    return QJsonObject{{QStringLiteral("ok"), true}, {QStringLiteral("track_id"), trackId},
+                       {QStringLiteral("old_locked"), old}, {QStringLiteral("locked"), desired},
+                       {QStringLiteral("changed"), true}, {QStringLiteral("verified"), true}};
 }
 
 QJsonObject deleteTrack(const QJsonObject &input)
@@ -154,6 +179,14 @@ bool registerVibeCutTrackTools(VibeCutToolSurface &surface, QString *error)
     if (!addTool(surface, QStringLiteral("track_move"),
                  QStringLiteral("Move an existing track one step up/down among tracks of the same type using Kdenlive's native undoable track move, then verify its order changed."),
                  moveInput, VibeCutToolRisk::ReversibleEdit, moveTrack, error)) return false;
+
+    const QJsonObject lockInput = objectSchema(QJsonObject{
+        {QStringLiteral("track_id"), QJsonObject{{QStringLiteral("type"), QStringLiteral("integer")}}},
+        {QStringLiteral("locked"), QJsonObject{{QStringLiteral("type"), QStringLiteral("boolean")}}}},
+        QJsonArray{QStringLiteral("track_id"), QStringLiteral("locked")});
+    if (!addTool(surface, QStringLiteral("track_set_locked"),
+                 QStringLiteral("Lock or unlock a track through Kdenlive's native setTrackLockedState path, which creates its own undo/redo command; verify the live IsLocked state afterward."),
+                 lockInput, VibeCutToolRisk::ReversibleEdit, setTrackLock, error)) return false;
 
     const QJsonObject deleteInput = objectSchema(QJsonObject{
         {QStringLiteral("track_id"), QJsonObject{{QStringLiteral("type"), QStringLiteral("integer")}}}},
