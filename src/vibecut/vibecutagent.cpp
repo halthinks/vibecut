@@ -5,6 +5,7 @@
 
 #include "vibecutagent.h"
 #include "vibecutconversationcontext.h"
+#include "vibecutprojectrules.h"
 #include "vibecuttools.h"
 
 #include <QDebug>
@@ -136,8 +137,15 @@ void VibeCutAgent::startRequest()
                                  .arg(VibeCutConversationContext::approximateBytes(m_messages));
     }
 
+    QString rulesError;
+    const QString projectRules = VibeCutProjectRules::loadCurrentProject(&rulesError);
+    if (!rulesError.isEmpty()) {
+        qWarning().noquote() << QStringLiteral("[VibeCut] project rules ignored: %1").arg(rulesError);
+    }
+    const QString effectiveSystemPrompt = VibeCutProjectRules::appendToSystemPrompt(m_systemPrompt, projectRules);
+
     QJsonObject systemBlock{{QStringLiteral("type"), QStringLiteral("text")},
-                            {QStringLiteral("text"), m_systemPrompt},
+                            {QStringLiteral("text"), effectiveSystemPrompt},
                             {QStringLiteral("cache_control"), QJsonObject{{QStringLiteral("type"), QStringLiteral("ephemeral")}}}};
 
     QJsonObject body{
