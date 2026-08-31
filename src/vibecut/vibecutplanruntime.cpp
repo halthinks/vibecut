@@ -34,9 +34,7 @@ QString riskLabel(VibeCutToolRisk risk)
 
 std::shared_ptr<DocUndoStack> currentUndoStack()
 {
-    if (!pCore || !pCore->currentDoc()) {
-        return std::shared_ptr<DocUndoStack>();
-    }
+    if (!pCore || !pCore->currentDoc()) return std::shared_ptr<DocUndoStack>();
     return pCore->currentDoc()->commandStack();
 }
 } // namespace
@@ -53,7 +51,6 @@ VibeCutPlanRuntime::VibeCutPlanRuntime(VibeCutToolSurface *surface, QObject *par
 QJsonObject VibeCutPlanRuntime::propose(const QJsonObject &proposal)
 {
     if (!m_surface) return err(QStringLiteral("Plan runtime has no tool surface."));
-
     VibeCutEditPlan plan;
     plan.id = QUuid::createUuid().toString(QUuid::WithoutBraces);
     plan.baseRevision = m_surface->projectRevision();
@@ -61,7 +58,6 @@ QJsonObject VibeCutPlanRuntime::propose(const QJsonObject &proposal)
     for (const QJsonValue &value : proposal.value(QStringLiteral("operations")).toArray()) {
         plan.operations.append(VibeCutPlanOperation::fromJson(value.toObject()));
     }
-
     QString error;
     if (!setPendingPlan(plan, error)) return err(error);
     return QJsonObject{{QStringLiteral("ok"), true}, {QStringLiteral("awaiting_approval"), pendingRequiresConfirmation()},
@@ -71,7 +67,6 @@ QJsonObject VibeCutPlanRuntime::propose(const QJsonObject &proposal)
 QJsonObject VibeCutPlanRuntime::proposeDirectToolCalls(const QJsonArray &toolUseBlocks, const QString &objective)
 {
     if (!m_surface) return err(QStringLiteral("Plan runtime has no tool surface."));
-
     VibeCutEditPlan plan;
     plan.id = QUuid::createUuid().toString(QUuid::WithoutBraces);
     plan.baseRevision = m_surface->projectRevision();
@@ -86,7 +81,6 @@ QJsonObject VibeCutPlanRuntime::proposeDirectToolCalls(const QJsonArray &toolUse
         const QString name = block.value(QStringLiteral("name")).toString();
         const auto policy = policies.constFind(name);
         if (policy != policies.constEnd() && policy.value().risk == VibeCutToolRisk::ReadOnly) continue;
-
         VibeCutPlanOperation operation;
         operation.id = QStringLiteral("step-%1").arg(++step);
         operation.toolName = name;
@@ -95,7 +89,6 @@ QJsonObject VibeCutPlanRuntime::proposeDirectToolCalls(const QJsonArray &toolUse
         plan.operations.append(operation);
         previousId = operation.id;
     }
-
     if (plan.operations.isEmpty()) return err(QStringLiteral("No mutating or side-effecting tool calls were present to review."));
     QString error;
     if (!setPendingPlan(plan, error)) return err(error);
@@ -136,6 +129,7 @@ bool VibeCutPlanRuntime::setPendingPlan(const VibeCutEditPlan &plan, QString &er
 
     m_plan = plan;
     m_hasPending = true;
+    m_planMutatesProject = false;
     m_executionOrder.clear();
     m_executionIndex = 0;
     m_waitingJobId.clear();
@@ -154,17 +148,27 @@ QJsonObject VibeCutPlanRuntime::approvePendingPlan()
     if (!m_hasPending || m_executing) return err(QStringLiteral("There is no reviewable VibeCut plan awaiting approval."));
     if (!m_surface) return err(QStringLiteral("Plan runtime has no tool surface."));
 
-    const VibeCutPlanGateResult gate = VibeCutPlanGate::assess(m_plan, m_surface->projectRevision(), m_surface->policies(), m_trustMode, true);
+    const QHash<QString, VibeCutToolPolicy> policies = m_surface->policies();
+    const VibeCutPlanGateResult gate = VibeCutPlanGate::assess(m_plan, m_surface->projectRevision(), policies, m_trustMode, true);
     if (!gate.ready()) {
         const QString message = gate.errors.join(QStringLiteral("; "));
         finishExecution(false, message);
         return err(message);
     }
 
+    m_planMutatesProject = false;
+    for (const VibeCutPlanOperation &operation : m_plan.operations) {
+        const auto policy = policies.constFind(operation.toolName);
+        if (policy != policies.constEnd() && policy.value().mutatesProject) {
+            m_planMutatesProject = true;
+            break;
+        }
+    }
+
     m_executionOrder = gate.executionOrder;
     m_executionIndex = 0;
     m_expectedRevision = m_surface->projectRevision();
-    m_beforeSnapshot = VibeCutProjectSnapshot::capture(m_expectedRevision);
+    m_beforeSnapshot = m_planMutatesProject ? VibeCutProjectSnapshot::capture(m_expectedRevision) : VibeCutProjectSnapshot();
     m_executing = true;
     Q_EMIT planApproved(m_plan.id);
     Q_EMIT planProgress(QStringLiteral("Executing approved plan %1…").arg(m_plan.id));
@@ -178,9 +182,9 @@ QJsonObject VibeCutPlanRuntime::cancelPendingPlan()
 {
     if (!m_hasPending) return err(QStringLiteral("There is no pending plan to cancel."));
     if (m_executing) return err(QStringLiteral("The plan is already executing; cancellation of active editor operations is not yet supported."));
-
     const QString planId = m_plan.id;
     m_hasPending = false;
+    m_planMutatesProject = false;
     m_plan = VibeCutEditPlan();
     m_executionOrder.clear();
     m_operationResults = QJsonArray();
@@ -266,8 +270,8 @@ void VibeCutPlanRuntime::continueExecution()
             return;
         }
 
-        const bool mutating = policy.value().risk != VibeCutToolRisk::ReadOnly;
-        if (mutating) beginCheckpointMacro();
+        const bool projectMutation = policy.value().mutatesProject;
+        if (projectMutation) beginCheckpointMacro();
         Q_EMIT planProgress(QStringLiteral("Step %1/%2: %3…").arg(m_executionIndex + 1).arg(m_executionOrder.size()).arg(operation->toolName));
         const QJsonObject result = m_surface->invoke(operation->toolName, operation->input);
         m_operationResults.append(QJsonObject{{QStringLiteral("operation_id"), operation->id},
@@ -275,8 +279,10 @@ void VibeCutPlanRuntime::continueExecution()
                                               {QStringLiteral("result"), result}});
         if (!result.value(QStringLiteral("ok")).toBool()) {
             if (m_macroOpen) rollbackCheckpointMacro();
-            finishExecution(false, QStringLiteral("Step %1 failed and the current synchronous checkpoint was rolled back: %2")
-                                        .arg(operation->toolName, result.value(QStringLiteral("error")).toString(QStringLiteral("unknown error"))));
+            finishExecution(false, QStringLiteral("Step %1 failed%2: %3")
+                                        .arg(operation->toolName,
+                                             projectMutation ? QStringLiteral(" and the current synchronous project checkpoint was rolled back") : QString(),
+                                             result.value(QStringLiteral("error")).toString(QStringLiteral("unknown error"))));
             return;
         }
 
@@ -313,14 +319,19 @@ void VibeCutPlanRuntime::onJobChanged(const QString &jobId)
         finishExecution(false, QStringLiteral("Background step failed: %1").arg(job.message));
         return;
     }
-    if (!m_waitingPolicy.mutatesProject && m_surface->projectRevision() != m_expectedRevision) {
-        finishExecution(false, QStringLiteral("The project changed while a background step was running; the remaining plan was stopped."));
-        return;
-    }
 
+    const bool projectChanged = m_surface->projectRevision() != m_expectedRevision;
+    const bool externalOnlyJob = !m_waitingPolicy.mutatesProject;
     m_expectedRevision = m_surface->projectRevision();
     m_waitingJobId.clear();
     ++m_executionIndex;
+
+    if (externalOnlyJob && projectChanged && m_executionIndex < m_executionOrder.size()) {
+        finishExecution(false, QStringLiteral("The external background step completed, but the project changed while it was running; remaining plan operations were stopped as stale."));
+        return;
+    }
+    // If an external-only job was the final operation (for example render), a
+    // later user edit does not invalidate the already-produced external output.
     continueExecution();
 }
 
@@ -330,7 +341,7 @@ void VibeCutPlanRuntime::finishExecution(bool success, const QString &summary)
     const QString planId = m_plan.id;
     QJsonArray results = m_operationResults;
     QString finalSummary = summary;
-    if (m_surface && m_beforeSnapshot.available) {
+    if (m_planMutatesProject && m_surface && m_beforeSnapshot.available) {
         const VibeCutProjectSnapshot after = VibeCutProjectSnapshot::capture(m_surface->projectRevision());
         if (after.available) {
             const VibeCutProjectDiff diff = m_beforeSnapshot.diffTo(after);
@@ -344,6 +355,8 @@ void VibeCutPlanRuntime::finishExecution(bool success, const QString &summary)
 
     m_executing = false;
     m_hasPending = false;
+    m_macroOpen = false;
+    m_planMutatesProject = false;
     m_executionOrder.clear();
     m_executionIndex = 0;
     m_waitingJobId.clear();
