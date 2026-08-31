@@ -41,11 +41,16 @@ set(KdenliveTest_SOURCES
     utilstest.cpp
     vibecutcontractstest.cpp
     vibecutconversationcontexttest.cpp
+    vibecutevaltest.cpp
+    vibecuthookstest.cpp
     vibecutjobmanagertest.cpp
+    vibecutmediaindextest.cpp
+    vibecutmodelprovidertest.cpp
     vibecutplangatetest.cpp
     vibecutplanruntimetest.cpp
     vibecutprojectrevisiontest.cpp
     vibecutprojectrulestest.cpp
+    vibecutprojectsnapshottest.cpp
     vibecutsubtitletoolstest.cpp
     vibecuttest.cpp
     vibecuttoolpolicytest.cpp

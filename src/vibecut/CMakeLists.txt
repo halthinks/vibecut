@@ -6,13 +6,19 @@ set(kdenlive_SRCS
   vibecut/vibecutagent.cpp
   vibecut/vibecutcontracts.cpp
   vibecut/vibecutconversationcontext.cpp
+  vibecut/vibecuteval.cpp
+  vibecut/vibecuthooks.cpp
   vibecut/vibecutjobmanager.cpp
   vibecut/vibecutjobtools.cpp
+  vibecut/vibecutmediaindex.cpp
+  vibecut/vibecutmediatools.cpp
+  vibecut/vibecutmodelprovider.cpp
   vibecut/vibecutplangate.cpp
   vibecut/vibecutplanruntime.cpp
   vibecut/vibecutplantools.cpp
   vibecut/vibecutprojectrevision.cpp
   vibecut/vibecutprojectrules.cpp
+  vibecut/vibecutprojectsnapshot.cpp
   vibecut/vibecutprojectstate.cpp
   vibecut/vibecutsubtitlepipeline.cpp
   vibecut/vibecutsubtitletools.cpp

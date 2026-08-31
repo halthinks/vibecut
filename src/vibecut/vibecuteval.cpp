@@ -8,8 +8,10 @@
 
 VibeCutEvalScore VibeCutEvaluator::evaluate(const VibeCutEvalExpectation &expected, const VibeCutEvalObservation &observed)
 {
-    const QSet<QString> wanted = QSet<QString>::fromList(expected.plannedTools);
-    const QSet<QString> actual = QSet<QString>::fromList(observed.plannedTools);
+    QSet<QString> wanted;
+    QSet<QString> actual;
+    for (const QString &tool : expected.plannedTools) wanted.insert(tool);
+    for (const QString &tool : observed.plannedTools) actual.insert(tool);
     int correct = 0;
     for (const QString &tool : actual) {
         if (wanted.contains(tool)) ++correct;
