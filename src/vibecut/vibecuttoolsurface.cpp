@@ -11,6 +11,7 @@
 #include "vibecutgrouptools.h"
 #include "vibecutmarkertools.h"
 #include "vibecutmemorytools.h"
+#include "vibecutmixtools.h"
 #include "vibecutpolicyoverrides.h"
 #include "vibecutrendertools.h"
 #include "vibecutselectiontools.h"
@@ -55,6 +56,10 @@ VibeCutToolSurface::VibeCutToolSurface(VibeCutTools *baseTools)
     error.clear();
     if (!registerVibeCutMemoryTools(*this, &error)) {
         qWarning().noquote() << QStringLiteral("[VibeCut] project memory tools unavailable: %1").arg(error);
+    }
+    error.clear();
+    if (!registerVibeCutMixTools(*this, &error)) {
+        qWarning().noquote() << QStringLiteral("[VibeCut] mix tools unavailable: %1").arg(error);
     }
     error.clear();
     if (!registerVibeCutSelectionTools(*this, &error)) {
