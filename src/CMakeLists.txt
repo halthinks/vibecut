@@ -169,6 +169,8 @@ ecm_target_qml_sources(kdenliveLib
     timeline2/view/qml/AudioRecordingControls.qml
     timeline2/view/qml/AudioRecordButton.qml
     timeline2/view/qml/AudioLevels.qml
+    timeline2/view/qml/AudioRecordButton.qml
+    timeline2/view/qml/AudioLevels.qml
     timeline2/view/qml/Track.qml
     timeline2/view/qml/Ruler.qml
     timeline2/view/qml/RulerZone.qml
@@ -288,6 +290,7 @@ endif()
 target_link_libraries(kdenliveLib PUBLIC
     Qt${QT_MAJOR_VERSION}::Core
     Qt${QT_MAJOR_VERSION}::Svg
+    Qt${QT_MAJOR_VERSION}::Qml
     Qt${QT_MAJOR_VERSION}::Quick
     Qt${QT_MAJOR_VERSION}::QuickControls2
     Qt${QT_MAJOR_VERSION}::QuickWidgets
@@ -376,4 +379,3 @@ add_dependencies(kdenlive all_qmllint)
 
 ecm_finalize_qml_module(kdenliveLib
     DESTINATION ${KDE_INSTALL_QMLDIR})
-
