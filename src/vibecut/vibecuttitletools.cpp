@@ -88,7 +88,7 @@ QJsonObject createTitle(const QJsonObject &input)
     std::unordered_map<QString, QString> properties;
     properties[QStringLiteral("xmldata")] = titleXml.toString();
     const QString binId = ClipCreator::createTitleClip(properties, duration, name, QStringLiteral("-1"), binModel);
-    if (binId.isEmpty() || binId == QLatin1String("-1") || !binModel->hasClip(binId)) {
+    if (binId.isEmpty() || binId == QLatin1String("-1") || !binModel->getItemByBinId(binId)) {
         return err(QStringLiteral("Kdenlive could not create the title bin asset."));
     }
 
