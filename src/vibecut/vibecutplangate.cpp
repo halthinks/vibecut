@@ -16,9 +16,7 @@ QStringList orderedOperations(const VibeCutEditPlan &plan)
     while (result.size() < plan.operations.size()) {
         bool progressed = false;
         for (const VibeCutPlanOperation &operation : plan.operations) {
-            if (complete.contains(operation.id)) {
-                continue;
-            }
+            if (complete.contains(operation.id)) continue;
             bool dependenciesComplete = true;
             for (const QString &dependency : operation.dependsOn) {
                 if (!complete.contains(dependency)) {
@@ -32,9 +30,7 @@ QStringList orderedOperations(const VibeCutEditPlan &plan)
                 progressed = true;
             }
         }
-        if (!progressed) {
-            return QStringList();
-        }
+        if (!progressed) return QStringList();
     }
     return result;
 }
@@ -62,14 +58,18 @@ VibeCutPlanGateResult VibeCutPlanGate::assess(const VibeCutEditPlan &plan, quint
     }
 
     for (const VibeCutPlanOperation &operation : plan.operations) {
-        if (!policies.contains(operation.toolName)) {
+        const auto policy = policies.constFind(operation.toolName);
+        if (policy == policies.constEnd()) {
             result.status = VibeCutPlanGateStatus::UnknownTool;
             result.errors.append(QStringLiteral("plan references unknown or ungoverned tool: %1").arg(operation.toolName));
+            continue;
+        }
+        if (!policy.value().enabled) {
+            result.status = VibeCutPlanGateStatus::ToolDenied;
+            result.errors.append(QStringLiteral("tool '%1' is denied by project policy").arg(operation.toolName));
         }
     }
-    if (result.status == VibeCutPlanGateStatus::UnknownTool) {
-        return result;
-    }
+    if (result.status == VibeCutPlanGateStatus::UnknownTool || result.status == VibeCutPlanGateStatus::ToolDenied) return result;
 
     if (!planApproved && plan.requiresConfirmation(policies, mode)) {
         result.status = VibeCutPlanGateStatus::ConfirmationRequired;
