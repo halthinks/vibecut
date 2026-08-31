@@ -4,6 +4,7 @@
 */
 
 #include "vibecutagent.h"
+#include "vibecutconversationcontext.h"
 #include "vibecuttools.h"
 
 #include <QDebug>
@@ -123,6 +124,17 @@ void VibeCutAgent::resetStreamState()
 void VibeCutAgent::startRequest()
 {
     resetStreamState();
+
+    const int previousMessageCount = m_messages.size();
+    const int previousBytes = VibeCutConversationContext::approximateBytes(m_messages);
+    m_messages = VibeCutConversationContext::compact(m_messages);
+    if (m_messages.size() != previousMessageCount) {
+        qInfo().noquote() << QStringLiteral("[VibeCut] compacted conversation history messages=%1->%2 bytes=%3->%4")
+                                 .arg(previousMessageCount)
+                                 .arg(m_messages.size())
+                                 .arg(previousBytes)
+                                 .arg(VibeCutConversationContext::approximateBytes(m_messages));
+    }
 
     QJsonObject systemBlock{{QStringLiteral("type"), QStringLiteral("text")},
                             {QStringLiteral("text"), m_systemPrompt},
