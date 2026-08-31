@@ -15,6 +15,7 @@
 class QNetworkAccessManager;
 class QNetworkReply;
 class VibeCutTools;
+class VibeCutToolSurface;
 
 /** @brief Drives one conversation with the Anthropic Messages API.
  *
@@ -23,8 +24,8 @@ class VibeCutTools;
  * is a pure Qt client: QNetworkAccessManager streams `POST /v1/messages`
  * (Server-Sent Events), this class rebuilds the assistant message from the
  * stream, and on `stop_reason == "tool_use"` it runs the requested tools on the
- * GUI thread via VibeCutTools and feeds the results back — looping until the
- * model stops or a turn cap is hit.
+ * GUI thread via the composed VibeCut tool surface and feeds the results back —
+ * looping until the model stops or a turn cap is hit.
  *
  * The network reply is event-driven (readyRead), so the whole thing lives on
  * the GUI thread without blocking it; no worker thread is needed.
@@ -70,10 +71,8 @@ Q_SIGNALS:
 public Q_SLOTS:
     /** Append a user message and start (or continue) the conversation. */
     void sendUserMessage(const QString &text);
-    /** Drop all history and start clean. Conversation history otherwise
-     *  grows for as long as the panel/process lives with no cap - if a long
-     *  session ever turns out to correlate with empty-turn failures, this is
-     *  the workaround until real compaction exists. */
+    /** Drop all history and start clean. Normal history is bounded
+     *  automatically at complete user-exchange boundaries. */
     void resetConversation();
 
 private Q_SLOTS:
@@ -91,13 +90,14 @@ private:
     QNetworkAccessManager *m_nam;
     QNetworkReply *m_reply = nullptr;
     VibeCutTools *m_tools;
+    VibeCutToolSurface *m_toolSurface = nullptr;
     SseParser m_sse;
 
     QString m_apiKey;
     QString m_model;
     QString m_systemPrompt;
 
-    QJsonArray m_messages; ///< full conversation history sent every request
+    QJsonArray m_messages; ///< bounded complete conversation history sent on requests
 
     // --- per-request stream accumulation ---
     QJsonArray m_blocks;       ///< assistant content blocks rebuilt from the stream
