@@ -126,6 +126,28 @@ bool registerVibeCutJobTools(VibeCutToolSurface &surface, QString *error)
             return QJsonObject{{QStringLiteral("ok"), true}, {QStringLiteral("job"), toJson(job)}};
         }, error)) return false;
 
+    const QJsonObject cancelSchema{{QStringLiteral("name"), QStringLiteral("job_cancel")},
+                                   {QStringLiteral("description"),
+                                    QStringLiteral("Request cancellation of one cancelable VibeCut background job. This is a governed external control action; it never edits the timeline directly. The underlying job must acknowledge the cancellation and reach a terminal cancelled/failed state.")},
+                                   {QStringLiteral("input_schema"), statusInput}};
+    VibeCutToolPolicy cancelPolicy;
+    cancelPolicy.name = QStringLiteral("job_cancel");
+    cancelPolicy.risk = VibeCutToolRisk::ExternalSideEffect;
+    cancelPolicy.mutatesProject = false;
+    if (!surface.registerTool(cancelSchema, cancelPolicy, [tools](const QJsonObject &input) {
+            const QString id = input.value(QStringLiteral("job_id")).toString().trimmed();
+            if (id.isEmpty()) return err(QStringLiteral("job_id must not be empty"));
+            VibeCutJob job;
+            if (!tools->jobManager()->job(id, job)) return err(QStringLiteral("Unknown VibeCut job: %1").arg(id));
+            if (job.terminal()) return err(QStringLiteral("Job %1 is already terminal (%2).").arg(id, stateName(job.state)));
+            if (!job.cancelable) return err(QStringLiteral("Job %1 does not support cancellation.").arg(id));
+            if (!tools->jobManager()->requestCancel(id)) return err(QStringLiteral("Could not request cancellation for job %1.").arg(id));
+            VibeCutJob updated;
+            tools->jobManager()->job(id, updated);
+            return QJsonObject{{QStringLiteral("ok"), true}, {QStringLiteral("cancel_requested"), true},
+                               {QStringLiteral("job"), toJson(updated)}};
+        }, error)) return false;
+
     QJsonObject speechInput{{QStringLiteral("type"), QStringLiteral("object")},
                             {QStringLiteral("properties"), QJsonObject{{QStringLiteral("model"),
                                 QJsonObject{{QStringLiteral("type"), QStringLiteral("string")},
