@@ -15,6 +15,7 @@ enum class VibeCutPlanGateStatus {
     InvalidPlan,
     StalePlan,
     UnknownTool,
+    ToolDenied,
     ConfirmationRequired,
 };
 
