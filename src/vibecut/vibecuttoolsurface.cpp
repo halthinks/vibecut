@@ -5,6 +5,7 @@
 
 #include "vibecuttoolsurface.h"
 
+#include "vibecutbintools.h"
 #include "vibecutedittools.h"
 #include "vibecuteffecttools.h"
 #include "vibecutgrouptools.h"
@@ -31,6 +32,10 @@ VibeCutToolSurface::VibeCutToolSurface(VibeCutTools *baseTools)
     : m_baseTools(baseTools)
 {
     QString error;
+    if (!registerVibeCutBinTools(*this, &error)) {
+        qWarning().noquote() << QStringLiteral("[VibeCut] bin tools unavailable: %1").arg(error);
+    }
+    error.clear();
     if (!registerVibeCutEditTools(*this, &error)) {
         qWarning().noquote() << QStringLiteral("[VibeCut] core edit tools unavailable: %1").arg(error);
     }
