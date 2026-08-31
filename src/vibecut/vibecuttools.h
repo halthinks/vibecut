@@ -5,6 +5,8 @@
 
 #pragma once
 
+#include "vibecutcontracts.h"
+
 #include <QJsonArray>
 #include <QJsonObject>
 #include <QMap>
@@ -44,6 +46,11 @@ public:
 
     /** Tool definitions in Anthropic Messages API shape (`tools` array). */
     QJsonArray schemas() const;
+
+    /** Governance metadata for every tool exposed by schemas(). This is kept
+     *  separate from provider-specific JSON so the planner/executor can make
+     *  trust decisions without knowing anything about Anthropic. */
+    QHash<QString, VibeCutToolPolicy> policies() const;
 
     /** Dispatch @p name with @p input; always returns an object with "ok". */
     QJsonObject invoke(const QString &name, const QJsonObject &input);

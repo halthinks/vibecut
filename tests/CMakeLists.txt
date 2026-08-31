@@ -41,6 +41,7 @@ set(KdenliveTest_SOURCES
     utilstest.cpp
     vibecutcontractstest.cpp
     vibecuttest.cpp
+    vibecuttoolpolicytest.cpp
 )
 
 include(ECMAddTests)
