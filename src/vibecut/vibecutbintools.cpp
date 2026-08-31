@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL */
 #include "vibecutbintools.h"
 
+#include "bin/bin.h"
 #include "bin/clipcreator.hpp"
 #include "bin/projectclip.h"
 #include "bin/projectitemmodel.h"
@@ -80,6 +81,42 @@ QJsonObject importFile(const QJsonObject &input)
                        {QStringLiteral("verified"), clip != nullptr}};
 }
 
+QJsonObject replaceSource(const QJsonObject &input)
+{
+    if (!pCore || !pCore->bin()) return err(QStringLiteral("Kdenlive project bin is unavailable."));
+    const QString binId = input.value(QStringLiteral("bin_id")).toString().trimmed();
+    const QString requestedPath = input.value(QStringLiteral("path")).toString().trimmed();
+    if (binId.isEmpty()) return err(QStringLiteral("bin_id must not be empty"));
+    if (requestedPath.isEmpty()) return err(QStringLiteral("path must not be empty"));
+
+    QFileInfo info(requestedPath);
+    if (info.isRelative()) info.setFile(QFileInfo(requestedPath).absoluteFilePath());
+    if (!info.exists() || !info.isFile()) return err(QStringLiteral("Replacement media file does not exist: %1").arg(info.absoluteFilePath()));
+
+    const std::shared_ptr<ProjectItemModel> model = pCore->projectItemModel();
+    if (!model) return err(QStringLiteral("Project bin model is unavailable."));
+    const std::shared_ptr<ProjectClip> beforeClip = model->getClipByBinID(binId);
+    if (!beforeClip) return err(QStringLiteral("Bin clip '%1' does not exist.").arg(binId));
+    const QString oldPath = QFileInfo(beforeClip->url()).absoluteFilePath();
+    const QString newPath = info.absoluteFilePath();
+    if (oldPath == newPath) {
+        return QJsonObject{{QStringLiteral("ok"), true}, {QStringLiteral("bin_id"), binId},
+                           {QStringLiteral("old_path"), oldPath}, {QStringLiteral("path"), newPath},
+                           {QStringLiteral("changed"), false}, {QStringLiteral("verified"), true}};
+    }
+    const int instanceCount = beforeClip->timelineInstances().size();
+
+    pCore->bin()->replaceSingleClip(binId, newPath);
+    const std::shared_ptr<ProjectClip> afterClip = model->getClipByBinID(binId);
+    if (!afterClip || QFileInfo(afterClip->url()).absoluteFilePath() != newPath) {
+        return err(QStringLiteral("Kdenlive did not verify the replacement source on bin clip '%1'.").arg(binId));
+    }
+    return QJsonObject{{QStringLiteral("ok"), true}, {QStringLiteral("bin_id"), binId},
+                       {QStringLiteral("old_path"), oldPath}, {QStringLiteral("path"), newPath},
+                       {QStringLiteral("timeline_instances_affected"), instanceCount},
+                       {QStringLiteral("changed"), true}, {QStringLiteral("verified"), true}};
+}
+
 QJsonObject insertBinClip(const QJsonObject &input)
 {
     if (!pCore) return err(QStringLiteral("Kdenlive core is unavailable."));
@@ -115,12 +152,12 @@ QJsonObject objectSchema(const QJsonObject &properties, const QJsonArray &requir
                        {QStringLiteral("required"), required}, {QStringLiteral("additionalProperties"), false}};
 }
 
-bool registerEdit(VibeCutToolSurface &surface, const QString &name, const QString &description, const QJsonObject &schema,
-                  const VibeCutToolSurface::Handler &handler, QString *error)
+bool registerMutation(VibeCutToolSurface &surface, const QString &name, const QString &description, const QJsonObject &schema,
+                      VibeCutToolRisk risk, const VibeCutToolSurface::Handler &handler, QString *error)
 {
     VibeCutToolPolicy policy;
     policy.name = name;
-    policy.risk = VibeCutToolRisk::ReversibleEdit;
+    policy.risk = risk;
     policy.reversible = true;
     policy.mutatesProject = true;
     return surface.registerTool(QJsonObject{{QStringLiteral("name"), name}, {QStringLiteral("description"), description},
@@ -146,16 +183,25 @@ bool registerVibeCutBinTools(VibeCutToolSurface &surface, QString *error)
                                              {QStringLiteral("description"), QStringLiteral("Existing local media file path. Network URLs and directories are not accepted.")}}},
         {QStringLiteral("parent_folder_id"), QJsonObject{{QStringLiteral("type"), QStringLiteral("string")}}}},
         QJsonArray{QStringLiteral("path")});
-    if (!registerEdit(surface, QStringLiteral("bin_import_file"),
-                      QStringLiteral("Import one existing local media file into Kdenlive's project bin through ClipCreator with native undo/redo. Does not fetch network content or access a shell."),
-                      importInput, importFile, error)) return false;
+    if (!registerMutation(surface, QStringLiteral("bin_import_file"),
+                          QStringLiteral("Import one existing local media file into Kdenlive's project bin through ClipCreator with native undo/redo. Does not fetch network content or access a shell."),
+                          importInput, VibeCutToolRisk::ReversibleEdit, importFile, error)) return false;
+
+    const QJsonObject replaceInput = objectSchema(QJsonObject{
+        {QStringLiteral("bin_id"), QJsonObject{{QStringLiteral("type"), QStringLiteral("string")}}},
+        {QStringLiteral("path"), QJsonObject{{QStringLiteral("type"), QStringLiteral("string")},
+                                             {QStringLiteral("description"), QStringLiteral("Existing local replacement media path. Kdenlive replaces the source for this bin asset and all timeline instances using its native undoable EditClipCommand path.")}}}},
+        QJsonArray{QStringLiteral("bin_id"), QStringLiteral("path")});
+    if (!registerMutation(surface, QStringLiteral("bin_replace_source"),
+                          QStringLiteral("Replace the local source file behind an existing project-bin clip through Kdenlive's native replaceSingleClip/EditClipCommand path. All timeline instances of that bin asset follow the replacement, so this is governed as a major edit and remains undoable."),
+                          replaceInput, VibeCutToolRisk::MajorEdit, replaceSource, error)) return false;
 
     const QJsonObject insertInput = objectSchema(QJsonObject{
         {QStringLiteral("bin_id"), QJsonObject{{QStringLiteral("type"), QStringLiteral("string")}}},
         {QStringLiteral("track_id"), QJsonObject{{QStringLiteral("type"), QStringLiteral("integer")}}},
         {QStringLiteral("position_frame"), QJsonObject{{QStringLiteral("type"), QStringLiteral("integer")}, {QStringLiteral("minimum"), 0}}}},
         QJsonArray{QStringLiteral("bin_id"), QStringLiteral("track_id"), QStringLiteral("position_frame")});
-    return registerEdit(surface, QStringLiteral("bin_insert_timeline"),
-                        QStringLiteral("Insert an existing project-bin clip onto an exact timeline track/frame using Kdenlive's native undoable clip insertion and verify the resulting clip id/bin id/position."),
-                        insertInput, insertBinClip, error);
+    return registerMutation(surface, QStringLiteral("bin_insert_timeline"),
+                            QStringLiteral("Insert an existing project-bin clip onto an exact timeline track/frame using Kdenlive's native undoable clip insertion and verify the resulting clip id/bin id/position."),
+                            insertInput, VibeCutToolRisk::ReversibleEdit, insertBinClip, error);
 }
