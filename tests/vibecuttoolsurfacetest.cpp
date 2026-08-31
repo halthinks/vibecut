@@ -12,6 +12,8 @@ TEST_CASE("tool surface composes isolated extensions with native tools", "[vibec
 {
     VibeCutTools base;
     VibeCutToolSurface surface(&base);
+    const int builtInSurfaceSize = surface.schemas().size();
+    CHECK(surface.policies().contains(QStringLiteral("clip_move")));
 
     const QJsonObject schema{
         {QStringLiteral("name"), QStringLiteral("example_read")},
@@ -32,11 +34,10 @@ TEST_CASE("tool surface composes isolated extensions with native tools", "[vibec
     CHECK(error.isEmpty());
 
     const QJsonArray schemas = surface.schemas();
-    CHECK(schemas.size() == base.schemas().size() + 1);
+    CHECK(schemas.size() == builtInSurfaceSize + 1);
     CHECK(surface.policies().contains(QStringLiteral("example_read")));
     CHECK(surface.invoke(QStringLiteral("example_read"), QJsonObject{}).value(QStringLiteral("value")).toInt() == 7);
 
-    // Existing handlers still dispatch through the original implementation.
     const QJsonObject selection = surface.invoke(QStringLiteral("timeline_get_selection"), QJsonObject{});
     CHECK(selection.contains(QStringLiteral("ok")));
 }
@@ -59,6 +60,5 @@ TEST_CASE("tool surface rejects duplicate and ungoverned registrations", "[vibec
 
     QJsonObject newSchema = schema;
     newSchema.insert(QStringLiteral("name"), QStringLiteral("new_tool"));
-    // Policy still names the old tool, so this must fail closed.
     CHECK_FALSE(surface.registerTool(newSchema, policy, [](const QJsonObject &) { return QJsonObject{}; }, &error));
 }
