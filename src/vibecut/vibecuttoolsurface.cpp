@@ -33,12 +33,11 @@ bool VibeCutToolSurface::baseContains(const QString &name) const
     return false;
 }
 
-bool VibeCutToolSurface::registerTool(const QJsonObject &schema, const VibeCutToolPolicy &policy, const Handler &handler, QString *error)
+bool VibeCutToolSurface::validateRegistration(const QJsonObject &schema, const VibeCutToolPolicy &policy, const Handler &handler, QString *error)
 {
     if (error) {
         error->clear();
     }
-
     const QString name = schema.value(QStringLiteral("name")).toString().trimmed();
     if (name.isEmpty()) {
         if (error) {
@@ -64,7 +63,16 @@ bool VibeCutToolSurface::registerTool(const QJsonObject &schema, const VibeCutTo
         }
         return false;
     }
-    if (m_extensions.contains(name) || baseContains(name)) {
+    return true;
+}
+
+bool VibeCutToolSurface::registerTool(const QJsonObject &schema, const VibeCutToolPolicy &policy, const Handler &handler, QString *error)
+{
+    if (!validateRegistration(schema, policy, handler, error)) {
+        return false;
+    }
+    const QString name = policy.name;
+    if (m_extensions.contains(name) || m_overrides.contains(name) || baseContains(name)) {
         if (error) {
             *error = QStringLiteral("tool '%1' is already registered").arg(name);
         }
@@ -80,9 +88,44 @@ bool VibeCutToolSurface::registerTool(const QJsonObject &schema, const VibeCutTo
     return true;
 }
 
+bool VibeCutToolSurface::overrideBaseTool(const QJsonObject &schema, const VibeCutToolPolicy &policy, const Handler &handler, QString *error)
+{
+    if (!validateRegistration(schema, policy, handler, error)) {
+        return false;
+    }
+    const QString name = policy.name;
+    if (!baseContains(name)) {
+        if (error) {
+            *error = QStringLiteral("cannot override unknown native tool '%1'").arg(name);
+        }
+        return false;
+    }
+    if (m_extensions.contains(name) || m_overrides.contains(name)) {
+        if (error) {
+            *error = QStringLiteral("tool '%1' already has a surface registration").arg(name);
+        }
+        return false;
+    }
+
+    Extension override;
+    override.schema = schema;
+    override.policy = policy;
+    override.handler = handler;
+    m_overrides.insert(name, override);
+    return true;
+}
+
 QJsonArray VibeCutToolSurface::schemas() const
 {
-    QJsonArray result = m_baseTools ? m_baseTools->schemas() : QJsonArray();
+    QJsonArray result;
+    if (m_baseTools) {
+        for (const QJsonValue &value : m_baseTools->schemas()) {
+            const QJsonObject baseSchema = value.toObject();
+            const QString name = baseSchema.value(QStringLiteral("name")).toString();
+            const auto override = m_overrides.constFind(name);
+            result.append(override != m_overrides.constEnd() ? override.value().schema : baseSchema);
+        }
+    }
     for (const QString &name : m_extensionOrder) {
         result.append(m_extensions.value(name).schema);
     }
@@ -92,6 +135,9 @@ QJsonArray VibeCutToolSurface::schemas() const
 QHash<QString, VibeCutToolPolicy> VibeCutToolSurface::policies() const
 {
     QHash<QString, VibeCutToolPolicy> result = m_baseTools ? m_baseTools->policies() : QHash<QString, VibeCutToolPolicy>();
+    for (auto it = m_overrides.constBegin(); it != m_overrides.constEnd(); ++it) {
+        result.insert(it.key(), it.value().policy);
+    }
     for (const QString &name : m_extensionOrder) {
         result.insert(name, m_extensions.value(name).policy);
     }
@@ -100,10 +146,19 @@ QHash<QString, VibeCutToolPolicy> VibeCutToolSurface::policies() const
 
 QJsonObject VibeCutToolSurface::invoke(const QString &name, const QJsonObject &input) const
 {
+    const auto override = m_overrides.constFind(name);
+    if (override != m_overrides.constEnd()) {
+        return override.value().handler(input);
+    }
     const auto extension = m_extensions.constFind(name);
     if (extension != m_extensions.constEnd()) {
         return extension.value().handler(input);
     }
+    return invokeBase(name, input);
+}
+
+QJsonObject VibeCutToolSurface::invokeBase(const QString &name, const QJsonObject &input) const
+{
     if (m_baseTools) {
         return m_baseTools->invoke(name, input);
     }
