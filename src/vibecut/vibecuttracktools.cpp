@@ -65,6 +65,27 @@ QJsonObject createTrack(const QJsonObject &input)
                        {QStringLiteral("audio"), audio}, {QStringLiteral("verified"), true}};
 }
 
+QJsonObject renameTrack(const QJsonObject &input)
+{
+    const std::shared_ptr<TimelineItemModel> model = currentModel();
+    if (!model) return err(QStringLiteral("No timeline is open."));
+    const int trackId = input.value(QStringLiteral("track_id")).toInt(-1);
+    const QString name = input.value(QStringLiteral("name")).toString().trimmed();
+    if (!model->isTrack(trackId)) return err(QStringLiteral("Track id %1 does not exist.").arg(trackId));
+    if (name.isEmpty()) return err(QStringLiteral("name must not be empty"));
+    const QString oldName = model->getTrackFullName(trackId);
+    if (oldName == name) {
+        return QJsonObject{{QStringLiteral("ok"), true}, {QStringLiteral("track_id"), trackId},
+                           {QStringLiteral("name"), name}, {QStringLiteral("changed"), false}, {QStringLiteral("verified"), true}};
+    }
+    model->setTrackName(trackId, name);
+    const QString liveName = model->getTrackFullName(trackId);
+    if (liveName != name) return err(QStringLiteral("Track rename did not verify on the live timeline."));
+    return QJsonObject{{QStringLiteral("ok"), true}, {QStringLiteral("track_id"), trackId},
+                       {QStringLiteral("old_name"), oldName}, {QStringLiteral("name"), liveName},
+                       {QStringLiteral("changed"), true}, {QStringLiteral("verified"), true}};
+}
+
 QJsonObject moveTrack(const QJsonObject &input)
 {
     const std::shared_ptr<TimelineItemModel> model = currentModel();
@@ -170,6 +191,14 @@ bool registerVibeCutTrackTools(VibeCutToolSurface &surface, QString *error)
     if (!addTool(surface, QStringLiteral("track_create"),
                  QStringLiteral("Create an undoable audio or video track at an optional timeline position and verify the resulting live track id/type."),
                  createInput, VibeCutToolRisk::ReversibleEdit, createTrack, error)) return false;
+
+    const QJsonObject renameInput = objectSchema(QJsonObject{
+        {QStringLiteral("track_id"), QJsonObject{{QStringLiteral("type"), QStringLiteral("integer")}}},
+        {QStringLiteral("name"), QJsonObject{{QStringLiteral("type"), QStringLiteral("string")}}}},
+        QJsonArray{QStringLiteral("track_id"), QStringLiteral("name")});
+    if (!addTool(surface, QStringLiteral("track_rename"),
+                 QStringLiteral("Rename an existing track through Kdenlive's native undoable setTrackName path and verify the live name."),
+                 renameInput, VibeCutToolRisk::ReversibleEdit, renameTrack, error)) return false;
 
     const QJsonObject moveInput = objectSchema(QJsonObject{
         {QStringLiteral("track_id"), QJsonObject{{QStringLiteral("type"), QStringLiteral("integer")}}},
