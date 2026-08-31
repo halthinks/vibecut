@@ -37,6 +37,7 @@ public:
     VibeCutHooks *hooks() const { return m_hooks; }
     VibeCutTrustMode trustMode() const;
     void setTrustMode(VibeCutTrustMode mode);
+    bool reloadModelProvider(QString *error = nullptr);
 
 Q_SIGNALS:
     void statusChanged(const QString &status);
