@@ -33,6 +33,8 @@ struct VibeCutToolPolicy {
     bool mutatesProject = false;
     bool asynchronous = false;
     bool confirmationRequired = false;
+    bool autoAllowed = false;
+    bool enabled = true;
 
     bool requiresConfirmation(VibeCutTrustMode mode) const;
     QJsonObject toJson() const;
