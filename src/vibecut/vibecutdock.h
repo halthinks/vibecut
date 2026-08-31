@@ -29,6 +29,7 @@ private Q_SLOTS:
     void submit();
     void onSuggestionClicked(const QUrl &url);
     void newChat();
+    void manageCredentials();
 
 private:
     void appendWelcome();
@@ -47,6 +48,7 @@ private:
     QLabel *m_status;
     QProgressBar *m_progress;
     QComboBox *m_trustMode;
+    QPushButton *m_credentials;
     QPushButton *m_newChat;
     QPushButton *m_approvePlan;
     QPushButton *m_cancelPlan;
