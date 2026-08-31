@@ -1,0 +1,82 @@
+/*
+    SPDX-FileCopyrightText: 2026 vibecut contributors
+    SPDX-License-Identifier: GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL
+*/
+
+#include "catch.hpp"
+
+#include "vibecut/vibecutplangate.h"
+
+namespace {
+VibeCutEditPlan samplePlan()
+{
+    VibeCutEditPlan plan;
+    plan.id = QStringLiteral("plan");
+    plan.baseRevision = 9;
+    plan.objective = QStringLiteral("Clean then subtitle");
+
+    VibeCutPlanOperation subtitles;
+    subtitles.id = QStringLiteral("subtitles");
+    subtitles.toolName = QStringLiteral("generate_subtitles");
+    subtitles.dependsOn = {QStringLiteral("clean")};
+
+    VibeCutPlanOperation clean;
+    clean.id = QStringLiteral("clean");
+    clean.toolName = QStringLiteral("effect_apply");
+
+    // Deliberately store them out of dependency order; the gate must produce
+    // an executable order rather than assuming model output is already sorted.
+    plan.operations = {subtitles, clean};
+    return plan;
+}
+
+QHash<QString, VibeCutToolPolicy> samplePolicies()
+{
+    QHash<QString, VibeCutToolPolicy> result;
+
+    VibeCutToolPolicy effect;
+    effect.name = QStringLiteral("effect_apply");
+    effect.risk = VibeCutToolRisk::ReversibleEdit;
+    effect.reversible = true;
+    effect.mutatesProject = true;
+    result.insert(effect.name, effect);
+
+    VibeCutToolPolicy subtitles;
+    subtitles.name = QStringLiteral("generate_subtitles");
+    subtitles.risk = VibeCutToolRisk::MajorEdit;
+    subtitles.reversible = true;
+    subtitles.mutatesProject = true;
+    result.insert(subtitles.name, subtitles);
+
+    return result;
+}
+} // namespace
+
+TEST_CASE("plan gate rejects stale state before execution", "[vibecut][plan]")
+{
+    const auto result = VibeCutPlanGate::assess(samplePlan(), 10, samplePolicies(), VibeCutTrustMode::Turbo, true);
+    CHECK(result.status == VibeCutPlanGateStatus::StalePlan);
+    CHECK_FALSE(result.ready());
+}
+
+TEST_CASE("plan gate requires approval for major edits in auto mode", "[vibecut][plan]")
+{
+    const auto blocked = VibeCutPlanGate::assess(samplePlan(), 9, samplePolicies(), VibeCutTrustMode::Auto, false);
+    CHECK(blocked.status == VibeCutPlanGateStatus::ConfirmationRequired);
+
+    const auto approved = VibeCutPlanGate::assess(samplePlan(), 9, samplePolicies(), VibeCutTrustMode::Auto, true);
+    REQUIRE(approved.ready());
+    REQUIRE(approved.executionOrder.size() == 2);
+    CHECK(approved.executionOrder.at(0) == QStringLiteral("clean"));
+    CHECK(approved.executionOrder.at(1) == QStringLiteral("subtitles"));
+}
+
+TEST_CASE("plan gate fails closed on ungoverned tools", "[vibecut][plan]")
+{
+    VibeCutEditPlan plan = samplePlan();
+    plan.operations.first().toolName = QStringLiteral("system.exec");
+
+    const auto result = VibeCutPlanGate::assess(plan, 9, samplePolicies(), VibeCutTrustMode::Turbo, true);
+    CHECK(result.status == VibeCutPlanGateStatus::UnknownTool);
+    CHECK_FALSE(result.ready());
+}
