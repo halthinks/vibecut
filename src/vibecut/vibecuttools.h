@@ -17,6 +17,7 @@
 #include <memory>
 
 class TimelineItemModel;
+class VibeCutJobManager;
 class VibeCutProjectRevisionTracker;
 
 /** @brief Native-mode tool surface exposed to the assistant.
@@ -36,8 +37,8 @@ class VibeCutProjectRevisionTracker;
  * "things Kdenlive itself can already do," the tool surface should grow
  * freely rather than being gatekept per capability.
  *
- * All handlers run on the GUI thread (the agent marshals calls here), so they
- * may touch pCore / the timeline model directly.
+ * All immediate handlers run on the GUI thread. Long-running work must chain
+ * through async processes/jobs and return before the expensive stage starts.
  */
 class VibeCutTools : public QObject
 {
@@ -57,6 +58,13 @@ public:
      *  before approval and must still match immediately before execution. */
     quint64 projectRevision() const;
 
+    /** Shared lifecycle registry for VibeCut-owned long-running jobs. */
+    VibeCutJobManager *jobManager() const;
+
+    /** Async replacement for the legacy subtitle pipeline. The input is
+     *  already scope-normalized by the ToolSurface decorator. */
+    QJsonObject startAsyncSubtitleGeneration(const QJsonObject &input);
+
     /** Dispatch @p name with @p input; always returns an object with "ok". */
     QJsonObject invoke(const QString &name, const QJsonObject &input);
 
@@ -72,8 +80,7 @@ Q_SIGNALS:
     /** Emitted when the model calls the ask_user tool. */
     void userQuestionRaised(const QString &question);
     /** Out-of-band progress for a long-running background operation (speech
-     *  setup, model download, ...). Not tied to any particular tool call /
-     *  agent turn — the dock shows these live as they arrive. */
+     *  setup, model download, transcription, ...). */
     void backgroundProgress(const QString &message);
 
 private:
@@ -101,23 +108,10 @@ private:
     static QString whisperModelCacheDir();
     bool vibecutDepsReady() const;
     /** Whether the venv's torch actually sees a CUDA device. Queried fresh
-     *  each call (not cached) since it's cheap and this is the only thing
-     *  standing between transcription silently running on CPU and running on
-     *  the GPU it was verified to have - see the "device=cpu" bug in
-     *  KDENLIVE_INTERNALS.md: KdenliveSettings::whisperDevice() defaults to
-     *  the literal string "cpu" and our flow never offers a way to change
-     *  it, so it must not be trusted here. */
+     *  each call (not cached). */
     bool vibecutCudaAvailable() const;
-    /** Model alias (e.g. "turbo") -> its real download URL, straight from
-     *  whisperquery.py's own `task=list` (which reads openai-whisper's
-     *  `_MODELS` table) rather than guessing at a `<model>.pt` filename
-     *  convention - several aliases share one file (e.g. "turbo" and
-     *  "large-v3-turbo" both download large-v3-turbo.pt), so the URL's
-     *  basename, not the alias, is the real thing to check on disk. Requires
-     *  the venv's whisper package to already be importable; returns an empty
-     *  map otherwise. */
+    /** Model alias -> real download URL from Whisper's own model table. */
     QMap<QString, QString> whisperModelUrls() const;
-    /** Whether @p model's backing file already exists in whisperModelCacheDir(). */
     bool whisperModelDownloaded(const QString &model, const QMap<QString, QString> &urls) const;
     void beginCreateVenv();
     void beginInstallDeps();
@@ -128,18 +122,14 @@ private:
     QString exportZoneAudio(const std::shared_ptr<TimelineItemModel> &model, int zoneIn, int zoneOut, QString &error);
 
     /** Resolve which clip a tool should act on when the caller didn't name
-     *  one: an explicit clip_id in @p input always wins; otherwise the
-     *  current selection; otherwise, if exactly one clip satisfies
-     *  @p isEligible (pass {} to accept any clip), that clip. Multiple
-     *  eligible clips with nothing selected is real ambiguity, not
-     *  something to guess at - returns -1 with @p error listing the
-     *  candidates so the model can ask a specific question. */
+     *  one: explicit clip, selection, then sole eligible candidate. */
     int resolveTargetClip(const std::shared_ptr<TimelineItemModel> &model, const QJsonObject &input,
                           const std::function<bool(int)> &isEligible, QString &error);
 
     enum class SpeechStage { Idle, CreatingVenv, InstallingDeps, DownloadingModel };
     SpeechStage m_speechStage = SpeechStage::Idle;
-    QString m_pendingModel; // the model being set up while m_speechStage != Idle
+    QString m_pendingModel;
     bool m_subtitleJobRunning = false;
     mutable VibeCutProjectRevisionTracker *m_revisionTracker = nullptr;
+    mutable VibeCutJobManager *m_jobManager = nullptr;
 };
