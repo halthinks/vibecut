@@ -12,10 +12,12 @@
 #include "timeline2/model/timelineitemmodel.hpp"
 #include "timeline2/view/timelinewidget.h"
 #include "vibecutjobmanager.h"
+#include "vibecutpreflighttools.h"
 
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
+#include <QJsonArray>
 #include <QProcess>
 #include <QStandardPaths>
 #include <QTemporaryFile>
@@ -47,10 +49,30 @@ QString reserveTemporaryPath(const QString &pattern, QString &error)
     file.close();
     return path;
 }
+
+QString preflightBlockerSummary(const QJsonObject &preflight)
+{
+    QStringList messages;
+    for (const QJsonValue &value : preflight.value(QStringLiteral("blockers")).toArray()) {
+        const QString message = value.toObject().value(QStringLiteral("message")).toString();
+        if (!message.isEmpty()) messages.append(message);
+    }
+    return messages.join(QStringLiteral("; "));
+}
 } // namespace
 
 QJsonObject VibeCutTools::startAsyncSubtitleGeneration(const QJsonObject &input)
 {
+    const QJsonObject preflight = vibeCutProjectPreflight();
+    if (!preflight.value(QStringLiteral("ok")).toBool(false)) {
+        return err(QStringLiteral("Project preflight failed: %1").arg(preflight.value(QStringLiteral("error")).toString()));
+    }
+    if (!preflight.value(QStringLiteral("ready_for_long_jobs")).toBool(false)) {
+        const QString blockers = preflightBlockerSummary(preflight);
+        return err(QStringLiteral("Subtitle generation blocked by project preflight%1")
+                       .arg(blockers.isEmpty() ? QStringLiteral(".") : QStringLiteral(": %1").arg(blockers)));
+    }
+
     const std::shared_ptr<TimelineItemModel> model = currentModel();
     if (!model) {
         return err(QStringLiteral("No timeline is open."));
@@ -108,8 +130,6 @@ QJsonObject VibeCutTools::startAsyncSubtitleGeneration(const QJsonObject &input)
         QFile::remove(sceneList);
         return err(tempError);
     }
-    // The path reservation exists only to avoid collisions. The renderer must
-    // create the WAV itself.
     QFile::remove(audioPath);
 
     model->sceneList(QDir::temp().absolutePath(), sceneList);
