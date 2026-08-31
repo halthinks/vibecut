@@ -36,8 +36,8 @@ Living implementation roadmap. `VIBECUT_ARCHITECTURE.md` is the authoritative ar
 - [x] **Same-track mix lifecycle.** `mix_inspect`, `mix_add_previous`, `mix_resize`, and `mix_remove` operate on Kdenlive's native same-track mix model using the right-hand clip as the stable owner. Resize/remove use Kdenlive's own undo paths and live-state verification.
 - [x] **Native simple-title create/update.** Create a real Kdenlive title bin asset and safely update VibeCut-created simple titles with producer-property undo/redo and timeline-instance reload. Complex hand-built Kdenlive titles are intentionally protected.
 - [x] **Project-bin media baseline.** `bin_list`, undoable local-file `bin_import_file`, and verified `bin_insert_timeline` use Kdenlive's native project/timeline models. No shell or network import path is exposed.
-- [x] **Project-bin source replacement.** `bin_replace_source` uses Kdenlive's native `Bin::replaceSingleClip` → `EditClipCommand` path, so replacing a source for every timeline instance is a governed MajorEdit with normal Undo and live path verification.
-- [x] **Project-bin folder baseline.** `bin_folders_list` and undoable `bin_folder_create` expose native folder inventory/creation through `ProjectItemModel::requestAddFolder`.
+- [x] **Project-bin source replacement.** `bin_replace_source` uses Kdenlive's native `Bin::replaceSingleClip` → `EditClipCommand` path, so replacing a source for every timeline instance is a governed MajorEdit with normal Undo and live path verification. Non-file-backed generator/title assets are rejected.
+- [x] **Project-bin folder management baseline.** `bin_folders_list`, undoable `bin_folder_create`, and `bin_move_to_folder` expose native inventory/create/reorganization. Moves use Kdenlive's `MoveBinClipCommand` and verify the live parent folder after redo.
 - [x] **Grouping and multi-selection.** Native verified `group_create` / `group_ungroup` plus ephemeral `selection_list`, `selection_set`, and `selection_clear` allow controlled multi-item editing without durable selection state.
 - [x] **Track lifecycle and state.** `tracks_list`, undoable `track_create`, `track_rename`, `track_move`, `track_set_locked`, `track_set_enabled`, and major-risk `track_delete` use Kdenlive native APIs and verify live state. `track_set_enabled=false` maps to mute for audio tracks and hide for video tracks through the same controller path used by the UI.
 - [x] **Insertion target routing.** Ephemeral `routing_status`, `audio_target_set`, and `video_target_set` use Kdenlive's own target-routing APIs. Audio stream reassignment is accepted only when Kdenlive reports that stream as currently assignable; these tools change future insertion targeting, not existing project content.
@@ -60,7 +60,7 @@ Living implementation roadmap. `VIBECUT_ARCHITECTURE.md` is the authoritative ar
 - [ ] Effect-group expansion/application with child-by-child verification.
 - [ ] Mix transition-parameter editing and more advanced mix ownership/neighbor operations beyond the conservative previous-neighbor creation path.
 - [ ] Complex title element editing, reusable title styles/templates, and richer layout primitives.
-- [ ] Move/reorganize existing bin assets between folders with explicit undo verification; richer missing-media/relink recovery workflows and source-state inspection beyond current list/import/replace/insert/folder-create support.
+- [ ] Richer missing-media/relink recovery workflows and source-state inspection beyond current list/import/replace/insert/folder organization support.
 - [ ] Richer audio routing/mixer controls beyond insertion-target stream assignment and track mute/enable.
 - [ ] More explicit multi-selection operations such as selection-aware bulk move/delete where Kdenlive semantics can be verified transactionally.
 - [ ] Render output optimization helper that recommends installed presets based on destination constraints rather than just exposing preset selection.
