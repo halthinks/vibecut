@@ -14,22 +14,11 @@
 
 class QNetworkAccessManager;
 class QNetworkReply;
+class VibeCutPlanRuntime;
 class VibeCutTools;
 class VibeCutToolSurface;
 
-/** @brief Drives one conversation with the Anthropic Messages API.
- *
- * vibecad runs the provider SDK in a child process and bridges tool calls back
- * to the host over a pipe. Kdenlive has no Python layer, so the equivalent here
- * is a pure Qt client: QNetworkAccessManager streams `POST /v1/messages`
- * (Server-Sent Events), this class rebuilds the assistant message from the
- * stream, and on `stop_reason == "tool_use"` it runs the requested tools on the
- * GUI thread via the composed VibeCut tool surface and feeds the results back —
- * looping until the model stops or a turn cap is hit.
- *
- * The network reply is event-driven (readyRead), so the whole thing lives on
- * the GUI thread without blocking it; no worker thread is needed.
- */
+/** @brief Drives one conversation with the model and governed edit runtime. */
 class VibeCutAgent : public QObject
 {
     Q_OBJECT
@@ -37,43 +26,32 @@ public:
     explicit VibeCutAgent(VibeCutTools *tools, QObject *parent = nullptr);
     ~VibeCutAgent() override;
 
-    /** True when ANTHROPIC_API_KEY was found in the environment. */
     bool hasApiKey() const;
-
-    /** Whether a request/tool loop is currently in flight. */
-    bool busy() const { return m_reply != nullptr; }
+    bool busy() const;
+    bool hasPendingPlan() const;
 
 Q_SIGNALS:
-    /** A user-visible status line ("Thinking…", "Ready", …). */
     void statusChanged(const QString &status);
-    /** Live text delta as the model streams its reply. */
     void assistantTextDelta(const QString &text);
-    /** The model's final natural-language reply for this turn. */
     void assistantMessage(const QString &text);
-    /** A tool call is about to run (name + compact JSON of the arguments). */
     void toolInvoked(const QString &name, const QString &argsJson);
-    /** A tool call finished with {"ok": false, ...} — surfaced immediately so
-     *  a failure is never silently swallowed by an empty final reply. */
     void toolFailed(const QString &name, const QString &errorMessage);
-    /** A tool call finished, ok or not, with its full result. Lets the dock
-     *  show what a read-only tool actually found even if the model never
-     *  narrates it — the panel should never depend on the model choosing to
-     *  report ground truth it already has. */
     void toolCompleted(const QString &name, const QString &resultJson);
-    /** The model called ask_user. */
     void userQuestionRaised(const QString &question);
-    /** Progress from a long-running background operation (speech setup,
-     *  model download, ...), independent of any particular agent turn. */
     void backgroundProgress(const QString &message);
-    /** Any hard failure (no key, HTTP error, loop cap, …). */
     void errorOccurred(const QString &message);
 
+    /** Reviewable plan state. No project mutation has happened when
+     *  planProposed fires. */
+    void planProposed(const QString &planId, const QString &summary);
+    void planProgress(const QString &message);
+    void planFinished(const QString &planId, bool success, const QString &summary);
+
 public Q_SLOTS:
-    /** Append a user message and start (or continue) the conversation. */
     void sendUserMessage(const QString &text);
-    /** Drop all history and start clean. Normal history is bounded
-     *  automatically at complete user-exchange boundaries. */
     void resetConversation();
+    void approvePendingPlan();
+    void cancelPendingPlan();
 
 private Q_SLOTS:
     void onReadyRead();
@@ -91,27 +69,27 @@ private:
     QNetworkReply *m_reply = nullptr;
     VibeCutTools *m_tools;
     VibeCutToolSurface *m_toolSurface = nullptr;
+    VibeCutPlanRuntime *m_planRuntime = nullptr;
     SseParser m_sse;
 
     QString m_apiKey;
     QString m_model;
     QString m_systemPrompt;
+    QString m_currentUserRequest;
 
-    QJsonArray m_messages; ///< bounded complete conversation history sent on requests
+    QJsonArray m_messages;
 
-    // --- per-request stream accumulation ---
-    QJsonArray m_blocks;       ///< assistant content blocks rebuilt from the stream
-    QJsonObject m_curBlock;    ///< block currently being streamed
-    QString m_curText;         ///< text_delta accumulator
-    QString m_curThinking;     ///< thinking_delta accumulator
-    QString m_curJson;         ///< input_json_delta accumulator (tool_use args)
+    QJsonArray m_blocks;
+    QJsonObject m_curBlock;
+    QString m_curText;
+    QString m_curThinking;
+    QString m_curJson;
     QString m_stopReason;
     bool m_turnFinished = false;
     int m_toolTurns = 0;
 
-    // --- per-exchange state (one user message through to a real reply) ---
-    bool m_anyToolCalledThisExchange = false; ///< did any tool_use happen since the user's last message
-    int m_emptyTurnRetries = 0;               ///< how many truly-empty responses we've retried this exchange
+    bool m_anyToolCalledThisExchange = false;
+    int m_emptyTurnRetries = 0;
 
     enum { kMaxToolTurns = 8, kMaxEmptyTurnRetries = 2 };
 };
