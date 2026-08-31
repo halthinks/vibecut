@@ -38,6 +38,7 @@ public:
     QJsonObject invoke(const QString &name, const QJsonObject &input) const;
     /** Bypass any surface override and invoke the original native handler. */
     QJsonObject invokeBase(const QString &name, const QJsonObject &input) const;
+    VibeCutTools *baseTools() const { return m_baseTools; }
     quint64 projectRevision() const;
 
 private:
