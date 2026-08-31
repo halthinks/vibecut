@@ -20,8 +20,8 @@ class VibeCutTools;
  *
  * Existing native handlers remain in VibeCutTools. New capabilities can be
  * registered as small isolated modules instead of growing vibecuttools.cpp.
- * The surface merges provider schemas, governance policies and dispatch while
- * failing registration on duplicates or missing policy metadata.
+ * Existing native tools can also be decorated/overridden at this boundary so
+ * fixes can be introduced without rewriting their legacy implementation.
  */
 class VibeCutToolSurface
 {
@@ -31,10 +31,13 @@ public:
     explicit VibeCutToolSurface(VibeCutTools *baseTools);
 
     bool registerTool(const QJsonObject &schema, const VibeCutToolPolicy &policy, const Handler &handler, QString *error = nullptr);
+    bool overrideBaseTool(const QJsonObject &schema, const VibeCutToolPolicy &policy, const Handler &handler, QString *error = nullptr);
 
     QJsonArray schemas() const;
     QHash<QString, VibeCutToolPolicy> policies() const;
     QJsonObject invoke(const QString &name, const QJsonObject &input) const;
+    /** Bypass any surface override and invoke the original native handler. */
+    QJsonObject invokeBase(const QString &name, const QJsonObject &input) const;
     quint64 projectRevision() const;
 
 private:
@@ -45,8 +48,10 @@ private:
     };
 
     bool baseContains(const QString &name) const;
+    static bool validateRegistration(const QJsonObject &schema, const VibeCutToolPolicy &policy, const Handler &handler, QString *error);
 
     VibeCutTools *m_baseTools = nullptr;
     QHash<QString, Extension> m_extensions;
     QStringList m_extensionOrder;
+    QHash<QString, Extension> m_overrides;
 };
