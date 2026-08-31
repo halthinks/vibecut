@@ -93,6 +93,7 @@ private:
     QString m_curJson;
     QString m_stopReason;
     bool m_turnFinished = false;
+    bool m_autoApprovePending = false;
     int m_toolTurns = 0;
     bool m_anyToolCalledThisExchange = false;
     int m_emptyTurnRetries = 0;
