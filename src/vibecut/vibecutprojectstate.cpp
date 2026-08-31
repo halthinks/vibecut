@@ -7,6 +7,7 @@
 
 #include "core.h"
 #include "doc/kdenlivedoc.h"
+#include "vibecutjobmanager.h"
 #include "vibecutprojectrevision.h"
 
 quint64 VibeCutTools::projectRevision() const
@@ -23,4 +24,12 @@ quint64 VibeCutTools::projectRevision() const
     const auto stack = pCore->currentDoc()->commandStack();
     m_revisionTracker->observe(stack.get());
     return m_revisionTracker->revision();
+}
+
+VibeCutJobManager *VibeCutTools::jobManager() const
+{
+    if (!m_jobManager) {
+        m_jobManager = new VibeCutJobManager(const_cast<VibeCutTools *>(this));
+    }
+    return m_jobManager;
 }
