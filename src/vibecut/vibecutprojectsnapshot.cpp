@@ -72,7 +72,7 @@ VibeCutProjectSnapshot VibeCutProjectSnapshot::capture(quint64 revisionToken)
     snapshot.clips = model->getClipsCount();
     if (model->hasSubtitleModel()) {
         const std::shared_ptr<SubtitleModel> subtitles = model->getSubtitleModel();
-        snapshot.subtitles = subtitles ? subtitles->count() : 0;
+        snapshot.subtitles = subtitles ? static_cast<int>(subtitles->getAllSubIds().size()) : 0;
     }
     for (int trackId : model->getAllTracksIds()) {
         for (int clipId : model->getItemsInRange(trackId, 0, -1, false)) {
