@@ -24,8 +24,6 @@ VibeCutEditPlan samplePlan()
     clean.id = QStringLiteral("clean");
     clean.toolName = QStringLiteral("effect_apply");
 
-    // Deliberately store them out of dependency order; the gate must produce
-    // an executable order rather than assuming model output is already sorted.
     plan.operations = {subtitles, clean};
     return plan;
 }
@@ -79,4 +77,36 @@ TEST_CASE("plan gate fails closed on ungoverned tools", "[vibecut][plan]")
     const auto result = VibeCutPlanGate::assess(plan, 9, samplePolicies(), VibeCutTrustMode::Turbo, true);
     CHECK(result.status == VibeCutPlanGateStatus::UnknownTool);
     CHECK_FALSE(result.ready());
+}
+
+TEST_CASE("project-denied tools cannot execute even in turbo", "[vibecut][plan]")
+{
+    auto policies = samplePolicies();
+    policies[QStringLiteral("effect_apply")].enabled = false;
+    const auto result = VibeCutPlanGate::assess(samplePlan(), 9, policies, VibeCutTrustMode::Turbo, true);
+    CHECK(result.status == VibeCutPlanGateStatus::ToolDenied);
+    CHECK_FALSE(result.ready());
+}
+
+TEST_CASE("per-tool auto allow can waive global review except irreversible work", "[vibecut][plan]")
+{
+    VibeCutToolPolicy edit;
+    edit.name = QStringLiteral("edit");
+    edit.risk = VibeCutToolRisk::MajorEdit;
+    CHECK(edit.requiresConfirmation(VibeCutTrustMode::Off));
+    edit.autoAllowed = true;
+    CHECK_FALSE(edit.requiresConfirmation(VibeCutTrustMode::Off));
+
+    edit.risk = VibeCutToolRisk::Irreversible;
+    CHECK(edit.requiresConfirmation(VibeCutTrustMode::Turbo));
+}
+
+TEST_CASE("always confirm overrides auto allow", "[vibecut][plan]")
+{
+    VibeCutToolPolicy edit;
+    edit.name = QStringLiteral("edit");
+    edit.risk = VibeCutToolRisk::ReversibleEdit;
+    edit.autoAllowed = true;
+    edit.confirmationRequired = true;
+    CHECK(edit.requiresConfirmation(VibeCutTrustMode::Turbo));
 }
