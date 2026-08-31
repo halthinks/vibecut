@@ -8,6 +8,7 @@
 #include "vibecutedittools.h"
 #include "vibecutmarkertools.h"
 #include "vibecutsubtitleedittools.h"
+#include "vibecuttitletools.h"
 #include "vibecuttransitiontools.h"
 #include "vibecuttools.h"
 
@@ -34,6 +35,10 @@ VibeCutToolSurface::VibeCutToolSurface(VibeCutTools *baseTools)
     error.clear();
     if (!registerVibeCutSubtitleEditTools(*this, &error)) {
         qWarning().noquote() << QStringLiteral("[VibeCut] subtitle edit tools unavailable: %1").arg(error);
+    }
+    error.clear();
+    if (!registerVibeCutTitleTools(*this, &error)) {
+        qWarning().noquote() << QStringLiteral("[VibeCut] title tools unavailable: %1").arg(error);
     }
     error.clear();
     if (!registerVibeCutTransitionTools(*this, &error)) {
