@@ -13,6 +13,7 @@
 #include "vibecutmemorytools.h"
 #include "vibecutpolicyoverrides.h"
 #include "vibecutrendertools.h"
+#include "vibecutselectiontools.h"
 #include "vibecutsubtitleedittools.h"
 #include "vibecuttitletools.h"
 #include "vibecuttracktools.h"
@@ -54,6 +55,10 @@ VibeCutToolSurface::VibeCutToolSurface(VibeCutTools *baseTools)
     error.clear();
     if (!registerVibeCutMemoryTools(*this, &error)) {
         qWarning().noquote() << QStringLiteral("[VibeCut] project memory tools unavailable: %1").arg(error);
+    }
+    error.clear();
+    if (!registerVibeCutSelectionTools(*this, &error)) {
+        qWarning().noquote() << QStringLiteral("[VibeCut] selection tools unavailable: %1").arg(error);
     }
     error.clear();
     if (!registerVibeCutSubtitleEditTools(*this, &error)) {
