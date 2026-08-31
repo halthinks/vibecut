@@ -106,6 +106,7 @@ find_package(KF${KF_MAJOR} ${KF_DEP_VERSION}
     OPTIONAL_COMPONENTS
     DocTools
     Crash
+    Wallet
 )
 
 ecm_set_disabled_deprecation_versions(
