@@ -4,6 +4,7 @@
 #include "bin/bin.h"
 #include "bin/clipcreator.hpp"
 #include "bin/projectclip.h"
+#include "bin/projectfolder.h"
 #include "bin/projectitemmodel.h"
 #include "core.h"
 #include "mainwindow.h"
@@ -48,6 +49,53 @@ QJsonObject listBin(const QJsonObject &)
                                  {QStringLiteral("timeline_instances"), clip->timelineInstances().size()}});
     }
     return QJsonObject{{QStringLiteral("ok"), true}, {QStringLiteral("clips"), clips}};
+}
+
+QJsonObject listFolders(const QJsonObject &)
+{
+    if (!pCore) return err(QStringLiteral("Kdenlive core is unavailable."));
+    const std::shared_ptr<ProjectItemModel> model = pCore->projectItemModel();
+    if (!model) return err(QStringLiteral("Project bin model is unavailable."));
+    QJsonArray folders;
+    for (const std::shared_ptr<ProjectFolder> &folder : model->getFolders()) {
+        if (!folder) continue;
+        const std::shared_ptr<AbstractProjectItem> parent = folder->parent();
+        folders.append(QJsonObject{{QStringLiteral("folder_id"), folder->clipId()},
+                                   {QStringLiteral("name"), folder->name()},
+                                   {QStringLiteral("parent_folder_id"), parent ? parent->clipId() : QStringLiteral("-1")},
+                                   {QStringLiteral("has_clips"), folder->hasChildClips()}});
+    }
+    return QJsonObject{{QStringLiteral("ok"), true}, {QStringLiteral("folders"), folders}};
+}
+
+QJsonObject createFolder(const QJsonObject &input)
+{
+    if (!pCore) return err(QStringLiteral("Kdenlive core is unavailable."));
+    const QString name = input.value(QStringLiteral("name")).toString().trimmed();
+    const QString parentId = input.value(QStringLiteral("parent_folder_id")).toString(QStringLiteral("-1"));
+    if (name.isEmpty()) return err(QStringLiteral("name must not be empty"));
+    const std::shared_ptr<ProjectItemModel> model = pCore->projectItemModel();
+    if (!model) return err(QStringLiteral("Project bin model is unavailable."));
+    if (parentId != QLatin1String("-1") && !model->getFolderByBinId(parentId)) {
+        return err(QStringLiteral("Parent bin folder '%1' does not exist.").arg(parentId));
+    }
+
+    QString folderId;
+    Fun undo = []() { return true; };
+    Fun redo = []() { return true; };
+    if (!model->requestAddFolder(folderId, name, parentId, undo, redo) || folderId.isEmpty()) {
+        undo();
+        return err(QStringLiteral("Kdenlive rejected creating bin folder '%1'.").arg(name));
+    }
+    const std::shared_ptr<ProjectFolder> folder = model->getFolderByBinId(folderId);
+    if (!folder || folder->name() != name) {
+        undo();
+        return err(QStringLiteral("Bin folder creation returned success but live folder state did not verify."));
+    }
+    pCore->pushUndo(undo, redo, QStringLiteral("VibeCut: create bin folder"));
+    return QJsonObject{{QStringLiteral("ok"), true}, {QStringLiteral("folder_id"), folderId},
+                       {QStringLiteral("name"), folder->name()}, {QStringLiteral("parent_folder_id"), parentId},
+                       {QStringLiteral("verified"), true}};
 }
 
 QJsonObject importFile(const QJsonObject &input)
@@ -177,6 +225,23 @@ bool registerVibeCutBinTools(VibeCutToolSurface &surface, QString *error)
     listPolicy.name = QStringLiteral("bin_list");
     listPolicy.risk = VibeCutToolRisk::ReadOnly;
     if (!surface.registerTool(listSchema, listPolicy, listBin, error)) return false;
+
+    const QJsonObject foldersSchema{{QStringLiteral("name"), QStringLiteral("bin_folders_list")},
+                                    {QStringLiteral("description"), QStringLiteral("List project-bin folders with stable ids, names, parent folder ids and whether they contain clips. Read-only." )},
+                                    {QStringLiteral("input_schema"), noArgs}};
+    VibeCutToolPolicy foldersPolicy;
+    foldersPolicy.name = QStringLiteral("bin_folders_list");
+    foldersPolicy.risk = VibeCutToolRisk::ReadOnly;
+    if (!surface.registerTool(foldersSchema, foldersPolicy, listFolders, error)) return false;
+
+    const QJsonObject folderCreateInput = objectSchema(QJsonObject{
+        {QStringLiteral("name"), QJsonObject{{QStringLiteral("type"), QStringLiteral("string")}}},
+        {QStringLiteral("parent_folder_id"), QJsonObject{{QStringLiteral("type"), QStringLiteral("string")},
+                                                         {QStringLiteral("description"), QStringLiteral("Optional parent folder id; omit or use -1 for the bin root.")}}}},
+        QJsonArray{QStringLiteral("name")});
+    if (!registerMutation(surface, QStringLiteral("bin_folder_create"),
+                          QStringLiteral("Create a project-bin folder through ProjectItemModel::requestAddFolder with native undo/redo and verify the resulting folder id/name."),
+                          folderCreateInput, VibeCutToolRisk::ReversibleEdit, createFolder, error)) return false;
 
     const QJsonObject importInput = objectSchema(QJsonObject{
         {QStringLiteral("path"), QJsonObject{{QStringLiteral("type"), QStringLiteral("string")},
