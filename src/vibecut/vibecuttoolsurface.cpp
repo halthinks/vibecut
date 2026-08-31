@@ -14,6 +14,7 @@
 #include "vibecutmixtools.h"
 #include "vibecutpolicyoverrides.h"
 #include "vibecutrendertools.h"
+#include "vibecutroutingtools.h"
 #include "vibecutselectiontools.h"
 #include "vibecutsubtitleedittools.h"
 #include "vibecuttitletools.h"
@@ -60,6 +61,10 @@ VibeCutToolSurface::VibeCutToolSurface(VibeCutTools *baseTools)
     error.clear();
     if (!registerVibeCutMixTools(*this, &error)) {
         qWarning().noquote() << QStringLiteral("[VibeCut] mix tools unavailable: %1").arg(error);
+    }
+    error.clear();
+    if (!registerVibeCutRoutingTools(*this, &error)) {
+        qWarning().noquote() << QStringLiteral("[VibeCut] routing tools unavailable: %1").arg(error);
     }
     error.clear();
     if (!registerVibeCutSelectionTools(*this, &error)) {
