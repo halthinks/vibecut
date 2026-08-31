@@ -2,11 +2,13 @@
 #include "vibecutbintools.h"
 
 #include "bin/bin.h"
+#include "bin/bincommands.h"
 #include "bin/clipcreator.hpp"
 #include "bin/projectclip.h"
 #include "bin/projectfolder.h"
 #include "bin/projectitemmodel.h"
 #include "core.h"
+#include "doc/kdenlivedoc.h"
 #include "mainwindow.h"
 #include "timeline2/model/timelineitemmodel.hpp"
 #include "timeline2/view/timelinewidget.h"
@@ -98,6 +100,49 @@ QJsonObject createFolder(const QJsonObject &input)
                        {QStringLiteral("verified"), true}};
 }
 
+QJsonObject moveToFolder(const QJsonObject &input)
+{
+    if (!pCore || !pCore->bin() || !pCore->currentDoc()) return err(QStringLiteral("Kdenlive project bin is unavailable."));
+    const QString binId = input.value(QStringLiteral("bin_id")).toString().trimmed();
+    const QString requestedTarget = input.value(QStringLiteral("folder_id")).toString(QStringLiteral("-1")).trimmed();
+    if (binId.isEmpty()) return err(QStringLiteral("bin_id must not be empty"));
+
+    const std::shared_ptr<ProjectItemModel> model = pCore->projectItemModel();
+    if (!model) return err(QStringLiteral("Project bin model is unavailable."));
+    const std::shared_ptr<ProjectClip> clip = model->getClipByBinID(binId);
+    if (!clip) return err(QStringLiteral("Bin clip '%1' does not exist.").arg(binId));
+
+    QString targetId = requestedTarget;
+    if (targetId.isEmpty() || targetId == QLatin1String("-1")) {
+        const std::shared_ptr<ProjectFolder> root = model->getRootFolder();
+        if (!root) return err(QStringLiteral("Project bin root folder is unavailable."));
+        targetId = root->clipId();
+    } else if (!model->getFolderByBinId(targetId)) {
+        return err(QStringLiteral("Target bin folder '%1' does not exist.").arg(targetId));
+    }
+
+    const std::shared_ptr<AbstractProjectItem> currentParent = clip->parent();
+    const QString oldParentId = currentParent ? currentParent->clipId() : QString();
+    if (oldParentId == targetId) {
+        return QJsonObject{{QStringLiteral("ok"), true}, {QStringLiteral("bin_id"), binId},
+                           {QStringLiteral("folder_id"), targetId}, {QStringLiteral("changed"), false},
+                           {QStringLiteral("verified"), true}};
+    }
+
+    QMap<QString, std::pair<QString, QString>> moveMap;
+    moveMap.insert(binId, {targetId, oldParentId});
+    pCore->currentDoc()->commandStack()->push(new MoveBinClipCommand(pCore->bin(), moveMap));
+
+    const std::shared_ptr<ProjectClip> moved = model->getClipByBinID(binId);
+    const std::shared_ptr<AbstractProjectItem> liveParent = moved ? moved->parent() : nullptr;
+    if (!moved || !liveParent || liveParent->clipId() != targetId) {
+        return err(QStringLiteral("Bin move command executed but the clip's live parent folder did not verify."));
+    }
+    return QJsonObject{{QStringLiteral("ok"), true}, {QStringLiteral("bin_id"), binId},
+                       {QStringLiteral("old_folder_id"), oldParentId}, {QStringLiteral("folder_id"), targetId},
+                       {QStringLiteral("changed"), true}, {QStringLiteral("verified"), true}};
+}
+
 QJsonObject importFile(const QJsonObject &input)
 {
     if (!pCore) return err(QStringLiteral("Kdenlive core is unavailable."));
@@ -145,6 +190,7 @@ QJsonObject replaceSource(const QJsonObject &input)
     if (!model) return err(QStringLiteral("Project bin model is unavailable."));
     const std::shared_ptr<ProjectClip> beforeClip = model->getClipByBinID(binId);
     if (!beforeClip) return err(QStringLiteral("Bin clip '%1' does not exist.").arg(binId));
+    if (!beforeClip->hasUrl()) return err(QStringLiteral("Bin clip '%1' is not backed by a replaceable local source file.").arg(binId));
     const QString oldPath = QFileInfo(beforeClip->url()).absoluteFilePath();
     const QString newPath = info.absoluteFilePath();
     if (oldPath == newPath) {
@@ -227,7 +273,7 @@ bool registerVibeCutBinTools(VibeCutToolSurface &surface, QString *error)
     if (!surface.registerTool(listSchema, listPolicy, listBin, error)) return false;
 
     const QJsonObject foldersSchema{{QStringLiteral("name"), QStringLiteral("bin_folders_list")},
-                                    {QStringLiteral("description"), QStringLiteral("List project-bin folders with stable ids, names, parent folder ids and whether they contain clips. Read-only." )},
+                                    {QStringLiteral("description"), QStringLiteral("List project-bin folders with stable ids, names, parent folder ids and whether they contain clips. Read-only.")},
                                     {QStringLiteral("input_schema"), noArgs}};
     VibeCutToolPolicy foldersPolicy;
     foldersPolicy.name = QStringLiteral("bin_folders_list");
@@ -242,6 +288,15 @@ bool registerVibeCutBinTools(VibeCutToolSurface &surface, QString *error)
     if (!registerMutation(surface, QStringLiteral("bin_folder_create"),
                           QStringLiteral("Create a project-bin folder through ProjectItemModel::requestAddFolder with native undo/redo and verify the resulting folder id/name."),
                           folderCreateInput, VibeCutToolRisk::ReversibleEdit, createFolder, error)) return false;
+
+    const QJsonObject moveInput = objectSchema(QJsonObject{
+        {QStringLiteral("bin_id"), QJsonObject{{QStringLiteral("type"), QStringLiteral("string")}}},
+        {QStringLiteral("folder_id"), QJsonObject{{QStringLiteral("type"), QStringLiteral("string")},
+                                                  {QStringLiteral("description"), QStringLiteral("Destination folder id, or -1 for the project-bin root.")}}}},
+        QJsonArray{QStringLiteral("bin_id"), QStringLiteral("folder_id")});
+    if (!registerMutation(surface, QStringLiteral("bin_move_to_folder"),
+                          QStringLiteral("Move an existing bin clip to another project-bin folder using Kdenlive's native MoveBinClipCommand. The command is undoable and the live parent folder is verified after redo."),
+                          moveInput, VibeCutToolRisk::ReversibleEdit, moveToFolder, error)) return false;
 
     const QJsonObject importInput = objectSchema(QJsonObject{
         {QStringLiteral("path"), QJsonObject{{QStringLiteral("type"), QStringLiteral("string")},
