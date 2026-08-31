@@ -7,6 +7,7 @@ set(kdenlive_SRCS
   vibecut/vibecutcontracts.cpp
   vibecut/vibecutconversationcontext.cpp
   vibecut/vibecutjobmanager.cpp
+  vibecut/vibecutjobtools.cpp
   vibecut/vibecutplangate.cpp
   vibecut/vibecutprojectrevision.cpp
   vibecut/vibecutprojectrules.cpp
