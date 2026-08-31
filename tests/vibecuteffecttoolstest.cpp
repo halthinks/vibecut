@@ -9,13 +9,24 @@ TEST_CASE("canonical effect tools are registered and fail safely without a live 
     VibeCutToolSurface surface(&base);
     const auto policies = surface.policies();
 
+    REQUIRE(policies.contains(QStringLiteral("effects_available")));
     REQUIRE(policies.contains(QStringLiteral("effects_inspect")));
+    REQUIRE(policies.contains(QStringLiteral("effect_add")));
     REQUIRE(policies.contains(QStringLiteral("effect_remove")));
     REQUIRE(policies.contains(QStringLiteral("effect_parameter_set")));
+
+    const QJsonObject available = surface.invoke(QStringLiteral("effects_available"), QJsonObject{});
+    CHECK(available.value(QStringLiteral("ok")).toBool());
+    CHECK(available.value(QStringLiteral("effects")).isArray());
 
     const QJsonObject inspect = surface.invoke(QStringLiteral("effects_inspect"),
                                                QJsonObject{{QStringLiteral("clip_id"), -1}});
     CHECK_FALSE(inspect.value(QStringLiteral("ok")).toBool());
+
+    const QJsonObject addUnknown = surface.invoke(QStringLiteral("effect_add"),
+                                                  QJsonObject{{QStringLiteral("clip_id"), -1},
+                                                              {QStringLiteral("effect_id"), QStringLiteral("vibecut.effect.does.not.exist")}});
+    CHECK_FALSE(addUnknown.value(QStringLiteral("ok")).toBool());
 
     const QJsonObject remove = surface.invoke(QStringLiteral("effect_remove"),
                                               QJsonObject{{QStringLiteral("clip_id"), -1},
