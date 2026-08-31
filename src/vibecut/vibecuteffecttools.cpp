@@ -4,6 +4,7 @@
 #include "core.h"
 #include "effects/effectstack/model/effectitemmodel.hpp"
 #include "effects/effectstack/model/effectstackmodel.hpp"
+#include "effects/effectsrepository.hpp"
 #include "mainwindow.h"
 #include "timeline2/model/timelineitemmodel.hpp"
 #include "timeline2/view/timelinewidget.h"
@@ -47,6 +48,33 @@ std::shared_ptr<EffectItemModel> effectAtRow(const std::shared_ptr<EffectStackMo
     return std::dynamic_pointer_cast<EffectItemModel>(stack->getEffectStackRow(row));
 }
 
+QJsonObject listAvailableEffects(const QJsonObject &input)
+{
+    const QString query = input.value(QStringLiteral("query")).toString().trimmed();
+    const bool audioOnly = input.value(QStringLiteral("audio_only")).toBool(false);
+    const bool videoOnly = input.value(QStringLiteral("video_only")).toBool(false);
+    QJsonArray effects;
+    for (const QPair<QString, QString> &entry : EffectsRepository::get()->getNames()) {
+        const QString id = entry.first;
+        const QString name = entry.second;
+        const bool isAudio = EffectsRepository::get()->isAudioEffect(id);
+        if (audioOnly && !isAudio) continue;
+        if (videoOnly && isAudio) continue;
+        if (!query.isEmpty() && !id.contains(query, Qt::CaseInsensitive) && !name.contains(query, Qt::CaseInsensitive) &&
+            !EffectsRepository::get()->getDescription(id).contains(query, Qt::CaseInsensitive)) {
+            continue;
+        }
+        effects.append(QJsonObject{{QStringLiteral("id"), id},
+                                   {QStringLiteral("name"), name},
+                                   {QStringLiteral("description"), EffectsRepository::get()->getDescription(id)},
+                                   {QStringLiteral("audio"), isAudio},
+                                   {QStringLiteral("group"), EffectsRepository::get()->isGroup(id)},
+                                   {QStringLiteral("unique"), EffectsRepository::get()->isUnique(id)},
+                                   {QStringLiteral("included"), EffectsRepository::get()->isIncludedInList(id)}});
+    }
+    return QJsonObject{{QStringLiteral("ok"), true}, {QStringLiteral("effects"), effects}};
+}
+
 QJsonObject inspectEffects(const QJsonObject &input)
 {
     const int clipId = input.value(QStringLiteral("clip_id")).toInt(-1);
@@ -75,6 +103,47 @@ QJsonObject inspectEffects(const QJsonObject &input)
                        {QStringLiteral("effect_count"), stack->rowCount()},
                        {QStringLiteral("effect_names"), stack->effectNames()},
                        {QStringLiteral("effects"), rows}};
+}
+
+QJsonObject addEffect(const QJsonObject &input)
+{
+    const int clipId = input.value(QStringLiteral("clip_id")).toInt(-1);
+    const QString effectId = input.value(QStringLiteral("effect_id")).toString().trimmed();
+    if (effectId.isEmpty()) return err(QStringLiteral("effect_id must not be empty"));
+    if (!EffectsRepository::get()->exists(effectId)) {
+        return err(QStringLiteral("Unknown installed Kdenlive effect '%1'. Call effects_available first.").arg(effectId));
+    }
+    if (EffectsRepository::get()->isGroup(effectId)) {
+        return err(QStringLiteral("Effect groups are not yet accepted by effect_add because group expansion needs explicit per-child verification. Choose an individual installed effect id from effects_available."));
+    }
+
+    QJsonObject failure;
+    const std::shared_ptr<EffectStackModel> stack = clipStack(clipId, failure);
+    if (!stack) return failure;
+
+    stringMap params;
+    const QJsonObject parameters = input.value(QStringLiteral("parameters")).toObject();
+    for (auto it = parameters.constBegin(); it != parameters.constEnd(); ++it) {
+        params.insert(it.key(), it.value().toVariant().toString());
+    }
+
+    const int before = stack->rowCount();
+    if (!stack->appendEffect(effectId, true, params)) {
+        return err(QStringLiteral("Kdenlive rejected effect '%1' on clip %2. The effect may not match the clip's audio/video state or may violate an effect-specific constraint.")
+                       .arg(effectId).arg(clipId));
+    }
+    const int after = stack->rowCount();
+    if (after != before + 1) {
+        return err(QStringLiteral("Effect add returned success but stack size changed from %1 to %2 instead of exactly one row.").arg(before).arg(after));
+    }
+    const std::shared_ptr<EffectItemModel> added = effectAtRow(stack, after - 1);
+    if (!added || added->getAssetId() != effectId) {
+        return err(QStringLiteral("Effect add returned success but the new live stack row could not be verified as '%1'.").arg(effectId));
+    }
+    return QJsonObject{{QStringLiteral("ok"), true}, {QStringLiteral("clip_id"), clipId},
+                       {QStringLiteral("effect_id"), effectId}, {QStringLiteral("effect_name"), EffectsRepository::get()->getName(effectId)},
+                       {QStringLiteral("row"), after - 1}, {QStringLiteral("parameters"), added->toJson({}, true, false).object()},
+                       {QStringLiteral("verified"), true}};
 }
 
 QJsonObject removeEffect(const QJsonObject &input)
@@ -164,6 +233,20 @@ QJsonObject setEffectParameter(const QJsonObject &input)
 
 bool registerVibeCutEffectTools(VibeCutToolSurface &surface, QString *error)
 {
+    const QJsonObject availableInput{{QStringLiteral("type"), QStringLiteral("object")},
+                                     {QStringLiteral("properties"), QJsonObject{
+                                         {QStringLiteral("query"), QJsonObject{{QStringLiteral("type"), QStringLiteral("string")}}},
+                                         {QStringLiteral("audio_only"), QJsonObject{{QStringLiteral("type"), QStringLiteral("boolean")}}},
+                                         {QStringLiteral("video_only"), QJsonObject{{QStringLiteral("type"), QStringLiteral("boolean")}}}}},
+                                     {QStringLiteral("additionalProperties"), false}};
+    const QJsonObject availableSchema{{QStringLiteral("name"), QStringLiteral("effects_available")},
+                                      {QStringLiteral("description"), QStringLiteral("List/search the actual effects installed in this Kdenlive runtime with stable ids, names, descriptions and audio/group/unique metadata. Read-only; use before effect_add instead of inventing ids.")},
+                                      {QStringLiteral("input_schema"), availableInput}};
+    VibeCutToolPolicy availablePolicy;
+    availablePolicy.name = QStringLiteral("effects_available");
+    availablePolicy.risk = VibeCutToolRisk::ReadOnly;
+    if (!surface.registerTool(availableSchema, availablePolicy, listAvailableEffects, error)) return false;
+
     const QJsonObject inspectInput{{QStringLiteral("type"), QStringLiteral("object")},
                                    {QStringLiteral("properties"), QJsonObject{{QStringLiteral("clip_id"), QJsonObject{{QStringLiteral("type"), QStringLiteral("integer")}}}}},
                                    {QStringLiteral("required"), QJsonArray{QStringLiteral("clip_id")}},
@@ -175,6 +258,24 @@ bool registerVibeCutEffectTools(VibeCutToolSurface &surface, QString *error)
     inspectPolicy.name = QStringLiteral("effects_inspect");
     inspectPolicy.risk = VibeCutToolRisk::ReadOnly;
     if (!surface.registerTool(inspectSchema, inspectPolicy, inspectEffects, error)) return false;
+
+    const QJsonObject addInput{{QStringLiteral("type"), QStringLiteral("object")},
+                               {QStringLiteral("properties"), QJsonObject{
+                                   {QStringLiteral("clip_id"), QJsonObject{{QStringLiteral("type"), QStringLiteral("integer")}}},
+                                   {QStringLiteral("effect_id"), QJsonObject{{QStringLiteral("type"), QStringLiteral("string")}}},
+                                   {QStringLiteral("parameters"), QJsonObject{{QStringLiteral("type"), QStringLiteral("object")},
+                                                                              {QStringLiteral("description"), QStringLiteral("Optional initial parameter name/value map. Values are converted to Kdenlive's string parameter representation.")}}}}},
+                               {QStringLiteral("required"), QJsonArray{QStringLiteral("clip_id"), QStringLiteral("effect_id")}},
+                               {QStringLiteral("additionalProperties"), false}};
+    const QJsonObject addSchema{{QStringLiteral("name"), QStringLiteral("effect_add")},
+                                {QStringLiteral("description"), QStringLiteral("Add one individual installed Kdenlive effect to a timeline clip using the native EffectStackModel. Kdenlive validates audio/video compatibility and effect-specific constraints; the new live row/id is verified. Call effects_available first. Effect groups are intentionally not accepted yet.")},
+                                {QStringLiteral("input_schema"), addInput}};
+    VibeCutToolPolicy addPolicy;
+    addPolicy.name = QStringLiteral("effect_add");
+    addPolicy.risk = VibeCutToolRisk::ReversibleEdit;
+    addPolicy.reversible = true;
+    addPolicy.mutatesProject = true;
+    if (!surface.registerTool(addSchema, addPolicy, addEffect, error)) return false;
 
     const QJsonObject removeInput{{QStringLiteral("type"), QStringLiteral("object")},
                                   {QStringLiteral("properties"), QJsonObject{
