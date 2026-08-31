@@ -23,6 +23,9 @@ TEST_CASE("canonical VibeCut surface exposes governed editing breadth", "[vibecu
         QStringLiteral("subtitle_delete"),
         QStringLiteral("title_create"),
         QStringLiteral("transition_add"),
+        QStringLiteral("transition_move"),
+        QStringLiteral("transition_resize"),
+        QStringLiteral("transition_remove"),
     };
     for (const QString &name : reversible) {
         INFO(name.toStdString());
