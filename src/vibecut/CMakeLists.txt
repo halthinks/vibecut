@@ -9,6 +9,7 @@ set(kdenlive_SRCS
   vibecut/vibecutjobmanager.cpp
   vibecut/vibecutplangate.cpp
   vibecut/vibecutprojectrevision.cpp
+  vibecut/vibecutprojectrules.cpp
   vibecut/vibecutprojectstate.cpp
   vibecut/vibecuttoolpolicies.cpp
   vibecut/vibecuttools.cpp

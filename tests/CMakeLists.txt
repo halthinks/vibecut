@@ -44,6 +44,7 @@ set(KdenliveTest_SOURCES
     vibecutjobmanagertest.cpp
     vibecutplangatetest.cpp
     vibecutprojectrevisiontest.cpp
+    vibecutprojectrulestest.cpp
     vibecuttest.cpp
     vibecuttoolpolicytest.cpp
 )
