@@ -22,6 +22,7 @@ set(kdenlive_SRCS
   vibecut/vibecutprojectrules.cpp
   vibecut/vibecutprojectsnapshot.cpp
   vibecut/vibecutprojectstate.cpp
+  vibecut/vibecutsubtitleedittools.cpp
   vibecut/vibecutsubtitlepipeline.cpp
   vibecut/vibecutsubtitletools.cpp
   vibecut/vibecuttoolpolicies.cpp
