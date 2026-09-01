@@ -18,6 +18,7 @@ set(kdenlive_SRCS
   vibecut/vibecutcontracts.cpp
   vibecut/vibecutconversationcontext.cpp
   vibecut/vibecutdeadartools.cpp
+  vibecut/vibecutdeadlinkedtools.cpp
   vibecut/vibecutedittools.cpp
   vibecut/vibecuteffectgrouptools.cpp
   vibecut/vibecuteffectkeyframetools.cpp
