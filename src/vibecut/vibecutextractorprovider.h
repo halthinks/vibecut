@@ -1,0 +1,53 @@
+/* SPDX-License-Identifier: GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL */
+#pragma once
+
+#include <QHash>
+#include <QJsonObject>
+#include <QString>
+#include <QStringList>
+
+#include <functional>
+#include <memory>
+
+class VibeCutJobManager;
+
+/** Provider-neutral capability boundary for model-backed media extractors.
+ *
+ * Deterministic built-in extractors (FFmpeg source/silence/loudness/shot/QA)
+ * remain native VibeCut tools. OCR, diarization, object/subject models and
+ * embeddings can register here without coupling the planner or evidence
+ * ledger to one vendor/runtime. Provider results must enter VibeCut through
+ * extractor-owned evidence paths, never through an unrestricted model write.
+ */
+class VibeCutExtractorProvider
+{
+public:
+    virtual ~VibeCutExtractorProvider() = default;
+    virtual QString id() const = 0;
+    virtual QString displayName() const = 0;
+    virtual QStringList capabilities() const = 0;
+    virtual bool configured(QString *error = nullptr) const = 0;
+
+    /** Start a provider operation. Input is provider-neutral at the registry
+     * boundary: capability, source/bin identity and optional parameters.
+     * Implementations return {ok, job_id/...}. Long work must use JobManager.
+     */
+    virtual QJsonObject start(const QString &capability, const QJsonObject &input,
+                              VibeCutJobManager *jobs, QString *error = nullptr) = 0;
+};
+
+class VibeCutExtractorProviderRegistry
+{
+public:
+    typedef std::function<std::unique_ptr<VibeCutExtractorProvider>()> Factory;
+
+    bool registerProvider(const QString &id, const Factory &factory, QString *error = nullptr);
+    QStringList providerIds() const;
+    std::unique_ptr<VibeCutExtractorProvider> create(const QString &id, QString *error = nullptr) const;
+    QStringList providerIdsForCapability(const QString &capability) const;
+
+    static VibeCutExtractorProviderRegistry &global();
+
+private:
+    QHash<QString, Factory> m_factories;
+};
