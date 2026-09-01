@@ -15,6 +15,7 @@
 #include "vibecutedittools.h"
 #include "vibecuteffectgrouptools.h"
 #include "vibecuteffectkeyframetools.h"
+#include "vibecuteffectstackcopytools.h"
 #include "vibecuteffecttools.h"
 #include "vibecutgrouptools.h"
 #include "vibecutmarkertools.h"
@@ -92,6 +93,10 @@ VibeCutToolSurface::VibeCutToolSurface(VibeCutTools *baseTools)
     error.clear();
     if (!registerVibeCutEffectKeyframeTools(*this, &error)) {
         qWarning().noquote() << QStringLiteral("[VibeCut] effect keyframe tools unavailable: %1").arg(error);
+    }
+    error.clear();
+    if (!registerVibeCutEffectStackCopyTools(*this, &error)) {
+        qWarning().noquote() << QStringLiteral("[VibeCut] effect stack copy tools unavailable: %1").arg(error);
     }
     error.clear();
     if (!registerVibeCutGroupTools(*this, &error)) {
