@@ -8,6 +8,7 @@
 #include "renderpresets/renderpresetmodel.hpp"
 #include "renderpresets/renderpresetrepository.hpp"
 #include "vibecutjobmanager.h"
+#include "vibecutpreflighttools.h"
 #include "vibecuttools.h"
 #include "vibecuttoolsurface.h"
 
@@ -15,6 +16,7 @@
 #include <QFile>
 #include <QFileInfo>
 #include <QJsonArray>
+#include <QJsonDocument>
 #include <QProcess>
 #include <QProcessEnvironment>
 
@@ -203,6 +205,21 @@ QJsonObject startRender(VibeCutTools *tools, const QJsonObject &input)
 {
     if (!tools || !tools->jobManager()) return err(QStringLiteral("VibeCut JobManager is unavailable."));
     if (!pCore || !pCore->currentDoc()) return err(QStringLiteral("No project is open."));
+
+    const bool useProxies = input.value(QStringLiteral("use_proxies")).toBool(false);
+    const QJsonObject preflight = vibeCutProjectPreflight();
+    if (!preflight.value(QStringLiteral("ok")).toBool(false)) {
+        return err(QStringLiteral("Project preflight could not run: %1").arg(preflight.value(QStringLiteral("error")).toString(QStringLiteral("unknown preflight error"))));
+    }
+    if (!preflight.value(QStringLiteral("ready_for_long_jobs")).toBool(false)) {
+        const QByteArray blockers = QJsonDocument(preflight.value(QStringLiteral("blockers")).toArray()).toJson(QJsonDocument::Compact);
+        return err(QStringLiteral("Render blocked by project preflight: %1").arg(QString::fromUtf8(blockers)));
+    }
+    const int proxyOnlyCount = preflight.value(QStringLiteral("proxy_only_asset_count")).toInt(0);
+    if (proxyOnlyCount > 0 && !useProxies) {
+        return err(QStringLiteral("Render blocked: %1 asset(s) are available only through proxies. Restore originals for a full-quality render or explicitly set use_proxies=true for a proxy render.").arg(proxyOnlyCount));
+    }
+
     if (pCore->projectDuration() < 2) return err(QStringLiteral("The timeline is empty; add clips before rendering."));
     if (!QFile::exists(KdenliveSettings::meltpath())) return err(QStringLiteral("Cannot find the configured MLT melt executable required for rendering."));
     if (!QFile::exists(KdenliveSettings::kdenliverendererpath())) return err(QStringLiteral("Cannot find Kdenlive's configured render helper executable."));
@@ -236,7 +253,7 @@ QJsonObject startRender(VibeCutTools *tools, const QJsonObject &input)
     RenderRequest request;
     request.setOutputFile(outputFile);
     request.loadPresetParams(presetName);
-    request.setProxyRendering(input.value(QStringLiteral("use_proxies")).toBool(false));
+    request.setProxyRendering(useProxies);
     request.setEmbedSubtitles(input.value(QStringLiteral("embed_subtitles")).toBool(false));
     request.setTwoPass(input.value(QStringLiteral("two_pass")).toBool(false));
     const int inFrame = input.contains(QStringLiteral("in_frame")) ? input.value(QStringLiteral("in_frame")).toInt(-1) : -1;
@@ -259,13 +276,14 @@ QJsonObject startRender(VibeCutTools *tools, const QJsonObject &input)
     }
 
     const QString jobId = tools->jobManager()->createJob(QStringLiteral("render"), QStringLiteral("Render %1").arg(QFileInfo(outputFile).fileName()), true);
-    tools->jobManager()->markRunning(jobId, QStringLiteral("Prepared %1 Kdenlive render job(s).").arg(jobs.size()));
+    tools->jobManager()->markRunning(jobId, QStringLiteral("Prepared %1 Kdenlive render job(s) after project preflight.").arg(jobs.size()));
     RenderExecution *execution = new RenderExecution(tools, jobId, std::move(jobs), tools);
     execution->start();
 
     return QJsonObject{{QStringLiteral("ok"), true}, {QStringLiteral("started"), true}, {QStringLiteral("job_id"), jobId},
                        {QStringLiteral("preset"), presetName}, {QStringLiteral("output_file"), outputFile},
-                       {QStringLiteral("note"), QStringLiteral("Rendering is running through Kdenlive's native RenderRequest/kdenlive_render path and will be verified on completion.")}};
+                       {QStringLiteral("use_proxies"), useProxies}, {QStringLiteral("preflight"), preflight},
+                       {QStringLiteral("note"), QStringLiteral("Rendering passed VibeCut project preflight and is running through Kdenlive's native RenderRequest/kdenlive_render path; final output will be verified on completion.")}};
 }
 } // namespace
 
@@ -300,7 +318,7 @@ bool registerVibeCutRenderTools(VibeCutToolSurface &surface, QString *error)
                                   {QStringLiteral("required"), QJsonArray{QStringLiteral("preset"), QStringLiteral("output_file")}},
                                   {QStringLiteral("additionalProperties"), false}};
     const QJsonObject startSchema{{QStringLiteral("name"), QStringLiteral("render_start")},
-                                  {QStringLiteral("description"), QStringLiteral("Render the active project/range with an installed Kdenlive preset through RenderRequest and kdenlive_render. Async, cancellable, and final output files are verified. Relative output paths resolve under the project's render folder; overwrite requires explicit true.")},
+                                  {QStringLiteral("description"), QStringLiteral("Run project preflight, then render the active project/range with an installed Kdenlive preset through RenderRequest and kdenlive_render. Hard-missing media blocks the job; proxy-only assets require use_proxies=true. Async, cancellable, and final output files are verified.")},
                                   {QStringLiteral("input_schema"), inputSchema}};
     VibeCutToolPolicy renderPolicy;
     renderPolicy.name = QStringLiteral("render_start");
