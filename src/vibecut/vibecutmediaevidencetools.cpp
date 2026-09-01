@@ -2,6 +2,7 @@
 #include "vibecutmediaevidencetools.h"
 
 #include "vibecutblackextractortools.h"
+#include "vibecutfreezeextractortools.h"
 #include "vibecutloudnessextractortools.h"
 #include "vibecutmediaevidence.h"
 #include "vibecutshotextractortools.h"
@@ -113,5 +114,6 @@ bool registerVibeCutMediaEvidenceTools(VibeCutToolSurface &surface, QString *err
     if (!registerVibeCutSilenceExtractorTools(surface, error)) return false;
     if (!registerVibeCutLoudnessExtractorTools(surface, error)) return false;
     if (!registerVibeCutShotExtractorTools(surface, error)) return false;
-    return registerVibeCutBlackExtractorTools(surface, error);
+    if (!registerVibeCutBlackExtractorTools(surface, error)) return false;
+    return registerVibeCutFreezeExtractorTools(surface, error);
 }
