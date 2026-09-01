@@ -97,6 +97,7 @@ TEST_CASE("canonical VibeCut surface exposes governed editing breadth", "[vibecu
         QStringLiteral("bin_relink_missing"),
         QStringLiteral("bin_relink_missing_batch"),
         QStringLiteral("bin_replace_source"),
+        QStringLiteral("bulk_delete"),
         QStringLiteral("clip_ripple_trim"),
         QStringLiteral("clip_delete"),
         QStringLiteral("track_delete"),
