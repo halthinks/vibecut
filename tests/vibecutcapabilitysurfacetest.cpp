@@ -13,6 +13,7 @@ TEST_CASE("canonical VibeCut surface exposes governed editing breadth", "[vibecu
         QStringLiteral("bin_folder_create"),
         QStringLiteral("bin_import_file"),
         QStringLiteral("bin_insert_timeline"),
+        QStringLiteral("bin_metadata_set"),
         QStringLiteral("bin_move_to_folder"),
         QStringLiteral("clip_move"),
         QStringLiteral("clip_split"),
@@ -52,6 +53,7 @@ TEST_CASE("canonical VibeCut surface exposes governed editing breadth", "[vibecu
 
     const QStringList readOnly = {
         QStringLiteral("bin_list"),
+        QStringLiteral("bin_metadata_get"),
         QStringLiteral("bin_source_inspect"),
         QStringLiteral("bin_missing_list"),
         QStringLiteral("bin_folders_list"),
