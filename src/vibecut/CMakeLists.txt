@@ -25,6 +25,7 @@ set(kdenlive_SRCS
   vibecut/vibecuthooks.cpp
   vibecut/vibecutjobmanager.cpp
   vibecut/vibecutjobtools.cpp
+  vibecut/vibecutloudnessextractortools.cpp
   vibecut/vibecutmarkertools.cpp
   vibecut/vibecutmediaevidence.cpp
   vibecut/vibecutmediaevidencetools.cpp
