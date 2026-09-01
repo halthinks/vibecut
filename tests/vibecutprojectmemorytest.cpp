@@ -5,6 +5,7 @@
 #include <QDir>
 #include <QFile>
 #include <QJsonArray>
+#include <QJsonObject>
 #include <QTemporaryDir>
 
 TEST_CASE("project memory loads bounded versioned sidecar beside project", "[vibecut][memory]")
