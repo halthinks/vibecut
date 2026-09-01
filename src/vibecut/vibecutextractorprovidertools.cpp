@@ -3,6 +3,7 @@
 
 #include "vibecutextractorprovider.h"
 #include "vibecutjobmanager.h"
+#include "vibecutmediaevidence.h"
 #include "vibecuttools.h"
 #include "vibecuttoolsurface.h"
 
@@ -41,6 +42,9 @@ QJsonObject listProviders(const QJsonObject &input)
 QJsonObject startProvider(VibeCutTools *tools, const QJsonObject &input)
 {
     if (!tools) return err(QStringLiteral("Native VibeCutTools/JobManager is unavailable."));
+    QString persistReadyError;
+    if (!VibeCutMediaEvidence::canPersistCurrent(&persistReadyError)) return err(persistReadyError);
+
     const QString providerId = input.value(QStringLiteral("provider_id")).toString().trimmed();
     const QString capability = input.value(QStringLiteral("capability")).toString().trimmed().toLower();
     const QJsonObject request = input.value(QStringLiteral("request")).toObject();
@@ -60,8 +64,19 @@ QJsonObject startProvider(VibeCutTools *tools, const QJsonObject &input)
         return err(configuredError.isEmpty() ? QStringLiteral("Extractor provider '%1' is not configured.").arg(providerId) : configuredError);
     }
 
+    VibeCutExtractorProviderContext context;
+    context.jobs = tools->jobManager();
+    context.persistEvidence = [](const QString &sourceId,
+                                 const QString &sourceFingerprint,
+                                 const QString &extractorId,
+                                 const QString &extractorVersion,
+                                 const QList<VibeCutMediaEvidenceRecord> &records,
+                                 QString *error) {
+        return VibeCutMediaEvidence::replaceSourceExtractorCurrent(sourceId, sourceFingerprint, extractorId, extractorVersion, records, error);
+    };
+
     QString startError;
-    QJsonObject result = provider->start(capability, request, tools->jobManager(), &startError);
+    QJsonObject result = provider->start(capability, request, context, &startError);
     if (!startError.isEmpty()) return err(startError);
     if (!result.contains(QStringLiteral("ok"))) result.insert(QStringLiteral("ok"), true);
     result.insert(QStringLiteral("provider_id"), providerId);
@@ -101,7 +116,7 @@ bool registerVibeCutExtractorProviderTools(VibeCutToolSurface &surface, QString 
     startPolicy.asynchronous = true;
     startPolicy.mutatesProject = false;
     return surface.registerTool(QJsonObject{{QStringLiteral("name"), startPolicy.name},
-                                            {QStringLiteral("description"), QStringLiteral("Start one explicitly registered model-backed media extractor capability through the shared VibeCut JobManager. The provider must declare the requested capability; no arbitrary executable/provider escape hatch is exposed.")},
+                                            {QStringLiteral("description"), QStringLiteral("Start one explicitly registered model-backed media extractor capability through the shared VibeCut JobManager and validated evidence sink. The provider must declare the requested capability; no arbitrary executable/provider or generic evidence-write escape hatch is exposed.")},
                                             {QStringLiteral("input_schema"), startInput}},
                                 startPolicy, [tools](const QJsonObject &input) { return startProvider(tools, input); }, error);
 }
