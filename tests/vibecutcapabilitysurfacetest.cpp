@@ -58,6 +58,8 @@ TEST_CASE("canonical VibeCut surface exposes governed editing breadth", "[vibecu
     }
 
     const QStringList readOnly = {
+        QStringLiteral("audio_monitor_status"),
+        QStringLiteral("audio_monitor_set"),
         QStringLiteral("bin_list"),
         QStringLiteral("bin_metadata_get"),
         QStringLiteral("bin_source_inspect"),
