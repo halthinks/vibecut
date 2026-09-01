@@ -11,6 +11,7 @@ set(kdenlive_SRCS
   vibecut/vibecutbintools.cpp
   vibecut/vibecutbulkcopytools.cpp
   vibecut/vibecutbulktools.cpp
+  vibecut/vibecutbuseffecttools.cpp
   vibecut/vibecutcompositiontracktools.cpp
   vibecut/vibecutcontracts.cpp
   vibecut/vibecutconversationcontext.cpp
