@@ -22,11 +22,13 @@ For each representative edit family, verify:
 6. live-state postconditions verify;
 7. project diff reflects the actual change;
 8. Undo restores the previous project state;
-9. stale plans are refused after an intervening edit.
+9. Redo restores the verified edited state where applicable;
+10. stale plans are refused after an intervening edit.
 
 Representative families:
 
 - clip move, split, trim, ripple and delete;
+- `timeline_range_remove` in `lift` and `ripple` modes;
 - bulk edit;
 - group edit;
 - track create/move/rename/lock/enable/delete;
@@ -35,6 +37,14 @@ Representative families:
 - title create/edit;
 - bin import/folder/source replacement;
 - relink/proxy actions.
+
+### `timeline_range_remove` safety cases
+
+- Lift an exact range spanning representative audio/video material; verify selected-track content is gone only inside the requested range and Undo restores the canonical pre-edit state.
+- Ripple-remove an exact range; verify downstream material shifts by exactly the removed width and Undo/Redo reproduce the two canonical states.
+- Include a locked track in the target set; verify the tool fails closed before partial mutation.
+- Supply an invalid/out-of-bounds range; verify no mutation and no success claim.
+- Verify the tool remains classified as reversible `MajorEdit` and project-mutating in the live policy surface.
 
 ## 3. Trust / policy
 
@@ -71,6 +81,13 @@ Representative families:
 - Repeated-take candidate grouping matches transcript evidence.
 - Repeated-take review exposes quality evidence without inventing a winner.
 - Selection planning only follows the user's explicit keep choice.
+- `repeated_take_selection_execute` re-runs/revalidates the current review immediately before mutation.
+- Repeated-take execution requires explicit `lift` or `ripple` semantics and removes only rejected ranges.
+- Multiple rejected ranges execute right-to-left so earlier absolute coordinates remain valid under ripple semantics.
+- Overlapping rejected ranges are refused before mutation.
+- A failure in any rejected range rolls the whole batch back; no partial success is reported.
+- A successful repeated-take batch is one native Undo step; Undo restores the canonical pre-selection timeline and Redo restores the verified selected-take result.
+- Verify `repeated_take_selection_execute` remains reversible `MajorEdit` and project-mutating in the live policy surface.
 
 ## 7. Project resilience
 
@@ -87,13 +104,24 @@ Representative families:
 - Provider hot reload does not corrupt the current project.
 - A provider/extractor failure is reported as failure and does not manufacture evidence or project success.
 
+## 9. Quantitative release evidence
+
+Until the full golden-fixture suite is landed, record the applicable representative checks in a reproducible release note. As Phase 6 matures, these become machine-comparable release metrics:
+
+- verified-success rate: requested postcondition vs observed live state;
+- Undo fidelity: canonical pre-edit state vs state restored after Undo;
+- Redo fidelity: canonical verified edited state vs state restored after Redo;
+- false-success count must be zero for destructive edit cases;
+- stale-plan execution count must be zero;
+- partial-mutation-on-failure count must be zero.
+
 ## Release decision
 
 A candidate may be merged to `vibecut` only when:
 
 - CI compile/link/tests are green;
 - Debian package creation and install/remove smoke are green;
-- the applicable hands-on checks above pass;
+- the applicable hands-on checks above pass, including the new timeline-range and repeated-take execution paths;
 - no known failure can result in a false success, silent destructive edit, stale-plan execution or fabricated evidence.
 
 An upstream PR to original VibeCut is a separate decision. The halthinks/VibeCut fork remains a complete product line whether or not upstream chooses to merge any subset of these capabilities.
