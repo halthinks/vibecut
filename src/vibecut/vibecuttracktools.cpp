@@ -52,7 +52,7 @@ QJsonObject listTracks(const QJsonObject &)
                                   {QStringLiteral("audio"), audio},
                                   {QStringLiteral("locked"), locked(model, trackId)},
                                   {QStringLiteral("enabled"), !isDisabled},
-                                  {QStringLiteral(audio ? "muted" : "hidden"), isDisabled},
+                                  {audio ? QStringLiteral("muted") : QStringLiteral("hidden"), isDisabled},
                                   {QStringLiteral("clip_count"), model->getTrackClipsCount(trackId)},
                                   {QStringLiteral("composition_count"), model->getTrackCompositionsCount(trackId)}});
     }
@@ -107,7 +107,7 @@ QJsonObject moveTrack(const QJsonObject &input)
     if (direction != QLatin1String("up") && direction != QLatin1String("down")) return err(QStringLiteral("direction must be 'up' or 'down'"));
     const int oldPosition = model->getTrackPosition(trackId);
     if (!model->requestTrackMove(model, trackId, direction == QLatin1String("up"), true)) {
-        return err(QStringLiteral("Kdenlive rejected moving track %1 %2.").arg(trackId, direction));
+        return err(QStringLiteral("Kdenlive rejected moving track %1 %2.").arg(trackId).arg(direction));
     }
     const int newPosition = model->getTrackPosition(trackId);
     if (!model->isTrack(trackId) || newPosition == oldPosition) {
@@ -153,9 +153,6 @@ QJsonObject setTrackEnabled(const QJsonObject &input)
         return QJsonObject{{QStringLiteral("ok"), true}, {QStringLiteral("track_id"), trackId},
                            {QStringLiteral("enabled"), enabled}, {QStringLiteral("changed"), false}, {QStringLiteral("verified"), true}};
     }
-    // Kdenlive's hideTrack argument selects the enabled MLT hide mask: true ->
-    // audio=1/video=2 (normal), false -> 3 (muted/hidden). The controller also
-    // creates the native undo/redo command and refreshes timeline duration.
     controller->hideTrack(trackId, enabled, false);
     const bool liveEnabled = !disabled(model, trackId);
     if (liveEnabled != enabled) {
