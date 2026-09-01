@@ -39,7 +39,7 @@ TEST_CASE("canonical VibeCut surface exposes governed editing breadth", "[vibecu
         QStringLiteral("bin_list"), QStringLiteral("bin_metadata_get"), QStringLiteral("bin_source_inspect"), QStringLiteral("bin_missing_list"),
         QStringLiteral("bin_folders_list"), QStringLiteral("bin_relink_scan_directory"), QStringLiteral("bus_effects_inspect"),
         QStringLiteral("composition_a_track_inspect"), QStringLiteral("effect_group_inspect"), QStringLiteral("effect_keyframes_inspect"),
-        QStringLiteral("effects_available"), QStringLiteral("effects_inspect"),
+        QStringLiteral("effects_available"), QStringLiteral("effects_inspect"), QStringLiteral("extractor_providers_list"),
         QStringLiteral("media_evidence_freshness"), QStringLiteral("media_evidence_list"), QStringLiteral("media_evidence_summary"),
         QStringLiteral("mix_inspect"), QStringLiteral("project_preflight"), QStringLiteral("proxy_status"),
         QStringLiteral("render_profile_policy"), QStringLiteral("render_recommend"), QStringLiteral("routing_status"),
@@ -77,7 +77,7 @@ TEST_CASE("canonical VibeCut surface exposes governed editing breadth", "[vibecu
     const QStringList asyncMedia = {
         QStringLiteral("media_silence_refresh"), QStringLiteral("media_loudness_refresh"), QStringLiteral("media_shots_refresh"),
         QStringLiteral("media_black_refresh"), QStringLiteral("media_freeze_refresh"), QStringLiteral("media_blur_refresh"),
-        QStringLiteral("media_analyze_refresh"),
+        QStringLiteral("media_similarity_compare"), QStringLiteral("media_analyze_refresh"), QStringLiteral("extractor_provider_start"),
     };
     for (const QString &name : asyncMedia) {
         INFO(name.toStdString());
