@@ -6,6 +6,13 @@
 #include <QString>
 #include <QUrl>
 
+/** Provider-neutral, timestamp/range-addressable media evidence.
+ *
+ * The original schema remains wire-compatible: the cross-modal identity fields
+ * below are optional. Older .vibecutmedia.json sidecars therefore continue to
+ * load while diarization, OCR, visual understanding, audio-event, and embedding
+ * extractors can share one governed evidence contract.
+ */
 struct VibeCutMediaEvidenceRecord
 {
     QString id;
@@ -14,6 +21,11 @@ struct VibeCutMediaEvidenceRecord
     QString extractorId;
     QString extractorVersion;
     QString kind;
+    QString modality;
+    QString label;
+    QString subjectId;
+    QString speakerId;
+    QString speakerName;
     int startFrame = -1;
     int endFrame = -1;
     QString text;
@@ -23,6 +35,7 @@ struct VibeCutMediaEvidenceRecord
 
     QJsonObject toJson() const;
     static bool fromJson(const QJsonObject &object, VibeCutMediaEvidenceRecord &record, QString *error = nullptr);
+    static QString inferModality(const QString &kind);
 };
 
 class VibeCutMediaEvidence
