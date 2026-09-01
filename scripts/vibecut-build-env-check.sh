@@ -3,6 +3,7 @@
 # Repository-local prerequisite diagnostics for the current VibeCut/Kdenlive tree.
 set -euo pipefail
 
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 missing=0
 TMP="$(mktemp -d "${TMPDIR:-/tmp}/vibecut-env-XXXXXX")"
 trap 'rm -rf "$TMP"' EXIT
@@ -62,7 +63,8 @@ fi
 
 # CMake is authoritative for the component-heavy dependency families. This
 # probe mirrors the root CMakeLists minimums and required components without
-# configuring the whole application tree.
+# configuring the whole application tree. Use this repository's custom Find
+# modules for MLT/FFmpeg exactly as the real build does.
 cat >"$TMP/CMakeLists.txt" <<'EOF'
 cmake_minimum_required(VERSION 3.16)
 project(VibeCutDependencyProbe LANGUAGES CXX)
@@ -72,7 +74,7 @@ set(KF_DEP_VERSION 6.21.0)
 set(MLT_MIN_VERSION 7.38.0)
 
 find_package(ECM ${KF_DEP_VERSION} REQUIRED CONFIG)
-set(CMAKE_MODULE_PATH ${ECM_MODULE_PATH})
+set(CMAKE_MODULE_PATH ${ECM_MODULE_PATH} "@VIBECUT_ROOT@/cmake/modules")
 
 find_package(Qt6 ${QT_MIN_VERSION} REQUIRED COMPONENTS
   Core Widgets Svg Qml Quick QuickControls2 Concurrent QuickWidgets
@@ -83,7 +85,7 @@ find_package(KF6 ${KF_DEP_VERSION} REQUIRED COMPONENTS
   WidgetsAddons NotifyConfig NewStuff XmlGui Notifications GuiAddons
   TextWidgets IconThemes Solid FileMetaData Purpose DBusAddons)
 
-# Optional in upstream Kdenlive, but required/used by VibeCut when available.
+# Optional in upstream Kdenlive, but used by VibeCut when available.
 find_package(KF6 ${KF_DEP_VERSION} QUIET COMPONENTS Crash Wallet)
 
 find_package(KDDockWidgets-qt6 2.4.0 REQUIRED)
@@ -92,6 +94,7 @@ find_package(FFmpeg REQUIRED COMPONENTS AVFORMAT AVCODEC SWRESAMPLE AVUTIL)
 find_package(OpenTimelineIO REQUIRED)
 find_package(Imath REQUIRED)
 EOF
+sed -i "s|@VIBECUT_ROOT@|$ROOT|g" "$TMP/CMakeLists.txt"
 
 if command -v cmake >/dev/null 2>&1; then
   if ! cmake -S "$TMP" -B "$TMP/build" -G Ninja >"$TMP/cmake.log" 2>&1; then
