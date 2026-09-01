@@ -34,6 +34,7 @@ set(kdenlive_SRCS
   vibecut/vibecutproxytools.cpp
   vibecut/vibecutrelinkdiscoverytools.cpp
   vibecut/vibecutrelinktools.cpp
+  vibecut/vibecutrenderrecommendtools.cpp
   vibecut/vibecutrendertools.cpp
   vibecut/vibecutroutingtools.cpp
   vibecut/vibecutscript.cpp
