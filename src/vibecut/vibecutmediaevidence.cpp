@@ -110,6 +110,28 @@ QString VibeCutMediaEvidence::fileName()
     return QStringLiteral(".vibecutmedia.json");
 }
 
+bool VibeCutMediaEvidence::canPersistCurrent(QString *error)
+{
+    if (error) error->clear();
+    if (!pCore || !pCore->currentDoc()) {
+        if (error) *error = QStringLiteral("No current project is available.");
+        return false;
+    }
+    const QUrl projectUrl = pCore->currentDoc()->url();
+    const QString path = pathFor(projectUrl);
+    if (path.isEmpty()) {
+        if (error) *error = QStringLiteral("Project must be saved locally before media analysis can persist evidence.");
+        return false;
+    }
+    const QFileInfo projectInfo(projectUrl.toLocalFile());
+    QDir directory = projectInfo.absoluteDir();
+    if (!directory.exists() || !directory.isReadable()) {
+        if (error) *error = QStringLiteral("Project directory is unavailable for media-evidence persistence.");
+        return false;
+    }
+    return true;
+}
+
 QJsonArray VibeCutMediaEvidence::loadForProjectUrl(const QUrl &projectUrl, QString *error)
 {
     if (error) error->clear();
