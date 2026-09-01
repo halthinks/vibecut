@@ -33,6 +33,7 @@
 #include "vibecutroutingtools.h"
 #include "vibecutselectiontools.h"
 #include "vibecutsequencetools.h"
+#include "vibecutsimilaritytools.h"
 #include "vibecutsubtitleedittools.h"
 #include "vibecuttitleinspecttools.h"
 #include "vibecuttitletools.h"
@@ -116,6 +117,10 @@ VibeCutToolSurface::VibeCutToolSurface(VibeCutTools *baseTools)
     error.clear();
     if (!registerVibeCutMediaEvidenceTools(*this, &error)) {
         qWarning().noquote() << QStringLiteral("[VibeCut] media evidence tools unavailable: %1").arg(error);
+    }
+    error.clear();
+    if (!registerVibeCutSimilarityTools(*this, &error)) {
+        qWarning().noquote() << QStringLiteral("[VibeCut] media similarity tools unavailable: %1").arg(error);
     }
     error.clear();
     if (!registerVibeCutMemoryTools(*this, &error)) {
@@ -242,7 +247,7 @@ bool VibeCutToolSurface::overrideBaseTool(const QJsonObject &schema, const VibeC
     if (!validateRegistration(schema, policy, handler, error)) return false;
     const QString name = policy.name;
     if (!baseContains(name)) {
-        if (error) *error = QStringLiteral("cannot override unknown native tool '%1'").arg(name));
+        if (error) *error = QStringLiteral("cannot override unknown native tool '%1'").arg(name);
         return false;
     }
     if (m_extensions.contains(name) || m_overrides.contains(name)) {
