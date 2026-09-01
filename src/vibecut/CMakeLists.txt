@@ -29,6 +29,7 @@ set(kdenlive_SRCS
   vibecut/vibecutjobtools.cpp
   vibecut/vibecutloudnessextractortools.cpp
   vibecut/vibecutmarkertools.cpp
+  vibecut/vibecutmediaanalyzetools.cpp
   vibecut/vibecutmediaevidence.cpp
   vibecut/vibecutmediaevidencetools.cpp
   vibecut/vibecutmediaindex.cpp
