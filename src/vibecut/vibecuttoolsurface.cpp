@@ -27,6 +27,7 @@
 #include "vibecutsubtitleedittools.h"
 #include "vibecuttitletools.h"
 #include "vibecuttracktools.h"
+#include "vibecuttransitionparamtools.h"
 #include "vibecuttransitiontools.h"
 #include "vibecuttools.h"
 
@@ -125,6 +126,10 @@ VibeCutToolSurface::VibeCutToolSurface(VibeCutTools *baseTools)
     error.clear();
     if (!registerVibeCutTransitionTools(*this, &error)) {
         qWarning().noquote() << QStringLiteral("[VibeCut] transition tools unavailable: %1").arg(error);
+    }
+    error.clear();
+    if (!registerVibeCutTransitionParameterTools(*this, &error)) {
+        qWarning().noquote() << QStringLiteral("[VibeCut] transition parameter tools unavailable: %1").arg(error);
     }
     error.clear();
     if (!registerVibeCutRenderTools(*this, &error)) {
