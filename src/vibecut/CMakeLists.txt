@@ -60,6 +60,7 @@ set(kdenlive_SRCS
   vibecut/vibecutsequencetools.cpp
   vibecut/vibecutshotextractortools.cpp
   vibecut/vibecutsilenceextractortools.cpp
+  vibecut/vibecutsimilaritytools.cpp
   vibecut/vibecutsourceextractortools.cpp
   vibecut/vibecutsubtitleedittools.cpp
   vibecut/vibecutsubtitlepipeline.cpp
