@@ -33,6 +33,7 @@
 #include "vibecutrelinktools.h"
 #include "vibecutrenderrecommendtools.h"
 #include "vibecutrendertools.h"
+#include "vibecutrepeatedtaketools.h"
 #include "vibecutroutingtools.h"
 #include "vibecutselectiontools.h"
 #include "vibecutsequencetools.h"
@@ -111,6 +112,8 @@ VibeCutToolSurface::VibeCutToolSurface(VibeCutTools *baseTools)
     if (!registerVibeCutRelinkTools(*this, &error)) qWarning().noquote() << QStringLiteral("[VibeCut] relink tools unavailable: %1").arg(error);
     error.clear();
     if (!registerVibeCutRenderRecommendTools(*this, &error)) qWarning().noquote() << QStringLiteral("[VibeCut] render recommendation tools unavailable: %1").arg(error);
+    error.clear();
+    if (!registerVibeCutRepeatedTakeTools(*this, &error)) qWarning().noquote() << QStringLiteral("[VibeCut] repeated-take tools unavailable: %1").arg(error);
     error.clear();
     if (!registerVibeCutRoutingTools(*this, &error)) qWarning().noquote() << QStringLiteral("[VibeCut] routing tools unavailable: %1").arg(error);
     error.clear();
