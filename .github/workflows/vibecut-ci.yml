@@ -42,6 +42,37 @@ jobs:
         run: bash scripts/vibecut-build-env-check.sh
 
       - name: Configure, compile, and run VibeCut tests
+        id: verify
         env:
           VIBECUT_JOBS: 4
-        run: bash scripts/vibecut-verify.sh
+        run: |
+          set +e
+          bash scripts/vibecut-verify.sh 2>&1 | tee "$GITHUB_WORKSPACE/vibecut-verify.log"
+          status=${PIPESTATUS[0]}
+          set -e
+
+          {
+            echo "## VibeCut verification"
+            echo
+            echo "Exit status: $status"
+            echo
+            if [[ $status -ne 0 ]]; then
+              echo "### First diagnostic lines"
+              echo '```text'
+              grep -nE -m 120 '(^|[^[:alpha:]])(fatal error:|error:|CMake Error|FAILED:|undefined reference|ninja: build stopped|FAILED \(|[0-9]+ tests? failed)' "$GITHUB_WORKSPACE/vibecut-verify.log" || tail -n 160 "$GITHUB_WORKSPACE/vibecut-verify.log"
+              echo '```'
+            else
+              echo "Verification completed successfully."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          exit "$status"
+
+      - name: Upload verification log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: vibecut-verify-${{ github.run_id }}
+          path: vibecut-verify.log
+          if-no-files-found: warn
+          retention-days: 3
