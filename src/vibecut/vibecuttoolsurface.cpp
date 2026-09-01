@@ -5,6 +5,7 @@
 
 #include "vibecuttoolsurface.h"
 
+#include "vibecutaudiomonitortools.h"
 #include "vibecutbinmetadatatools.h"
 #include "vibecutbintools.h"
 #include "vibecutcompositiontracktools.h"
@@ -45,6 +46,10 @@ VibeCutToolSurface::VibeCutToolSurface(VibeCutTools *baseTools)
     : m_baseTools(baseTools)
 {
     QString error;
+    if (!registerVibeCutAudioMonitorTools(*this, &error)) {
+        qWarning().noquote() << QStringLiteral("[VibeCut] audio monitor tools unavailable: %1").arg(error);
+    }
+    error.clear();
     if (!registerVibeCutBinTools(*this, &error)) {
         qWarning().noquote() << QStringLiteral("[VibeCut] bin tools unavailable: %1").arg(error);
     }
