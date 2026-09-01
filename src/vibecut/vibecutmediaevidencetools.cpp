@@ -5,6 +5,7 @@
 #include "bin/projectitemmodel.h"
 #include "core.h"
 #include "vibecutblackextractortools.h"
+#include "vibecutblurextractortools.h"
 #include "vibecutfreezeextractortools.h"
 #include "vibecutloudnessextractortools.h"
 #include "vibecutmediaanalyzetools.h"
@@ -40,7 +41,8 @@ QHash<QString, QString> expectedExtractorVersions()
                                    {QStringLiteral("loudness_detect"), QStringLiteral("1.0.0")},
                                    {QStringLiteral("shot_boundary"), QStringLiteral("1.0.0")},
                                    {QStringLiteral("black_detect"), QStringLiteral("1.0.0")},
-                                   {QStringLiteral("freeze_detect"), QStringLiteral("1.0.0")}};
+                                   {QStringLiteral("freeze_detect"), QStringLiteral("1.0.0")},
+                                   {QStringLiteral("blur_detect"), QStringLiteral("1.0.0")}};
 }
 
 QJsonObject summary(const QJsonObject &)
@@ -145,7 +147,8 @@ QJsonObject freshness(const QJsonObject &input)
     for (const QString &extractor : expected) {
         const bool applicable = extractor == QLatin1String("source_metadata") ||
                                 ((extractor == QLatin1String("silence_detect") || extractor == QLatin1String("loudness_detect")) && clip->hasAudio()) ||
-                                ((extractor == QLatin1String("shot_boundary") || extractor == QLatin1String("black_detect") || extractor == QLatin1String("freeze_detect")) && clip->hasVideo());
+                                ((extractor == QLatin1String("shot_boundary") || extractor == QLatin1String("black_detect") ||
+                                  extractor == QLatin1String("freeze_detect") || extractor == QLatin1String("blur_detect")) && clip->hasVideo());
         if (!applicable) continue;
         const bool present = states.contains(extractor);
         const State state = states.value(extractor);
@@ -233,5 +236,6 @@ bool registerVibeCutMediaEvidenceTools(VibeCutToolSurface &surface, QString *err
     if (!registerVibeCutShotExtractorTools(surface, error)) return false;
     if (!registerVibeCutBlackExtractorTools(surface, error)) return false;
     if (!registerVibeCutFreezeExtractorTools(surface, error)) return false;
+    if (!registerVibeCutBlurExtractorTools(surface, error)) return false;
     return registerVibeCutMediaAnalyzeTools(surface, error);
 }
