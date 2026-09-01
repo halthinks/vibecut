@@ -1,0 +1,44 @@
+name: VibeCut CI
+
+on:
+  push:
+    branches:
+      - agent/vibecut-architecture-slices
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    container:
+      image: debian:trixie
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Prepare container
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends ca-certificates git bash
+
+      - name: Checkout branch
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Bootstrap matching Kdenlive build stack
+        env:
+          DEBIAN_FRONTEND: noninteractive
+        run: |
+          VIBECUT_BOOTSTRAP_SKIP_VERIFY=1 bash scripts/vibecut-bootstrap-debian.sh
+
+      - name: Verify dependency contract
+        run: bash scripts/vibecut-build-env-check.sh
+
+      - name: Configure, compile, and run VibeCut tests
+        env:
+          VIBECUT_JOBS: 4
+        run: bash scripts/vibecut-verify.sh
