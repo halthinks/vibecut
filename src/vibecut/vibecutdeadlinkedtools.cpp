@@ -29,6 +29,13 @@ std::shared_ptr<TimelineItemModel> currentModel()
     return timeline ? timeline->model() : nullptr;
 }
 
+QSet<int> trackSet(const QVector<int> &tracks)
+{
+    QSet<int> result;
+    for (int track : tracks) result.insert(track);
+    return result;
+}
+
 QString groupRangeKey(const std::shared_ptr<TimelineItemModel> &timeline, int clipId, int start, int end)
 {
     std::vector<int> leaves;
@@ -63,7 +70,7 @@ bool groupTracksForRange(const std::shared_ptr<TimelineItemModel> &timeline, int
         }
         uniqueTracks.insert(timeline->getClipTrackId(id));
     }
-    tracks = uniqueTracks.values().toVector();
+    for (int track : uniqueTracks) tracks.append(track);
     std::sort(tracks.begin(), tracks.end());
     return !tracks.isEmpty();
 }
@@ -71,7 +78,7 @@ bool groupTracksForRange(const std::shared_ptr<TimelineItemModel> &timeline, int
 bool downstreamGroupsStayInsideTracks(const std::shared_ptr<TimelineItemModel> &timeline, const QVector<int> &allowedTracks,
                                       int fromFrame, QString &error)
 {
-    const QSet<int> allowed(allowedTracks.begin(), allowedTracks.end());
+    const QSet<int> allowed = trackSet(allowedTracks);
     QSet<int> checkedLeaves;
     for (int trackId : allowedTracks) {
         const std::unordered_set<int> items = timeline->getItemsInRange(trackId, fromFrame, -1, false);
@@ -109,10 +116,10 @@ QJsonObject applyLinked(VibeCutToolSurface *surface, const QJsonObject &input)
     }
 
     struct Work {
-        int trackId = -1;
-        int start = -1;
-        int end = -1;
-        int frames = 0;
+        int trackId;
+        int start;
+        int end;
+        int frames;
         QString key;
     };
     std::vector<Work> work;
@@ -130,7 +137,13 @@ QJsonObject applyLinked(VibeCutToolSurface *surface, const QJsonObject &input)
         const QString key = groupRangeKey(timeline, anchor, start, end);
         if (seen.contains(key)) continue;
         seen.insert(key);
-        work.push_back(Work{trackId, start, end, end - start, key});
+        Work item;
+        item.trackId = trackId;
+        item.start = start;
+        item.end = end;
+        item.frames = end - start;
+        item.key = key;
+        work.push_back(item);
     }
     if (work.empty()) {
         return QJsonObject{{QStringLiteral("ok"), true}, {QStringLiteral("changed"), false},
@@ -142,7 +155,6 @@ QJsonObject applyLinked(VibeCutToolSurface *surface, const QJsonObject &input)
         return a.trackId > b.trackId;
     });
 
-    // Validate all current group/downstream topology before the first mutation.
     for (const Work &candidate : work) {
         const int anchor = timeline->getClipByPosition(candidate.trackId, candidate.start);
         QVector<int> tracks;
@@ -205,14 +217,13 @@ QJsonObject applyLinked(VibeCutToolSurface *surface, const QJsonObject &input)
         }
         QSet<int> middleTracks;
         for (int leaf : middleLeaves) {
-            if (!timeline->isClip(leaf) || timeline->getClipPosition(leaf) != candidate.start ||
-                timeline->getClipPlaytime(leaf) != candidate.frames) {
+            if (!timeline->isClip(leaf) || timeline->getClipPosition(leaf) != candidate.start || timeline->getClipPlaytime(leaf) != candidate.frames) {
                 undo();
                 return err(QStringLiteral("Linked middle group did not split into identical dead-air spans; all changes rolled back."));
             }
             middleTracks.insert(timeline->getClipTrackId(leaf));
         }
-        if (middleTracks != QSet<int>(allowedTracks.begin(), allowedTracks.end())) {
+        if (middleTracks != trackSet(allowedTracks)) {
             undo();
             return err(QStringLiteral("Linked middle group track set changed unexpectedly; all changes rolled back."));
         }
@@ -227,8 +238,7 @@ QJsonObject applyLinked(VibeCutToolSurface *surface, const QJsonObject &input)
                 return err(QStringLiteral("Linked dead-air leaf %1 is still present after deletion; all changes rolled back.").arg(leaf));
             }
         }
-        if (!TimelineFunctions::removeSpace(timeline, QPoint(candidate.start, candidate.end), undo, redo,
-                                            allowedTracks, false)) {
+        if (!TimelineFunctions::removeSpace(timeline, QPoint(candidate.start, candidate.end), undo, redo, allowedTracks, false)) {
             undo();
             return err(QStringLiteral("Failed to ripple linked tracks after deleting [%1,%2); all changes rolled back.")
                            .arg(candidate.start).arg(candidate.end));
