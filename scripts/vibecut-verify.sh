@@ -14,6 +14,10 @@ printf 'source: %s\n' "$ROOT"
 printf 'build:  %s\n' "$BUILD_DIR"
 printf 'type:   %s\n\n' "$BUILD_TYPE"
 
+# Fail early with a readable dependency report instead of letting CMake fail
+# deep in Kdenlive configuration on an incomplete machine.
+bash "$ROOT/scripts/vibecut-build-env-check.sh"
+
 cmake -S "$ROOT" -B "$BUILD_DIR" -G "$GENERATOR" \
   -DCMAKE_BUILD_TYPE="$BUILD_TYPE" \
   -DBUILD_TESTING=ON \
