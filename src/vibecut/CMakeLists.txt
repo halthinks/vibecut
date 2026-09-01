@@ -6,6 +6,7 @@ set(kdenlive_SRCS
   vibecut/vibecutagent.cpp
   vibecut/vibecutagentprovider.cpp
   vibecut/vibecutaudiomonitortools.cpp
+  vibecut/vibecutbinfoldertools.cpp
   vibecut/vibecutbinmetadatatools.cpp
   vibecut/vibecutbintools.cpp
   vibecut/vibecutbulkcopytools.cpp
