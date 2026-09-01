@@ -1,6 +1,8 @@
 /* SPDX-License-Identifier: GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL */
 #pragma once
 
+#include "vibecutmediaevidence.h"
+
 #include <QHash>
 #include <QJsonObject>
 #include <QString>
@@ -11,13 +13,29 @@
 
 class VibeCutJobManager;
 
+struct VibeCutExtractorProviderContext
+{
+    VibeCutJobManager *jobs = nullptr;
+    /** Canonical evidence sink. Provider adapters submit only extractor-owned
+     * records through this callback; the evidence ledger validates source,
+     * fingerprint, extractor identity/version, ranges and confidence before
+     * atomically replacing that extractor slice.
+     */
+    std::function<bool(const QString &sourceId,
+                       const QString &sourceFingerprint,
+                       const QString &extractorId,
+                       const QString &extractorVersion,
+                       const QList<VibeCutMediaEvidenceRecord> &records,
+                       QString *error)> persistEvidence;
+};
+
 /** Provider-neutral capability boundary for model-backed media extractors.
  *
  * Deterministic built-in extractors (FFmpeg source/silence/loudness/shot/QA)
  * remain native VibeCut tools. OCR, diarization, object/subject models and
  * embeddings can register here without coupling the planner or evidence
- * ledger to one vendor/runtime. Provider results must enter VibeCut through
- * extractor-owned evidence paths, never through an unrestricted model write.
+ * ledger to one vendor/runtime. Provider results enter through the validated
+ * evidence sink; the planner never gets a generic evidence-write capability.
  */
 class VibeCutExtractorProvider
 {
@@ -30,10 +48,12 @@ public:
 
     /** Start a provider operation. Input is provider-neutral at the registry
      * boundary: capability, source/bin identity and optional parameters.
-     * Implementations return {ok, job_id/...}. Long work must use JobManager.
+     * Implementations return {ok, job_id/...}; long work uses context.jobs and
+     * completed evidence must flow through context.persistEvidence.
      */
     virtual QJsonObject start(const QString &capability, const QJsonObject &input,
-                              VibeCutJobManager *jobs, QString *error = nullptr) = 0;
+                              const VibeCutExtractorProviderContext &context,
+                              QString *error = nullptr) = 0;
 };
 
 class VibeCutExtractorProviderRegistry
