@@ -7,6 +7,9 @@
 
 #include "vibecut/vibecutconversationcontext.h"
 
+#include <QJsonArray>
+#include <QJsonObject>
+
 namespace {
 QJsonObject user(const QString &text)
 {
