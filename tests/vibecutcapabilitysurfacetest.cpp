@@ -11,6 +11,8 @@ TEST_CASE("canonical VibeCut surface exposes governed editing breadth", "[vibecu
 
     const QStringList reversible = {
         QStringLiteral("bin_folder_create"),
+        QStringLiteral("bin_folder_delete_empty"),
+        QStringLiteral("bin_folder_rename"),
         QStringLiteral("bin_import_file"),
         QStringLiteral("bin_insert_timeline"),
         QStringLiteral("bin_metadata_set"),
