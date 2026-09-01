@@ -8,6 +8,7 @@
 #include "vibecutaudiomonitortools.h"
 #include "vibecutbinmetadatatools.h"
 #include "vibecutbintools.h"
+#include "vibecutbulkcopytools.h"
 #include "vibecutbulktools.h"
 #include "vibecutcompositiontracktools.h"
 #include "vibecutedittools.h"
@@ -61,6 +62,10 @@ VibeCutToolSurface::VibeCutToolSurface(VibeCutTools *baseTools)
     error.clear();
     if (!registerVibeCutBulkTools(*this, &error)) {
         qWarning().noquote() << QStringLiteral("[VibeCut] bulk tools unavailable: %1").arg(error);
+    }
+    error.clear();
+    if (!registerVibeCutBulkCopyTools(*this, &error)) {
+        qWarning().noquote() << QStringLiteral("[VibeCut] bulk copy tools unavailable: %1").arg(error);
     }
     error.clear();
     if (!registerVibeCutCompositionTrackTools(*this, &error)) {
