@@ -30,6 +30,7 @@
 #include "vibecutroutingtools.h"
 #include "vibecutselectiontools.h"
 #include "vibecutsubtitleedittools.h"
+#include "vibecuttitleinspecttools.h"
 #include "vibecuttitletools.h"
 #include "vibecuttracktools.h"
 #include "vibecuttransitionparamtools.h"
@@ -143,6 +144,10 @@ VibeCutToolSurface::VibeCutToolSurface(VibeCutTools *baseTools)
     error.clear();
     if (!registerVibeCutTitleTools(*this, &error)) {
         qWarning().noquote() << QStringLiteral("[VibeCut] title tools unavailable: %1").arg(error);
+    }
+    error.clear();
+    if (!registerVibeCutTitleInspectTools(*this, &error)) {
+        qWarning().noquote() << QStringLiteral("[VibeCut] title inspection tools unavailable: %1").arg(error);
     }
     error.clear();
     if (!registerVibeCutTrackTools(*this, &error)) {
