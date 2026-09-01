@@ -50,6 +50,7 @@ set(kdenlive_SRCS
   vibecut/vibecutscript.cpp
   vibecut/vibecutsecretstore.cpp
   vibecut/vibecutselectiontools.cpp
+  vibecut/vibecutsequencetools.cpp
   vibecut/vibecutsubtitleedittools.cpp
   vibecut/vibecutsubtitlepipeline.cpp
   vibecut/vibecutsubtitletools.cpp
