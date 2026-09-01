@@ -8,6 +8,7 @@ set(kdenlive_SRCS
   vibecut/vibecutaudiomonitortools.cpp
   vibecut/vibecutbinmetadatatools.cpp
   vibecut/vibecutbintools.cpp
+  vibecut/vibecutbulktools.cpp
   vibecut/vibecutcompositiontracktools.cpp
   vibecut/vibecutcontracts.cpp
   vibecut/vibecutconversationcontext.cpp
