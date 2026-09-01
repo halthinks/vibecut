@@ -11,6 +11,7 @@ set(kdenlive_SRCS
   vibecut/vibecutconversationcontext.cpp
   vibecut/vibecutedittools.cpp
   vibecut/vibecuteffectgrouptools.cpp
+  vibecut/vibecuteffectkeyframetools.cpp
   vibecut/vibecuteffecttools.cpp
   vibecut/vibecuteval.cpp
   vibecut/vibecutgrouptools.cpp
