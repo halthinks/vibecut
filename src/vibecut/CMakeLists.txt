@@ -10,6 +10,7 @@ set(kdenlive_SRCS
   vibecut/vibecutcontracts.cpp
   vibecut/vibecutconversationcontext.cpp
   vibecut/vibecutedittools.cpp
+  vibecut/vibecuteffectgrouptools.cpp
   vibecut/vibecuteffecttools.cpp
   vibecut/vibecuteval.cpp
   vibecut/vibecutgrouptools.cpp
