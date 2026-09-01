@@ -42,9 +42,23 @@ QList<VibeCutMediaSearchHit> VibeCutMediaIndex::search(const QString &query, int
     for (const VibeCutMediaDocument &document : m_documents) {
         int score = 0;
         if (document.text.contains(needle, Qt::CaseInsensitive)) score += 1000;
+        if (document.kind.contains(needle, Qt::CaseInsensitive)) score += 700;
+
+        const QString extractorId = document.metadata.value(QStringLiteral("extractor_id")).toString();
+        const QString evidenceOrigin = document.metadata.value(QStringLiteral("evidence_origin")).toString();
         for (const QString &token : tokens) {
-            if (token.size() > 1 && document.text.contains(token, Qt::CaseInsensitive)) score += 25;
+            if (token.size() <= 1) continue;
+            if (document.text.contains(token, Qt::CaseInsensitive)) score += 25;
+            if (document.kind.contains(token, Qt::CaseInsensitive)) score += 80;
+            if (extractorId.contains(token, Qt::CaseInsensitive)) score += 40;
         }
+
+        if (score > 0 && evidenceOrigin == QLatin1String("extractor")) {
+            score += 10; // Prefer explicit derived evidence over incidental filename matches at equal textual relevance.
+            const double confidence = document.metadata.value(QStringLiteral("confidence")).toDouble(-1.0);
+            if (confidence >= 0.0) score += qBound(0, qRound(confidence * 20.0), 20);
+        }
+
         if (score > 0) {
             VibeCutMediaSearchHit hit;
             hit.document = document;
