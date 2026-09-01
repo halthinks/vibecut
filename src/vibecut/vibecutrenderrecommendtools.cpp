@@ -217,23 +217,31 @@ QJsonObject exportPolicy(const QJsonObject &input)
 
 bool registerVibeCutRenderRecommendTools(VibeCutToolSurface &surface, QString *error)
 {
+    QJsonObject destinationProperty;
+    destinationProperty.insert(QStringLiteral("type"), QStringLiteral("string"));
+    destinationProperty.insert(QStringLiteral("enum"), QJsonArray{QStringLiteral("general"), QStringLiteral("youtube"), QStringLiteral("review"),
+                                                                  QStringLiteral("archive"), QStringLiteral("social"), QStringLiteral("audio")});
+    QJsonObject inputProperties;
+    inputProperties.insert(QStringLiteral("destination"), destinationProperty);
     const QJsonObject inputSchema{{QStringLiteral("type"), QStringLiteral("object")},
-                                  {QStringLiteral("properties"), QJsonObject{
-                                      {QStringLiteral("destination"), QJsonObject{{QStringLiteral("type"), QStringLiteral("string")},
-                                                                                  {QStringLiteral("enum"), QJsonArray{QStringLiteral("general"), QStringLiteral("youtube"), QStringLiteral("review"), QStringLiteral("archive"), QStringLiteral("social"), QStringLiteral("audio")}}}}},
+                                  {QStringLiteral("properties"), inputProperties},
                                   {QStringLiteral("additionalProperties"), false}};
     const QJsonObject schema{{QStringLiteral("name"), QStringLiteral("render_recommend")},
-                             {QStringLiteral("description"), QStringLiteral("Rank only the render presets actually installed in Kdenlive for a requested destination using deterministic codec/container heuristics, and include current project preflight state. Read-only." )},
+                             {QStringLiteral("description"), QStringLiteral("Rank only the render presets actually installed in Kdenlive for a requested destination using deterministic codec/container heuristics, and include current project preflight state. Read-only.")},
                              {QStringLiteral("input_schema"), inputSchema}};
     VibeCutToolPolicy policy;
     policy.name = QStringLiteral("render_recommend");
     policy.risk = VibeCutToolRisk::ReadOnly;
     if (!surface.registerTool(schema, policy, recommend, error)) return false;
 
+    QJsonObject profileProperty;
+    profileProperty.insert(QStringLiteral("type"), QStringLiteral("string"));
+    profileProperty.insert(QStringLiteral("enum"), QJsonArray{QStringLiteral("youtube"), QStringLiteral("review_proxy"), QStringLiteral("archive_master"),
+                                                              QStringLiteral("social_vertical"), QStringLiteral("social_square"), QStringLiteral("audio_master")});
+    QJsonObject policyProperties;
+    policyProperties.insert(QStringLiteral("profile"), profileProperty);
     const QJsonObject policyInput{{QStringLiteral("type"), QStringLiteral("object")},
-                                  {QStringLiteral("properties"), QJsonObject{
-                                      {QStringLiteral("profile"), QJsonObject{{QStringLiteral("type"), QStringLiteral("string")},
-                                                                              {QStringLiteral("enum"), QJsonArray{QStringLiteral("youtube"), QStringLiteral("review_proxy"), QStringLiteral("archive_master"), QStringLiteral("social_vertical"), QStringLiteral("social_square"), QStringLiteral("audio_master")}}}}},
+                                  {QStringLiteral("properties"), policyProperties},
                                   {QStringLiteral("required"), QJsonArray{QStringLiteral("profile")}},
                                   {QStringLiteral("additionalProperties"), false}};
     const QJsonObject policySchema{{QStringLiteral("name"), QStringLiteral("render_profile_policy")},
