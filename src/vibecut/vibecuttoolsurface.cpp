@@ -18,6 +18,7 @@
 #include "vibecuteffectkeyframetools.h"
 #include "vibecuteffectstackcopytools.h"
 #include "vibecuteffecttools.h"
+#include "vibecutextractorprovidertools.h"
 #include "vibecutgrouptools.h"
 #include "vibecutmarkertools.h"
 #include "vibecutmediaevidencetools.h"
@@ -105,6 +106,10 @@ VibeCutToolSurface::VibeCutToolSurface(VibeCutTools *baseTools)
     error.clear();
     if (!registerVibeCutEffectStackCopyTools(*this, &error)) {
         qWarning().noquote() << QStringLiteral("[VibeCut] effect stack copy tools unavailable: %1").arg(error);
+    }
+    error.clear();
+    if (!registerVibeCutExtractorProviderTools(*this, &error)) {
+        qWarning().noquote() << QStringLiteral("[VibeCut] extractor provider tools unavailable: %1").arg(error);
     }
     error.clear();
     if (!registerVibeCutGroupTools(*this, &error)) {
@@ -247,7 +252,7 @@ bool VibeCutToolSurface::overrideBaseTool(const QJsonObject &schema, const VibeC
     if (!validateRegistration(schema, policy, handler, error)) return false;
     const QString name = policy.name;
     if (!baseContains(name)) {
-        if (error) *error = QStringLiteral("cannot override unknown native tool '%1'").arg(name);
+        if (error) *error = QStringLiteral("cannot override unknown native tool '%1'").arg(name));
         return false;
     }
     if (m_extensions.contains(name) || m_overrides.contains(name)) {
