@@ -1,0 +1,116 @@
+name: VibeCut CI
+
+on:
+  push:
+    branches:
+      - agent/vibecut-architecture-slices
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    container:
+      image: debian:trixie
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Prepare container
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends ca-certificates git bash file dpkg-dev
+
+      - name: Checkout branch
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Trust checked-out workspace
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
+      - name: Bootstrap matching Kdenlive build stack
+        env:
+          DEBIAN_FRONTEND: noninteractive
+        run: |
+          VIBECUT_BOOTSTRAP_SKIP_VERIFY=1 bash scripts/vibecut-bootstrap-debian.sh
+
+      - name: Verify dependency contract
+        run: bash scripts/vibecut-build-env-check.sh
+
+      - name: Configure, compile, and run VibeCut tests
+        id: verify
+        env:
+          VIBECUT_JOBS: 4
+        run: |
+          set +e
+          bash scripts/vibecut-verify.sh 2>&1 | tee "$GITHUB_WORKSPACE/vibecut-verify.log"
+          status=${PIPESTATUS[0]}
+          set -e
+
+          {
+            echo "## VibeCut verification"
+            echo
+            echo "Exit status: $status"
+            echo
+            if [[ $status -ne 0 ]]; then
+              echo "### First diagnostic lines"
+              echo '```text'
+              grep -nE -m 120 '(^|[^[:alpha:]])(fatal error:|error:|CMake Error|FAILED:|undefined reference|ninja: build stopped|FAILED \(|[0-9]+ tests? failed)' "$GITHUB_WORKSPACE/vibecut-verify.log" || tail -n 160 "$GITHUB_WORKSPACE/vibecut-verify.log"
+              echo '```'
+            else
+              echo "Verification completed successfully."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          exit "$status"
+
+      - name: Build halthinks VibeCut Debian installer
+        if: success()
+        env:
+          VIBECUT_PACKAGE_REUSE_BUILD: 1
+          VIBECUT_PACKAGE_BUILD_DIR: ${{ github.workspace }}/build-vibecut
+          VIBECUT_PACKAGE_OUTPUT_DIR: ${{ github.workspace }}/packages
+        run: |
+          export VIBECUT_PACKAGE_VERSION="0.0.0+git.${GITHUB_SHA:0:12}"
+          bash packaging/vibecut/build-deb.sh
+          ls -lh packages/*.deb
+
+      - name: Smoke-test Debian installer
+        if: success()
+        env:
+          DEBIAN_FRONTEND: noninteractive
+        run: |
+          package="$(find packages -maxdepth 1 -type f -name 'vibecut-halthinks_*.deb' -print -quit)"
+          test -n "$package"
+          dpkg-deb --info "$package"
+          dpkg-deb --contents "$package" | grep -q '/usr/bin/vibecut-halthinks'
+          dpkg-deb --contents "$package" | grep -q '/usr/share/applications/org.halthinks.vibecut.desktop'
+          dpkg-deb --contents "$package" | grep -q '/opt/vibecut-halthinks/bin/kdenlive'
+          apt-get install -y "$package"
+          test -x /usr/bin/vibecut-halthinks
+          test -x /opt/vibecut-halthinks/bin/kdenlive
+          dpkg-query -W -f='${Status}\n' vibecut-halthinks | grep -q 'install ok installed'
+          apt-get remove -y vibecut-halthinks
+          ! dpkg-query -W -f='${Status}\n' vibecut-halthinks 2>/dev/null | grep -q 'install ok installed'
+
+      - name: Upload VibeCut installer
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: vibecut-halthinks-deb-${{ github.run_id }}
+          path: packages/*.deb
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload verification log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: vibecut-verify-${{ github.run_id }}
+          path: vibecut-verify.log
+          if-no-files-found: warn
+          retention-days: 3

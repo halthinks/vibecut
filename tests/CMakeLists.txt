@@ -39,7 +39,30 @@ set(KdenliveTest_SOURCES
     treetest.cpp
     trimmingtest.cpp
     utilstest.cpp
+    vibecutcapabilitysurfacetest.cpp
+    vibecutcontractstest.cpp
+    vibecutconversationcontexttest.cpp
+    vibecutedittoolstest.cpp
+    vibecuteffecttoolstest.cpp
+    vibecutevaltest.cpp
+    vibecutextractorprovidertest.cpp
+    vibecuthookstest.cpp
+    vibecutjobmanagertest.cpp
+    vibecutmarkertoolstest.cpp
+    vibecutmediaevidencetest.cpp
+    vibecutmediaindextest.cpp
+    vibecutmodelprovidertest.cpp
+    vibecutplangatetest.cpp
+    vibecutplanruntimetest.cpp
+    vibecutprojectmemorytest.cpp
+    vibecutprojectrevisiontest.cpp
+    vibecutprojectrulestest.cpp
+    vibecutprojectsnapshottest.cpp
+    vibecutscripttest.cpp
+    vibecutsubtitletoolstest.cpp
     vibecuttest.cpp
+    vibecuttoolpolicytest.cpp
+    vibecuttoolsurfacetest.cpp
 )
 
 include(ECMAddTests)

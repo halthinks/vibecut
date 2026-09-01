@@ -276,6 +276,11 @@ target_link_libraries(kdenliveLib PUBLIC
     kiss_fft
     )
 
+if(TARGET KF${KF_MAJOR}::Wallet)
+  target_link_libraries(kdenliveLib PUBLIC KF${KF_MAJOR}::Wallet)
+  target_compile_definitions(kdenliveLib PRIVATE VIBECUT_HAVE_KWALLET)
+endif()
+
 if(KF6_VERSION VERSION_GREATER_EQUAL "6.8.0")
   target_link_libraries(kdenliveLib PUBLIC KF${KF_MAJOR}::I18nQml)
 endif()
@@ -283,6 +288,7 @@ endif()
 target_link_libraries(kdenliveLib PUBLIC
     Qt${QT_MAJOR_VERSION}::Core
     Qt${QT_MAJOR_VERSION}::Svg
+    Qt${QT_MAJOR_VERSION}::Qml
     Qt${QT_MAJOR_VERSION}::Quick
     Qt${QT_MAJOR_VERSION}::QuickControls2
     Qt${QT_MAJOR_VERSION}::QuickWidgets
@@ -371,4 +377,3 @@ add_dependencies(kdenlive all_qmllint)
 
 ecm_finalize_qml_module(kdenliveLib
     DESTINATION ${KDE_INSTALL_QMLDIR})
-
