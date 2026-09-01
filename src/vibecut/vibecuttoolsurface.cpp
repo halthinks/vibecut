@@ -7,6 +7,7 @@
 
 #include "vibecutbinmetadatatools.h"
 #include "vibecutbintools.h"
+#include "vibecutcompositiontracktools.h"
 #include "vibecutedittools.h"
 #include "vibecuteffectgrouptools.h"
 #include "vibecuteffectkeyframetools.h"
@@ -50,6 +51,10 @@ VibeCutToolSurface::VibeCutToolSurface(VibeCutTools *baseTools)
     error.clear();
     if (!registerVibeCutBinMetadataTools(*this, &error)) {
         qWarning().noquote() << QStringLiteral("[VibeCut] bin metadata tools unavailable: %1").arg(error);
+    }
+    error.clear();
+    if (!registerVibeCutCompositionTrackTools(*this, &error)) {
+        qWarning().noquote() << QStringLiteral("[VibeCut] composition track tools unavailable: %1").arg(error);
     }
     error.clear();
     if (!registerVibeCutEditTools(*this, &error)) {
