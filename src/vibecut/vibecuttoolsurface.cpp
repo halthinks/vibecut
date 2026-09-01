@@ -13,6 +13,7 @@
 #include "vibecutbulktools.h"
 #include "vibecutbuseffecttools.h"
 #include "vibecutcompositiontracktools.h"
+#include "vibecutdeadartools.h"
 #include "vibecutedittools.h"
 #include "vibecuteffectgrouptools.h"
 #include "vibecuteffectkeyframetools.h"
@@ -56,154 +57,84 @@ VibeCutToolSurface::VibeCutToolSurface(VibeCutTools *baseTools)
     : m_baseTools(baseTools)
 {
     QString error;
-    if (!registerVibeCutAudioMonitorTools(*this, &error)) {
-        qWarning().noquote() << QStringLiteral("[VibeCut] audio monitor tools unavailable: %1").arg(error);
-    }
+    if (!registerVibeCutAudioMonitorTools(*this, &error)) qWarning().noquote() << QStringLiteral("[VibeCut] audio monitor tools unavailable: %1").arg(error);
     error.clear();
-    if (!registerVibeCutBinTools(*this, &error)) {
-        qWarning().noquote() << QStringLiteral("[VibeCut] bin tools unavailable: %1").arg(error);
-    }
+    if (!registerVibeCutBinTools(*this, &error)) qWarning().noquote() << QStringLiteral("[VibeCut] bin tools unavailable: %1").arg(error);
     error.clear();
-    if (!registerVibeCutBinMetadataTools(*this, &error)) {
-        qWarning().noquote() << QStringLiteral("[VibeCut] bin metadata tools unavailable: %1").arg(error);
-    }
+    if (!registerVibeCutBinMetadataTools(*this, &error)) qWarning().noquote() << QStringLiteral("[VibeCut] bin metadata tools unavailable: %1").arg(error);
     error.clear();
-    if (!registerVibeCutBinFolderTools(*this, &error)) {
-        qWarning().noquote() << QStringLiteral("[VibeCut] bin folder tools unavailable: %1").arg(error);
-    }
+    if (!registerVibeCutBinFolderTools(*this, &error)) qWarning().noquote() << QStringLiteral("[VibeCut] bin folder tools unavailable: %1").arg(error);
     error.clear();
-    if (!registerVibeCutBulkTools(*this, &error)) {
-        qWarning().noquote() << QStringLiteral("[VibeCut] bulk tools unavailable: %1").arg(error);
-    }
+    if (!registerVibeCutBulkTools(*this, &error)) qWarning().noquote() << QStringLiteral("[VibeCut] bulk tools unavailable: %1").arg(error);
     error.clear();
-    if (!registerVibeCutBulkCopyTools(*this, &error)) {
-        qWarning().noquote() << QStringLiteral("[VibeCut] bulk copy tools unavailable: %1").arg(error);
-    }
+    if (!registerVibeCutBulkCopyTools(*this, &error)) qWarning().noquote() << QStringLiteral("[VibeCut] bulk copy tools unavailable: %1").arg(error);
     error.clear();
-    if (!registerVibeCutBusEffectTools(*this, &error)) {
-        qWarning().noquote() << QStringLiteral("[VibeCut] bus effect tools unavailable: %1").arg(error);
-    }
+    if (!registerVibeCutBusEffectTools(*this, &error)) qWarning().noquote() << QStringLiteral("[VibeCut] bus effect tools unavailable: %1").arg(error);
     error.clear();
-    if (!registerVibeCutCompositionTrackTools(*this, &error)) {
-        qWarning().noquote() << QStringLiteral("[VibeCut] composition track tools unavailable: %1").arg(error);
-    }
+    if (!registerVibeCutCompositionTrackTools(*this, &error)) qWarning().noquote() << QStringLiteral("[VibeCut] composition track tools unavailable: %1").arg(error);
     error.clear();
-    if (!registerVibeCutEditTools(*this, &error)) {
-        qWarning().noquote() << QStringLiteral("[VibeCut] core edit tools unavailable: %1").arg(error);
-    }
+    if (!registerVibeCutDeadAirTools(*this, &error)) qWarning().noquote() << QStringLiteral("[VibeCut] dead-air tools unavailable: %1").arg(error);
     error.clear();
-    if (!registerVibeCutEffectTools(*this, &error)) {
-        qWarning().noquote() << QStringLiteral("[VibeCut] effect tools unavailable: %1").arg(error);
-    }
+    if (!registerVibeCutEditTools(*this, &error)) qWarning().noquote() << QStringLiteral("[VibeCut] core edit tools unavailable: %1").arg(error);
     error.clear();
-    if (!registerVibeCutEffectGroupTools(*this, &error)) {
-        qWarning().noquote() << QStringLiteral("[VibeCut] effect group tools unavailable: %1").arg(error);
-    }
+    if (!registerVibeCutEffectTools(*this, &error)) qWarning().noquote() << QStringLiteral("[VibeCut] effect tools unavailable: %1").arg(error);
     error.clear();
-    if (!registerVibeCutEffectKeyframeTools(*this, &error)) {
-        qWarning().noquote() << QStringLiteral("[VibeCut] effect keyframe tools unavailable: %1").arg(error);
-    }
+    if (!registerVibeCutEffectGroupTools(*this, &error)) qWarning().noquote() << QStringLiteral("[VibeCut] effect group tools unavailable: %1").arg(error);
     error.clear();
-    if (!registerVibeCutEffectStackCopyTools(*this, &error)) {
-        qWarning().noquote() << QStringLiteral("[VibeCut] effect stack copy tools unavailable: %1").arg(error);
-    }
+    if (!registerVibeCutEffectKeyframeTools(*this, &error)) qWarning().noquote() << QStringLiteral("[VibeCut] effect keyframe tools unavailable: %1").arg(error);
     error.clear();
-    if (!registerVibeCutExtractorProviderTools(*this, &error)) {
-        qWarning().noquote() << QStringLiteral("[VibeCut] extractor provider tools unavailable: %1").arg(error);
-    }
+    if (!registerVibeCutEffectStackCopyTools(*this, &error)) qWarning().noquote() << QStringLiteral("[VibeCut] effect stack copy tools unavailable: %1").arg(error);
     error.clear();
-    if (!registerVibeCutGroupTools(*this, &error)) {
-        qWarning().noquote() << QStringLiteral("[VibeCut] group tools unavailable: %1").arg(error);
-    }
+    if (!registerVibeCutExtractorProviderTools(*this, &error)) qWarning().noquote() << QStringLiteral("[VibeCut] extractor provider tools unavailable: %1").arg(error);
     error.clear();
-    if (!registerVibeCutMarkerTools(*this, &error)) {
-        qWarning().noquote() << QStringLiteral("[VibeCut] guide tools unavailable: %1").arg(error);
-    }
+    if (!registerVibeCutGroupTools(*this, &error)) qWarning().noquote() << QStringLiteral("[VibeCut] group tools unavailable: %1").arg(error);
     error.clear();
-    if (!registerVibeCutMediaEvidenceTools(*this, &error)) {
-        qWarning().noquote() << QStringLiteral("[VibeCut] media evidence tools unavailable: %1").arg(error);
-    }
+    if (!registerVibeCutMarkerTools(*this, &error)) qWarning().noquote() << QStringLiteral("[VibeCut] guide tools unavailable: %1").arg(error);
     error.clear();
-    if (!registerVibeCutSimilarityTools(*this, &error)) {
-        qWarning().noquote() << QStringLiteral("[VibeCut] media similarity tools unavailable: %1").arg(error);
-    }
+    if (!registerVibeCutMediaEvidenceTools(*this, &error)) qWarning().noquote() << QStringLiteral("[VibeCut] media evidence tools unavailable: %1").arg(error);
     error.clear();
-    if (!registerVibeCutMemoryTools(*this, &error)) {
-        qWarning().noquote() << QStringLiteral("[VibeCut] project memory tools unavailable: %1").arg(error);
-    }
+    if (!registerVibeCutSimilarityTools(*this, &error)) qWarning().noquote() << QStringLiteral("[VibeCut] media similarity tools unavailable: %1").arg(error);
     error.clear();
-    if (!registerVibeCutMixTools(*this, &error)) {
-        qWarning().noquote() << QStringLiteral("[VibeCut] mix tools unavailable: %1").arg(error);
-    }
+    if (!registerVibeCutMemoryTools(*this, &error)) qWarning().noquote() << QStringLiteral("[VibeCut] project memory tools unavailable: %1").arg(error);
     error.clear();
-    if (!registerVibeCutPreflightTools(*this, &error)) {
-        qWarning().noquote() << QStringLiteral("[VibeCut] preflight tools unavailable: %1").arg(error);
-    }
+    if (!registerVibeCutMixTools(*this, &error)) qWarning().noquote() << QStringLiteral("[VibeCut] mix tools unavailable: %1").arg(error);
     error.clear();
-    if (!registerVibeCutProxyTools(*this, &error)) {
-        qWarning().noquote() << QStringLiteral("[VibeCut] proxy tools unavailable: %1").arg(error);
-    }
+    if (!registerVibeCutPreflightTools(*this, &error)) qWarning().noquote() << QStringLiteral("[VibeCut] preflight tools unavailable: %1").arg(error);
     error.clear();
-    if (!registerVibeCutRelinkDiscoveryTools(*this, &error)) {
-        qWarning().noquote() << QStringLiteral("[VibeCut] relink discovery tools unavailable: %1").arg(error);
-    }
+    if (!registerVibeCutProxyTools(*this, &error)) qWarning().noquote() << QStringLiteral("[VibeCut] proxy tools unavailable: %1").arg(error);
     error.clear();
-    if (!registerVibeCutRelinkTools(*this, &error)) {
-        qWarning().noquote() << QStringLiteral("[VibeCut] relink tools unavailable: %1").arg(error);
-    }
+    if (!registerVibeCutRelinkDiscoveryTools(*this, &error)) qWarning().noquote() << QStringLiteral("[VibeCut] relink discovery tools unavailable: %1").arg(error);
     error.clear();
-    if (!registerVibeCutRenderRecommendTools(*this, &error)) {
-        qWarning().noquote() << QStringLiteral("[VibeCut] render recommendation tools unavailable: %1").arg(error);
-    }
+    if (!registerVibeCutRelinkTools(*this, &error)) qWarning().noquote() << QStringLiteral("[VibeCut] relink tools unavailable: %1").arg(error);
     error.clear();
-    if (!registerVibeCutRoutingTools(*this, &error)) {
-        qWarning().noquote() << QStringLiteral("[VibeCut] routing tools unavailable: %1").arg(error);
-    }
+    if (!registerVibeCutRenderRecommendTools(*this, &error)) qWarning().noquote() << QStringLiteral("[VibeCut] render recommendation tools unavailable: %1").arg(error);
     error.clear();
-    if (!registerVibeCutSelectionTools(*this, &error)) {
-        qWarning().noquote() << QStringLiteral("[VibeCut] selection tools unavailable: %1").arg(error);
-    }
+    if (!registerVibeCutRoutingTools(*this, &error)) qWarning().noquote() << QStringLiteral("[VibeCut] routing tools unavailable: %1").arg(error);
     error.clear();
-    if (!registerVibeCutSequenceTools(*this, &error)) {
-        qWarning().noquote() << QStringLiteral("[VibeCut] sequence tools unavailable: %1").arg(error);
-    }
+    if (!registerVibeCutSelectionTools(*this, &error)) qWarning().noquote() << QStringLiteral("[VibeCut] selection tools unavailable: %1").arg(error);
     error.clear();
-    if (!registerVibeCutSubtitleEditTools(*this, &error)) {
-        qWarning().noquote() << QStringLiteral("[VibeCut] subtitle edit tools unavailable: %1").arg(error);
-    }
+    if (!registerVibeCutSequenceTools(*this, &error)) qWarning().noquote() << QStringLiteral("[VibeCut] sequence tools unavailable: %1").arg(error);
     error.clear();
-    if (!registerVibeCutTitleTools(*this, &error)) {
-        qWarning().noquote() << QStringLiteral("[VibeCut] title tools unavailable: %1").arg(error);
-    }
+    if (!registerVibeCutSubtitleEditTools(*this, &error)) qWarning().noquote() << QStringLiteral("[VibeCut] subtitle edit tools unavailable: %1").arg(error);
     error.clear();
-    if (!registerVibeCutTitleInspectTools(*this, &error)) {
-        qWarning().noquote() << QStringLiteral("[VibeCut] title inspection tools unavailable: %1").arg(error);
-    }
+    if (!registerVibeCutTitleTools(*this, &error)) qWarning().noquote() << QStringLiteral("[VibeCut] title tools unavailable: %1").arg(error);
     error.clear();
-    if (!registerVibeCutTrackTools(*this, &error)) {
-        qWarning().noquote() << QStringLiteral("[VibeCut] track tools unavailable: %1").arg(error);
-    }
+    if (!registerVibeCutTitleInspectTools(*this, &error)) qWarning().noquote() << QStringLiteral("[VibeCut] title inspection tools unavailable: %1").arg(error);
     error.clear();
-    if (!registerVibeCutTransitionTools(*this, &error)) {
-        qWarning().noquote() << QStringLiteral("[VibeCut] transition tools unavailable: %1").arg(error);
-    }
+    if (!registerVibeCutTrackTools(*this, &error)) qWarning().noquote() << QStringLiteral("[VibeCut] track tools unavailable: %1").arg(error);
     error.clear();
-    if (!registerVibeCutTransitionParameterTools(*this, &error)) {
-        qWarning().noquote() << QStringLiteral("[VibeCut] transition parameter tools unavailable: %1").arg(error);
-    }
+    if (!registerVibeCutTransitionTools(*this, &error)) qWarning().noquote() << QStringLiteral("[VibeCut] transition tools unavailable: %1").arg(error);
     error.clear();
-    if (!registerVibeCutRenderTools(*this, &error)) {
-        qWarning().noquote() << QStringLiteral("[VibeCut] render tools unavailable: %1").arg(error);
-    }
+    if (!registerVibeCutTransitionParameterTools(*this, &error)) qWarning().noquote() << QStringLiteral("[VibeCut] transition parameter tools unavailable: %1").arg(error);
+    error.clear();
+    if (!registerVibeCutRenderTools(*this, &error)) qWarning().noquote() << QStringLiteral("[VibeCut] render tools unavailable: %1").arg(error);
 }
 
 bool VibeCutToolSurface::baseContains(const QString &name) const
 {
     if (!m_baseTools) return false;
     const QJsonArray baseSchemas = m_baseTools->schemas();
-    for (const QJsonValue &value : baseSchemas) {
-        if (value.toObject().value(QStringLiteral("name")).toString() == name) return true;
-    }
+    for (const QJsonValue &value : baseSchemas) if (value.toObject().value(QStringLiteral("name")).toString() == name) return true;
     return false;
 }
 
@@ -211,22 +142,10 @@ bool VibeCutToolSurface::validateRegistration(const QJsonObject &schema, const V
 {
     if (error) error->clear();
     const QString name = schema.value(QStringLiteral("name")).toString().trimmed();
-    if (name.isEmpty()) {
-        if (error) *error = QStringLiteral("tool schema requires a non-empty name");
-        return false;
-    }
-    if (policy.name != name) {
-        if (error) *error = QStringLiteral("tool policy name '%1' does not match schema name '%2'").arg(policy.name, name);
-        return false;
-    }
-    if (!schema.value(QStringLiteral("input_schema")).isObject()) {
-        if (error) *error = QStringLiteral("tool '%1' requires an input_schema object").arg(name);
-        return false;
-    }
-    if (!handler) {
-        if (error) *error = QStringLiteral("tool '%1' requires a handler").arg(name);
-        return false;
-    }
+    if (name.isEmpty()) { if (error) *error = QStringLiteral("tool schema requires a non-empty name"); return false; }
+    if (policy.name != name) { if (error) *error = QStringLiteral("tool policy name '%1' does not match schema name '%2'").arg(policy.name, name); return false; }
+    if (!schema.value(QStringLiteral("input_schema")).isObject()) { if (error) *error = QStringLiteral("tool '%1' requires an input_schema object").arg(name); return false; }
+    if (!handler) { if (error) *error = QStringLiteral("tool '%1' requires a handler").arg(name); return false; }
     return true;
 }
 
@@ -234,14 +153,8 @@ bool VibeCutToolSurface::registerTool(const QJsonObject &schema, const VibeCutTo
 {
     if (!validateRegistration(schema, policy, handler, error)) return false;
     const QString name = policy.name;
-    if (m_extensions.contains(name) || m_overrides.contains(name) || baseContains(name)) {
-        if (error) *error = QStringLiteral("tool '%1' is already registered").arg(name);
-        return false;
-    }
-    Extension extension;
-    extension.schema = schema;
-    extension.policy = policy;
-    extension.handler = handler;
+    if (m_extensions.contains(name) || m_overrides.contains(name) || baseContains(name)) { if (error) *error = QStringLiteral("tool '%1' is already registered").arg(name); return false; }
+    Extension extension{schema, policy, handler};
     m_extensions.insert(name, extension);
     m_extensionOrder.append(name);
     return true;
@@ -251,18 +164,9 @@ bool VibeCutToolSurface::overrideBaseTool(const QJsonObject &schema, const VibeC
 {
     if (!validateRegistration(schema, policy, handler, error)) return false;
     const QString name = policy.name;
-    if (!baseContains(name)) {
-        if (error) *error = QStringLiteral("cannot override unknown native tool '%1'").arg(name));
-        return false;
-    }
-    if (m_extensions.contains(name) || m_overrides.contains(name)) {
-        if (error) *error = QStringLiteral("tool '%1' already has a surface registration").arg(name);
-        return false;
-    }
-    Extension override;
-    override.schema = schema;
-    override.policy = policy;
-    override.handler = handler;
+    if (!baseContains(name)) { if (error) *error = QStringLiteral("cannot override unknown native tool '%1'").arg(name); return false; }
+    if (m_extensions.contains(name) || m_overrides.contains(name)) { if (error) *error = QStringLiteral("tool '%1' already has a surface registration").arg(name); return false; }
+    Extension override{schema, policy, handler};
     m_overrides.insert(name, override);
     return true;
 }
@@ -280,9 +184,7 @@ QJsonArray VibeCutToolSurface::schemas() const
             result.append(override != m_overrides.constEnd() ? override.value().schema : baseSchema);
         }
     }
-    for (const QString &name : m_extensionOrder) {
-        if (!overrides.isDenied(name)) result.append(m_extensions.value(name).schema);
-    }
+    for (const QString &name : m_extensionOrder) if (!overrides.isDenied(name)) result.append(m_extensions.value(name).schema);
     return result;
 }
 
@@ -311,7 +213,4 @@ QJsonObject VibeCutToolSurface::invokeBase(const QString &name, const QJsonObjec
     return errorResult(QStringLiteral("Unknown tool: %1").arg(name));
 }
 
-quint64 VibeCutToolSurface::projectRevision() const
-{
-    return m_baseTools ? m_baseTools->projectRevision() : 0;
-}
+quint64 VibeCutToolSurface::projectRevision() const { return m_baseTools ? m_baseTools->projectRevision() : 0; }
