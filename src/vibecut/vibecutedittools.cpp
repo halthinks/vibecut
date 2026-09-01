@@ -45,9 +45,12 @@ bool validClip(const std::shared_ptr<TimelineItemModel> &model, int clipId, QJso
 
 QVector<int> resolveTracks(const std::shared_ptr<TimelineItemModel> &model, const QVector<int> &requested, QString *error)
 {
-    QVector<int> tracks = requested.isEmpty() ? model->getAllTracksIds() : requested;
+    QVector<int> tracks = requested;
+    if (tracks.isEmpty()) {
+        for (int trackId : model->getAllTracksIds()) tracks.append(trackId);
+    }
     QSet<int> seen;
-    for (int trackId : std::as_const(tracks)) {
+    for (int trackId : tracks) {
         if (seen.contains(trackId)) {
             if (error) *error = QStringLiteral("track_id %1 appears more than once.").arg(trackId);
             return {};
@@ -91,7 +94,7 @@ bool zoneHasItems(const std::shared_ptr<TimelineItemModel> &model, const QVector
 {
     const int queryEnd = qMax(startFrame, endFrame - 1);
     for (int trackId : tracks) {
-        if (!model->getItemsInRange(trackId, startFrame, queryEnd, false).isEmpty()) return true;
+        if (!model->getItemsInRange(trackId, startFrame, queryEnd, false).empty()) return true;
     }
     return false;
 }
