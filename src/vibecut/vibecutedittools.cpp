@@ -8,10 +8,14 @@
 #include "mainwindow.h"
 #include "timeline2/model/timelinefunctions.hpp"
 #include "timeline2/model/timelineitemmodel.hpp"
+#include "timeline2/model/trackmodel.hpp"
 #include "timeline2/view/timelinewidget.h"
 #include "vibecuttoolsurface.h"
 
+#include <KLocalizedString>
 #include <QJsonArray>
+#include <QPoint>
+#include <QSet>
 
 namespace {
 QJsonObject err(const QString &message)
@@ -37,6 +41,59 @@ bool validClip(const std::shared_ptr<TimelineItemModel> &model, int clipId, QJso
         return false;
     }
     return true;
+}
+
+QVector<int> resolveTracks(const std::shared_ptr<TimelineItemModel> &model, const QVector<int> &requested, QString *error)
+{
+    QVector<int> tracks = requested.isEmpty() ? model->getAllTracksIds() : requested;
+    QSet<int> seen;
+    for (int trackId : std::as_const(tracks)) {
+        if (seen.contains(trackId)) {
+            if (error) *error = QStringLiteral("track_id %1 appears more than once.").arg(trackId);
+            return {};
+        }
+        seen.insert(trackId);
+        if (!model->isTrack(trackId)) {
+            if (error) *error = QStringLiteral("Track id %1 does not exist.").arg(trackId);
+            return {};
+        }
+        const auto track = model->getTrackById_const(trackId);
+        if (!track || track->isLocked()) {
+            if (error) *error = QStringLiteral("Track id %1 is locked; range removal refuses partial/desynchronized mutation.").arg(trackId);
+            return {};
+        }
+    }
+    if (tracks.isEmpty() && error) *error = QStringLiteral("The active timeline has no editable tracks.");
+    return tracks;
+}
+
+QVector<QPair<int, int>> downstreamAnchors(const std::shared_ptr<TimelineItemModel> &model, const QVector<int> &tracks, int endFrame)
+{
+    QVector<QPair<int, int>> anchors;
+    for (int trackId : tracks) {
+        int bestId = -1;
+        int bestPosition = -1;
+        for (int itemId : model->getItemsInRange(trackId, endFrame, -1, false)) {
+            if (!model->isClip(itemId)) continue;
+            const int position = model->getItemPosition(itemId);
+            if (position < endFrame) continue;
+            if (bestId < 0 || position < bestPosition) {
+                bestId = itemId;
+                bestPosition = position;
+            }
+        }
+        if (bestId >= 0) anchors.append(qMakePair(bestId, bestPosition));
+    }
+    return anchors;
+}
+
+bool zoneHasItems(const std::shared_ptr<TimelineItemModel> &model, const QVector<int> &tracks, int startFrame, int endFrame)
+{
+    const int queryEnd = qMax(startFrame, endFrame - 1);
+    for (int trackId : tracks) {
+        if (!model->getItemsInRange(trackId, startFrame, queryEnd, false).isEmpty()) return true;
+    }
+    return false;
 }
 
 QJsonObject moveClip(const QJsonObject &input)
@@ -143,6 +200,36 @@ QJsonObject trimClip(const QJsonObject &input, bool ripple)
                        {QStringLiteral("position_frame"), model->getClipPosition(clipId)}, {QStringLiteral("verified"), true}};
 }
 
+QJsonObject removeTimelineRange(const QJsonObject &input)
+{
+    const int start = input.value(QStringLiteral("start_frame")).toInt(-1);
+    const int end = input.value(QStringLiteral("end_frame")).toInt(-1);
+    const QString mode = input.value(QStringLiteral("mode")).toString();
+    if (start < 0 || end <= start) return err(QStringLiteral("timeline_range_remove requires 0 <= start_frame < end_frame."));
+    if (mode != QLatin1String("lift") && mode != QLatin1String("ripple")) return err(QStringLiteral("mode must be 'lift' or 'ripple'."));
+
+    QVector<int> requestedTracks;
+    for (const QJsonValue &value : input.value(QStringLiteral("track_ids")).toArray()) requestedTracks.append(value.toInt(-1));
+
+    const std::shared_ptr<TimelineItemModel> model = currentModel();
+    if (!model) return err(QStringLiteral("No timeline is open."));
+    Fun undo = []() { return true; };
+    Fun redo = []() { return true; };
+    QJsonObject verification;
+    QString failure;
+    if (!appendVibeCutTimelineRangeRemove(model, start, end, mode == QLatin1String("lift"), requestedTracks, undo, redo, &verification, &failure)) {
+        undo();
+        return err(failure.isEmpty() ? QStringLiteral("Kdenlive rejected timeline range removal.") : failure);
+    }
+    pCore->pushUndo(undo, redo, mode == QLatin1String("lift") ? i18n("VibeCut lift timeline range") : i18n("VibeCut ripple-remove timeline range"));
+    verification.insert(QStringLiteral("ok"), true);
+    verification.insert(QStringLiteral("mode"), mode);
+    verification.insert(QStringLiteral("start_frame"), start);
+    verification.insert(QStringLiteral("end_frame"), end);
+    verification.insert(QStringLiteral("removed_frames"), end - start);
+    return verification;
+}
+
 QJsonObject objectSchema(const QJsonObject &properties, const QJsonArray &required)
 {
     return QJsonObject{{QStringLiteral("type"), QStringLiteral("object")}, {QStringLiteral("properties"), properties},
@@ -162,6 +249,74 @@ bool add(VibeCutToolSurface &surface, const QString &name, const QString &descri
                                 policy, handler, error);
 }
 } // namespace
+
+bool appendVibeCutTimelineRangeRemove(const std::shared_ptr<TimelineItemModel> &model, int startFrame, int endFrame, bool liftOnly,
+                                      const QVector<int> &trackIds, Fun &undo, Fun &redo, QJsonObject *verification, QString *error)
+{
+    if (error) error->clear();
+    if (!model) {
+        if (error) *error = QStringLiteral("No timeline is open.");
+        return false;
+    }
+    if (startFrame < 0 || endFrame <= startFrame) {
+        if (error) *error = QStringLiteral("Range removal requires 0 <= start_frame < end_frame.");
+        return false;
+    }
+    const int beforeDuration = model->duration();
+    if (beforeDuration <= 0 || endFrame > beforeDuration) {
+        if (error) *error = QStringLiteral("Range [%1,%2) exceeds the live timeline duration %3.").arg(startFrame).arg(endFrame).arg(beforeDuration);
+        return false;
+    }
+
+    QString trackError;
+    const QVector<int> tracks = resolveTracks(model, trackIds, &trackError);
+    if (tracks.isEmpty()) {
+        if (error) *error = trackError;
+        return false;
+    }
+
+    const QVector<QPair<int, int>> anchors = downstreamAnchors(model, tracks, endFrame);
+    if (!TimelineFunctions::extractZoneWithUndo(model, tracks, QPoint(startFrame, endFrame), liftOnly, -1, {}, undo, redo)) {
+        if (error) *error = QStringLiteral("Kdenlive rejected %1 of timeline range [%2,%3).")
+                                .arg(liftOnly ? QStringLiteral("lifting") : QStringLiteral("ripple extraction"))
+                                .arg(startFrame).arg(endFrame);
+        return false;
+    }
+
+    bool verified = false;
+    if (liftOnly) {
+        verified = !zoneHasItems(model, tracks, startFrame, endFrame);
+    } else {
+        const int width = endFrame - startFrame;
+        bool checkedAnchor = false;
+        bool anchorsShifted = true;
+        for (const auto &anchor : anchors) {
+            if (!model->isClip(anchor.first)) continue;
+            checkedAnchor = true;
+            if (model->getItemPosition(anchor.first) != anchor.second - width) {
+                anchorsShifted = false;
+                break;
+            }
+        }
+        verified = checkedAnchor ? anchorsShifted : !zoneHasItems(model, tracks, startFrame, endFrame);
+    }
+
+    if (!verified) {
+        if (error) *error = QStringLiteral("Kdenlive returned success but the live timeline did not satisfy the %1 postcondition for [%2,%3); refusing to claim success.")
+                                .arg(liftOnly ? QStringLiteral("lift") : QStringLiteral("ripple"))
+                                .arg(startFrame).arg(endFrame);
+        return false;
+    }
+
+    if (verification) {
+        *verification = QJsonObject{{QStringLiteral("verified"), true},
+                                    {QStringLiteral("track_count"), tracks.size()},
+                                    {QStringLiteral("duration_before_frames"), beforeDuration},
+                                    {QStringLiteral("duration_after_frames"), model->duration()},
+                                    {QStringLiteral("downstream_anchor_count"), anchors.size()}};
+    }
+    return true;
+}
 
 bool registerVibeCutEditTools(VibeCutToolSurface &surface, QString *error)
 {
@@ -196,6 +351,17 @@ bool registerVibeCutEditTools(VibeCutToolSurface &surface, QString *error)
                                       {QStringLiteral("new_duration_frames"), QJsonObject{{QStringLiteral("type"), QStringLiteral("integer")}, {QStringLiteral("minimum"), 1}}}},
                           QJsonArray{QStringLiteral("clip_id"), QStringLiteral("side"), QStringLiteral("new_duration_frames")}),
              VibeCutToolRisk::MajorEdit, [](const QJsonObject &input) { return trimClip(input, true); }, error)) return false;
+    if (!add(surface, QStringLiteral("timeline_range_remove"),
+             QStringLiteral("Remove an exact timeline range through Kdenlive's native accumulated zone-extraction API. Requires explicit lift or ripple semantics, fails closed on locked tracks, verifies the live postcondition, and records one native Undo step."),
+             objectSchema(QJsonObject{{QStringLiteral("start_frame"), QJsonObject{{QStringLiteral("type"), QStringLiteral("integer")}, {QStringLiteral("minimum"), 0}}},
+                                      {QStringLiteral("end_frame"), QJsonObject{{QStringLiteral("type"), QStringLiteral("integer")}, {QStringLiteral("minimum"), 1}}},
+                                      {QStringLiteral("mode"), QJsonObject{{QStringLiteral("type"), QStringLiteral("string")},
+                                                                          {QStringLiteral("enum"), QJsonArray{QStringLiteral("lift"), QStringLiteral("ripple")}}}},
+                                      {QStringLiteral("track_ids"), QJsonObject{{QStringLiteral("type"), QStringLiteral("array")},
+                                                                                {QStringLiteral("items"), QJsonObject{{QStringLiteral("type"), QStringLiteral("integer")}}},
+                                                                                {QStringLiteral("uniqueItems"), true}}}},
+                          QJsonArray{QStringLiteral("start_frame"), QStringLiteral("end_frame"), QStringLiteral("mode")}),
+             VibeCutToolRisk::MajorEdit, removeTimelineRange, error)) return false;
     return add(surface, QStringLiteral("clip_delete"),
                QStringLiteral("Delete a timeline clip using Kdenlive's native undoable deletion request and verify the clip is gone. Reversible with Undo but treated as a major edit for trust policy."),
                objectSchema(QJsonObject{{QStringLiteral("clip_id"), clipId}}, QJsonArray{QStringLiteral("clip_id")}),
