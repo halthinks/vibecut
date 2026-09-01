@@ -2,6 +2,7 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+REUSE_BUILD="${VIBECUT_PACKAGE_REUSE_BUILD:-0}"
 BUILD_DIR="${VIBECUT_PACKAGE_BUILD_DIR:-$ROOT/build-vibecut-package}"
 OUTPUT_DIR="${VIBECUT_PACKAGE_OUTPUT_DIR:-$ROOT/packages}"
 JOBS="${VIBECUT_JOBS:-4}"
@@ -25,22 +26,29 @@ VERSION="$(printf '%s' "$VERSION" | sed -E 's/[^0-9A-Za-z.+:~\-]/./g')"
 [[ -n "$VERSION" ]] || VERSION="0.0.0"
 ARCH="$(dpkg --print-architecture)"
 
-rm -rf "$BUILD_DIR"
-cmake -S "$ROOT" -B "$BUILD_DIR" -G Ninja \
-  -DCMAKE_BUILD_TYPE="$BUILD_TYPE" \
-  -DBUILD_TESTING=ON \
-  -DCMAKE_INSTALL_PREFIX="$PREFIX"
+if [[ "$REUSE_BUILD" == "1" ]]; then
+  if [[ ! -f "$BUILD_DIR/CMakeCache.txt" ]]; then
+    echo "VIBECUT_PACKAGE_REUSE_BUILD=1 requires an existing configured build at $BUILD_DIR" >&2
+    exit 2
+  fi
+  echo "Reusing verified build: $BUILD_DIR"
+else
+  rm -rf "$BUILD_DIR"
+  cmake -S "$ROOT" -B "$BUILD_DIR" -G Ninja \
+    -DCMAKE_BUILD_TYPE="$BUILD_TYPE" \
+    -DBUILD_TESTING=ON
 
-cmake --build "$BUILD_DIR" --parallel "$JOBS" -- -k 0
+  cmake --build "$BUILD_DIR" --parallel "$JOBS" -- -k 0
 
-if [[ "${VIBECUT_PACKAGE_SKIP_TESTS:-0}" != "1" ]]; then
-  ctest --test-dir "$BUILD_DIR" --output-on-failure -R '^vibecut'
+  if [[ "${VIBECUT_PACKAGE_SKIP_TESTS:-0}" != "1" ]]; then
+    ctest --test-dir "$BUILD_DIR" --output-on-failure --no-tests=error -R '^vibecut'
+  fi
 fi
 
 PKG_ROOT="$BUILD_DIR/package-root"
 rm -rf "$PKG_ROOT"
 mkdir -p "$PKG_ROOT"
-DESTDIR="$PKG_ROOT" cmake --install "$BUILD_DIR"
+DESTDIR="$PKG_ROOT" cmake --install "$BUILD_DIR" --prefix "$PREFIX"
 
 mkdir -p "$PKG_ROOT/usr/bin" "$PKG_ROOT/usr/share/applications" "$PKG_ROOT/DEBIAN"
 cat > "$PKG_ROOT/usr/bin/vibecut-halthinks" <<'EOF'
@@ -63,7 +71,7 @@ StartupNotify=true
 EOF
 
 DEPENDS=""
-if command -v dpkg-shlibdeps >/dev/null 2>&1; then
+if command -v dpkg-shlibdeps >/dev/null 2>&1 && command -v file >/dev/null 2>&1; then
   mapfile -t ELF_FILES < <(find "$PKG_ROOT$PREFIX" -type f -print0 | xargs -0 -r file 2>/dev/null | awk -F: '/ELF .* (executable|shared object)/ {print $1}')
   if (( ${#ELF_FILES[@]} > 0 )); then
     set +e
