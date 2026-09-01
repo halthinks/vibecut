@@ -17,6 +17,7 @@
 #include "vibecutproxytools.h"
 #include "vibecutrelinkdiscoverytools.h"
 #include "vibecutrelinktools.h"
+#include "vibecutrenderrecommendtools.h"
 #include "vibecutrendertools.h"
 #include "vibecutroutingtools.h"
 #include "vibecutselectiontools.h"
@@ -81,6 +82,10 @@ VibeCutToolSurface::VibeCutToolSurface(VibeCutTools *baseTools)
     error.clear();
     if (!registerVibeCutRelinkTools(*this, &error)) {
         qWarning().noquote() << QStringLiteral("[VibeCut] relink tools unavailable: %1").arg(error);
+    }
+    error.clear();
+    if (!registerVibeCutRenderRecommendTools(*this, &error)) {
+        qWarning().noquote() << QStringLiteral("[VibeCut] render recommendation tools unavailable: %1").arg(error);
     }
     error.clear();
     if (!registerVibeCutRoutingTools(*this, &error)) {
