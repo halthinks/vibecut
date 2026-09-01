@@ -1,12 +1,6 @@
 # SPDX-License-Identifier: GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL
 # SPDX-FileCopyrightText: 2026 vibecut contributors
 
-# vibecutbintools.cpp calls methods on Kdenlive's DocUndoStack through
-# KdenliveDoc::commandStack(). kdenlivedoc.h intentionally forward-declares
-# DocUndoStack, so make the concrete type visible for this translation unit.
-set_source_files_properties(vibecut/vibecutbintools.cpp PROPERTIES
-  COMPILE_OPTIONS "-include;doc/docundostack.hpp")
-
 set(kdenlive_SRCS
   ${kdenlive_SRCS}
   vibecut/vibecutagent.cpp
