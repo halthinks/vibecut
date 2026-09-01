@@ -5,6 +5,7 @@
 #include "bin/projectitemmodel.h"
 #include "core.h"
 #include "doc/kdenlivedoc.h"
+#include "timeline2/model/timelineitemmodel.hpp"
 #include "vibecuttoolsurface.h"
 
 #include <QJsonArray>
@@ -105,7 +106,7 @@ bool registerVibeCutSequenceTools(VibeCutToolSurface &surface, QString *error)
                                    {QStringLiteral("required"), QJsonArray{QStringLiteral("uuid")}},
                                    {QStringLiteral("additionalProperties"), false}};
     const QJsonObject inspectSchema{{QStringLiteral("name"), QStringLiteral("sequence_inspect")},
-                                    {QStringLiteral("description"), QStringLiteral("Inspect one Kdenlive sequence by UUID, including bin metadata and live timeline counts/duration when loaded. Read-only." )},
+                                    {QStringLiteral("description"), QStringLiteral("Inspect one Kdenlive sequence by stable UUID, including bin metadata plus live timeline track/clip/composition counts, duration and loading/open/active state. Read-only.")},
                                     {QStringLiteral("input_schema"), inspectInput}};
     VibeCutToolPolicy inspectPolicy;
     inspectPolicy.name = QStringLiteral("sequence_inspect");
