@@ -43,6 +43,11 @@ bool VibeCutConversationContext::isRegularUserMessage(const QJsonObject &message
     return true;
 }
 
+QJsonArray VibeCutConversationContext::compact(const QJsonArray &messages)
+{
+    return compact(messages, Limits{});
+}
+
 QJsonArray VibeCutConversationContext::compact(const QJsonArray &messages, const Limits &limits)
 {
     if (messages.size() <= limits.maxMessages && approximateBytes(messages) <= limits.maxBytes) {
