@@ -14,6 +14,7 @@
 #include "vibecutbuseffecttools.h"
 #include "vibecutcompositiontracktools.h"
 #include "vibecutdeadartools.h"
+#include "vibecutdeadlinkedtools.h"
 #include "vibecutedittools.h"
 #include "vibecuteffectgrouptools.h"
 #include "vibecuteffectkeyframetools.h"
@@ -74,6 +75,8 @@ VibeCutToolSurface::VibeCutToolSurface(VibeCutTools *baseTools)
     if (!registerVibeCutCompositionTrackTools(*this, &error)) qWarning().noquote() << QStringLiteral("[VibeCut] composition track tools unavailable: %1").arg(error);
     error.clear();
     if (!registerVibeCutDeadAirTools(*this, &error)) qWarning().noquote() << QStringLiteral("[VibeCut] dead-air tools unavailable: %1").arg(error);
+    error.clear();
+    if (!registerVibeCutDeadLinkedTools(*this, &error)) qWarning().noquote() << QStringLiteral("[VibeCut] linked dead-air tools unavailable: %1").arg(error);
     error.clear();
     if (!registerVibeCutEditTools(*this, &error)) qWarning().noquote() << QStringLiteral("[VibeCut] core edit tools unavailable: %1").arg(error);
     error.clear();
