@@ -15,7 +15,8 @@ public:
         int maxBytes = 192 * 1024;
     };
 
-    static QJsonArray compact(const QJsonArray &messages, const Limits &limits = Limits());
+    static QJsonArray compact(const QJsonArray &messages);
+    static QJsonArray compact(const QJsonArray &messages, const Limits &limits);
     static int approximateBytes(const QJsonArray &messages);
     static bool isRegularUserMessage(const QJsonObject &message);
 };
