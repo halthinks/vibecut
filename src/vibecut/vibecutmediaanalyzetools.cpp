@@ -65,6 +65,7 @@ QJsonObject analyze(VibeCutToolSurface *surface, const QJsonObject &input)
         invokeIfNeeded(QStringLiteral("shot_boundary"), QStringLiteral("media_shots_refresh"), QJsonObject{{QStringLiteral("bin_id"), binId}});
         invokeIfNeeded(QStringLiteral("black_detect"), QStringLiteral("media_black_refresh"), QJsonObject{{QStringLiteral("bin_id"), binId}});
         invokeIfNeeded(QStringLiteral("freeze_detect"), QStringLiteral("media_freeze_refresh"), QJsonObject{{QStringLiteral("bin_id"), binId}});
+        invokeIfNeeded(QStringLiteral("blur_detect"), QStringLiteral("media_blur_refresh"), QJsonObject{{QStringLiteral("bin_id"), binId}});
     }
 
     return QJsonObject{{QStringLiteral("ok"), true},
@@ -94,7 +95,7 @@ bool registerVibeCutMediaAnalyzeTools(VibeCutToolSurface &surface, QString *erro
                             {QStringLiteral("required"), QJsonArray{QStringLiteral("bin_id")}},
                             {QStringLiteral("additionalProperties"), false}};
     const QJsonObject schema{{QStringLiteral("name"), QStringLiteral("media_analyze_refresh")},
-                             {QStringLiteral("description"), QStringLiteral("Run VibeCut's deterministic basic media-intelligence suite for one file-backed bin asset. By default launches only missing/stale extractors: source metadata always applicable; silence/loudness for audio; shot/black/freeze for video. Child jobs use the shared JobManager and no project mutation occurs.")},
+                             {QStringLiteral("description"), QStringLiteral("Run VibeCut's deterministic basic media-intelligence suite for one file-backed bin asset. By default launches only missing/stale extractors: source metadata always applicable; silence/loudness for audio; shot/black/freeze/blur for video. Child jobs use the shared JobManager and no project mutation occurs.")},
                              {QStringLiteral("input_schema"), input}};
     VibeCutToolPolicy policy;
     policy.name = QStringLiteral("media_analyze_refresh");
