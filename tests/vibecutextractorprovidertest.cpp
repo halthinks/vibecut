@@ -13,10 +13,14 @@ public:
         if (error) error->clear();
         return true;
     }
-    QJsonObject start(const QString &capability, const QJsonObject &, VibeCutJobManager *, QString *error) override
+    QJsonObject start(const QString &capability, const QJsonObject &,
+                      const VibeCutExtractorProviderContext &context, QString *error) override
     {
         if (error) error->clear();
-        return QJsonObject{{QStringLiteral("ok"), true}, {QStringLiteral("capability"), capability}};
+        return QJsonObject{{QStringLiteral("ok"), true},
+                           {QStringLiteral("capability"), capability},
+                           {QStringLiteral("has_job_manager"), context.jobs != nullptr},
+                           {QStringLiteral("has_evidence_sink"), static_cast<bool>(context.persistEvidence)}};
     }
 };
 
@@ -52,4 +56,20 @@ TEST_CASE("extractor provider registry supports capability discovery and creatio
     error.clear();
     CHECK_FALSE(registry.create(QStringLiteral("missing"), &error));
     CHECK_FALSE(error.isEmpty());
+}
+
+TEST_CASE("extractor provider receives constrained runtime context", "[vibecut][extractor-provider]")
+{
+    DummyExtractorProvider provider;
+    VibeCutExtractorProviderContext context;
+    context.persistEvidence = [](const QString &, const QString &, const QString &, const QString &,
+                                 const QList<VibeCutMediaEvidenceRecord> &, QString *error) {
+        if (error) error->clear();
+        return true;
+    };
+    QString error;
+    const QJsonObject result = provider.start(QStringLiteral("ocr"), QJsonObject{}, context, &error);
+    CHECK(result.value(QStringLiteral("ok")).toBool());
+    CHECK_FALSE(result.value(QStringLiteral("has_job_manager")).toBool());
+    CHECK(result.value(QStringLiteral("has_evidence_sink")).toBool());
 }
