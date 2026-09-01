@@ -54,14 +54,44 @@ bool saveForProjectUrl(const QUrl &projectUrl, const QJsonArray &records, QStrin
 }
 }
 
+QString VibeCutMediaEvidenceRecord::inferModality(const QString &kind)
+{
+    const QString normalized = kind.trimmed().toLower();
+    if (normalized.contains(QStringLiteral("speaker")) || normalized.contains(QStringLiteral("diar")) ||
+        normalized.contains(QStringLiteral("loud")) || normalized.contains(QStringLiteral("silence")) ||
+        normalized.contains(QStringLiteral("room_tone")) || normalized.contains(QStringLiteral("audio_event"))) {
+        return QStringLiteral("audio");
+    }
+    if (normalized.contains(QStringLiteral("ocr")) || normalized.contains(QStringLiteral("on_screen_text")) ||
+        normalized.contains(QStringLiteral("shot")) || normalized.contains(QStringLiteral("black")) ||
+        normalized.contains(QStringLiteral("freeze")) || normalized.contains(QStringLiteral("blur")) ||
+        normalized.contains(QStringLiteral("subject")) || normalized.contains(QStringLiteral("object")) ||
+        normalized.contains(QStringLiteral("action"))) {
+        return QStringLiteral("visual");
+    }
+    if (normalized.contains(QStringLiteral("transcript")) || normalized.contains(QStringLiteral("subtitle")) ||
+        normalized.contains(QStringLiteral("caption"))) {
+        return QStringLiteral("text");
+    }
+    if (normalized.contains(QStringLiteral("embedding"))) return QStringLiteral("embedding");
+    if (normalized == QLatin1String("source_metadata")) return QStringLiteral("source");
+    return QStringLiteral("unknown");
+}
+
 QJsonObject VibeCutMediaEvidenceRecord::toJson() const
 {
-    return QJsonObject{{QStringLiteral("id"), id}, {QStringLiteral("source_id"), sourceId},
+    QJsonObject object{{QStringLiteral("id"), id}, {QStringLiteral("source_id"), sourceId},
                        {QStringLiteral("source_fingerprint"), sourceFingerprint}, {QStringLiteral("extractor_id"), extractorId},
                        {QStringLiteral("extractor_version"), extractorVersion}, {QStringLiteral("kind"), kind},
                        {QStringLiteral("start_frame"), startFrame}, {QStringLiteral("end_frame"), endFrame},
                        {QStringLiteral("text"), text}, {QStringLiteral("confidence"), confidence},
                        {QStringLiteral("produced_utc"), producedUtc}, {QStringLiteral("metadata"), metadata}};
+    if (!modality.isEmpty()) object.insert(QStringLiteral("modality"), modality);
+    if (!label.isEmpty()) object.insert(QStringLiteral("label"), label);
+    if (!subjectId.isEmpty()) object.insert(QStringLiteral("subject_id"), subjectId);
+    if (!speakerId.isEmpty()) object.insert(QStringLiteral("speaker_id"), speakerId);
+    if (!speakerName.isEmpty()) object.insert(QStringLiteral("speaker_name"), speakerName);
+    return object;
 }
 
 bool VibeCutMediaEvidenceRecord::fromJson(const QJsonObject &object, VibeCutMediaEvidenceRecord &record, QString *error)
@@ -73,6 +103,11 @@ bool VibeCutMediaEvidenceRecord::fromJson(const QJsonObject &object, VibeCutMedi
     record.extractorId = object.value(QStringLiteral("extractor_id")).toString().trimmed();
     record.extractorVersion = object.value(QStringLiteral("extractor_version")).toString().trimmed();
     record.kind = object.value(QStringLiteral("kind")).toString().trimmed();
+    record.modality = object.value(QStringLiteral("modality")).toString().trimmed().toLower();
+    record.label = object.value(QStringLiteral("label")).toString().trimmed();
+    record.subjectId = object.value(QStringLiteral("subject_id")).toString().trimmed();
+    record.speakerId = object.value(QStringLiteral("speaker_id")).toString().trimmed();
+    record.speakerName = object.value(QStringLiteral("speaker_name")).toString().trimmed();
     record.startFrame = object.value(QStringLiteral("start_frame")).toInt(-1);
     record.endFrame = object.value(QStringLiteral("end_frame")).toInt(-1);
     record.text = object.value(QStringLiteral("text")).toString();
@@ -89,6 +124,18 @@ bool VibeCutMediaEvidenceRecord::fromJson(const QJsonObject &object, VibeCutMedi
     }
     if (record.confidence < -1.0 || record.confidence > 1.0) {
         if (error) *error = QStringLiteral("Media evidence confidence must be -1 (unknown) or between 0 and 1.");
+        return false;
+    }
+    if (record.modality.isEmpty()) record.modality = inferModality(record.kind);
+    static const QStringList allowedModalities{QStringLiteral("audio"), QStringLiteral("visual"), QStringLiteral("text"),
+                                               QStringLiteral("embedding"), QStringLiteral("source"), QStringLiteral("multimodal"),
+                                               QStringLiteral("unknown")};
+    if (!allowedModalities.contains(record.modality)) {
+        if (error) *error = QStringLiteral("Media evidence modality '%1' is unsupported.").arg(record.modality);
+        return false;
+    }
+    if (!record.speakerName.isEmpty() && record.speakerId.isEmpty()) {
+        if (error) *error = QStringLiteral("speaker_name requires a stable speaker_id so names remain user-governed aliases rather than extractor identity.");
         return false;
     }
     if (record.id.isEmpty()) record.id = QUuid::createUuid().toString(QUuid::WithoutBraces);
