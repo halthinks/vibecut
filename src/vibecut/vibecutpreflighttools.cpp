@@ -35,9 +35,9 @@ QJsonObject vibeCutProjectPreflight()
     QJsonArray blockers;
     QJsonArray warnings;
     QJsonArray missingAssets;
+    QJsonArray proxyOnlyAssets;
     int fileBacked = 0;
     int generated = 0;
-    int proxyOnly = 0;
 
     for (const QString &binId : bin->getAllClipIds()) {
         const std::shared_ptr<ProjectClip> clip = bin->getClipByBinID(binId);
@@ -48,22 +48,22 @@ QJsonObject vibeCutProjectPreflight()
         }
         ++fileBacked;
         const FileStatus::ClipStatus status = clip->clipStatus();
-        const bool missing = !clip->sourceExists() || status == FileStatus::StatusMissing || status == FileStatus::StatusProxyOnly;
-        if (status == FileStatus::StatusProxyOnly) ++proxyOnly;
-        if (missing) {
-            const QString path = QFileInfo(clip->url()).absoluteFilePath();
-            missingAssets.append(QJsonObject{{QStringLiteral("bin_id"), binId},
-                                             {QStringLiteral("name"), clip->getProducerProperty(QStringLiteral("kdenlive:clipname"))},
-                                             {QStringLiteral("path"), path},
-                                             {QStringLiteral("clip_status"), static_cast<int>(status)},
-                                             {QStringLiteral("has_proxy"), clip->hasProxy()},
-                                             {QStringLiteral("timeline_instances"), clip->timelineInstances().size()}});
-        }
+        const bool proxyOnly = status == FileStatus::StatusProxyOnly;
+        const bool missing = !proxyOnly && (!clip->sourceExists() || status == FileStatus::StatusMissing);
+        const QString path = QFileInfo(clip->url()).absoluteFilePath();
+        const QJsonObject item{{QStringLiteral("bin_id"), binId},
+                               {QStringLiteral("name"), clip->getProducerProperty(QStringLiteral("kdenlive:clipname"))},
+                               {QStringLiteral("path"), path},
+                               {QStringLiteral("clip_status"), static_cast<int>(status)},
+                               {QStringLiteral("has_proxy"), clip->hasProxy()},
+                               {QStringLiteral("timeline_instances"), static_cast<int>(clip->timelineInstances().size())}};
+        if (missing) missingAssets.append(item);
+        if (proxyOnly) proxyOnlyAssets.append(item);
     }
 
     if (!missingAssets.isEmpty()) {
         blockers.append(QJsonObject{{QStringLiteral("code"), QStringLiteral("missing_media")},
-                                    {QStringLiteral("message"), QStringLiteral("One or more file-backed bin assets are missing or proxy-only.")},
+                                    {QStringLiteral("message"), QStringLiteral("One or more file-backed bin assets are genuinely missing and have no usable active source.")},
                                     {QStringLiteral("count"), missingAssets.size()}});
     }
 
@@ -76,10 +76,10 @@ QJsonObject vibeCutProjectPreflight()
                                     {QStringLiteral("message"), QStringLiteral("The active timeline is still loading.")}});
     }
 
-    if (proxyOnly > 0) {
+    if (!proxyOnlyAssets.isEmpty()) {
         warnings.append(QJsonObject{{QStringLiteral("code"), QStringLiteral("proxy_only_media")},
-                                    {QStringLiteral("message"), QStringLiteral("Some assets are available only through proxies; restore originals for a full-quality master export.")},
-                                    {QStringLiteral("count"), proxyOnly}});
+                                    {QStringLiteral("message"), QStringLiteral("Some assets are available only through proxies; proxy workflows may proceed, but originals are required for a full-quality master export.")},
+                                    {QStringLiteral("count"), proxyOnlyAssets.size()}});
     }
 
     QJsonObject result{{QStringLiteral("ok"), true},
@@ -87,6 +87,9 @@ QJsonObject vibeCutProjectPreflight()
                        {QStringLiteral("blockers"), blockers},
                        {QStringLiteral("warnings"), warnings},
                        {QStringLiteral("missing_assets"), missingAssets},
+                       {QStringLiteral("proxy_only_assets"), proxyOnlyAssets},
+                       {QStringLiteral("missing_asset_count"), missingAssets.size()},
+                       {QStringLiteral("proxy_only_asset_count"), proxyOnlyAssets.size()},
                        {QStringLiteral("file_backed_assets"), fileBacked},
                        {QStringLiteral("generated_assets"), generated}};
 
@@ -106,7 +109,7 @@ bool registerVibeCutPreflightTools(VibeCutToolSurface &surface, QString *error)
                              {QStringLiteral("properties"), QJsonObject{}},
                              {QStringLiteral("additionalProperties"), false}};
     const QJsonObject schema{{QStringLiteral("name"), QStringLiteral("project_preflight")},
-                             {QStringLiteral("description"), QStringLiteral("Inspect whether the current Kdenlive project is healthy enough for long-running work such as render/export. Reports missing/proxy-only media, active timeline readiness, project counts, blockers and warnings without mutating the project.")},
+                             {QStringLiteral("description"), QStringLiteral("Inspect whether the current Kdenlive project is healthy enough for long-running work such as render/export. Distinguishes hard-missing media from proxy-only media and reports active timeline readiness, project counts, blockers and warnings without mutating the project.")},
                              {QStringLiteral("input_schema"), noArgs}};
     VibeCutToolPolicy policy;
     policy.name = QStringLiteral("project_preflight");
