@@ -1,15 +1,21 @@
 /* SPDX-License-Identifier: GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL */
 #include "vibecutmediaevidencetools.h"
 
+#include "bin/projectclip.h"
+#include "bin/projectitemmodel.h"
+#include "core.h"
 #include "vibecutblackextractortools.h"
 #include "vibecutfreezeextractortools.h"
 #include "vibecutloudnessextractortools.h"
+#include "vibecutmediaanalyzetools.h"
 #include "vibecutmediaevidence.h"
 #include "vibecutshotextractortools.h"
 #include "vibecutsilenceextractortools.h"
 #include "vibecutsourceextractortools.h"
 #include "vibecuttoolsurface.h"
 
+#include <QCryptographicHash>
+#include <QFileInfo>
 #include <QHash>
 #include <QJsonArray>
 
@@ -17,6 +23,14 @@ namespace {
 QJsonObject err(const QString &message)
 {
     return QJsonObject{{QStringLiteral("ok"), false}, {QStringLiteral("error"), message}};
+}
+
+QString statFingerprint(const QFileInfo &info)
+{
+    const QByteArray payload = info.canonicalFilePath().toUtf8() + '\n' +
+                               QByteArray::number(info.size()) + '\n' +
+                               QByteArray::number(info.lastModified().toMSecsSinceEpoch());
+    return QString::fromLatin1(QCryptographicHash::hash(payload, QCryptographicHash::Sha256).toHex());
 }
 
 QJsonObject summary(const QJsonObject &)
@@ -80,6 +94,78 @@ QJsonObject listRecords(const QJsonObject &input)
                                                                 {QStringLiteral("extractor_id"), extractorId},
                                                                 {QStringLiteral("kind"), kind}}}};
 }
+
+QJsonObject freshness(const QJsonObject &input)
+{
+    if (!pCore) return err(QStringLiteral("Kdenlive core is unavailable."));
+    const QString binId = input.value(QStringLiteral("bin_id")).toString().trimmed();
+    if (binId.isEmpty()) return err(QStringLiteral("bin_id must not be empty."));
+    const std::shared_ptr<ProjectItemModel> model = pCore->projectItemModel();
+    const std::shared_ptr<ProjectClip> clip = model ? model->getClipByBinID(binId) : nullptr;
+    if (!clip) return err(QStringLiteral("Bin clip '%1' does not exist.").arg(binId));
+    if (!clip->hasUrl()) return err(QStringLiteral("Evidence freshness currently requires a file-backed source."));
+    const QFileInfo info(clip->url());
+    if (!info.exists() || !info.isFile()) return err(QStringLiteral("Source file is missing or invalid."));
+    const QString currentFingerprint = statFingerprint(info);
+    const QString sourceId = QStringLiteral("bin:%1").arg(binId);
+
+    QString error;
+    const QJsonArray records = VibeCutMediaEvidence::loadCurrent(&error);
+    if (!error.isEmpty()) return err(error);
+
+    struct State { QString version; QString fingerprint; int count = 0; };
+    QHash<QString, State> states;
+    for (const QJsonValue &value : records) {
+        const QJsonObject object = value.toObject();
+        if (object.value(QStringLiteral("source_id")).toString() != sourceId) continue;
+        const QString extractor = object.value(QStringLiteral("extractor_id")).toString();
+        State state = states.value(extractor);
+        state.version = object.value(QStringLiteral("extractor_version")).toString();
+        state.fingerprint = object.value(QStringLiteral("source_fingerprint")).toString();
+        ++state.count;
+        states.insert(extractor, state);
+    }
+
+    const QStringList expected{QStringLiteral("source_metadata"), QStringLiteral("silence_detect"), QStringLiteral("loudness_detect"),
+                               QStringLiteral("shot_boundary"), QStringLiteral("black_detect"), QStringLiteral("freeze_detect")};
+    QJsonArray extractorStates;
+    int freshCount = 0;
+    int staleCount = 0;
+    int missingCount = 0;
+    for (const QString &extractor : expected) {
+        const bool applicable = extractor == QLatin1String("source_metadata") ||
+                                ((extractor == QLatin1String("silence_detect") || extractor == QLatin1String("loudness_detect")) && clip->hasAudio()) ||
+                                ((extractor == QLatin1String("shot_boundary") || extractor == QLatin1String("black_detect") || extractor == QLatin1String("freeze_detect")) && clip->hasVideo());
+        if (!applicable) continue;
+        const bool present = states.contains(extractor);
+        const State state = states.value(extractor);
+        const bool fresh = present && state.fingerprint == currentFingerprint;
+        QString status;
+        if (!present) {
+            status = QStringLiteral("missing");
+            ++missingCount;
+        } else if (!fresh) {
+            status = QStringLiteral("stale");
+            ++staleCount;
+        } else {
+            status = QStringLiteral("fresh");
+            ++freshCount;
+        }
+        extractorStates.append(QJsonObject{{QStringLiteral("extractor_id"), extractor},
+                                            {QStringLiteral("status"), status},
+                                            {QStringLiteral("record_count"), state.count},
+                                            {QStringLiteral("extractor_version"), state.version},
+                                            {QStringLiteral("stored_fingerprint"), state.fingerprint},
+                                            {QStringLiteral("current_fingerprint"), currentFingerprint}});
+    }
+
+    return QJsonObject{{QStringLiteral("ok"), true}, {QStringLiteral("bin_id"), binId},
+                       {QStringLiteral("source_id"), sourceId}, {QStringLiteral("current_fingerprint"), currentFingerprint},
+                       {QStringLiteral("fresh_count"), freshCount}, {QStringLiteral("stale_count"), staleCount},
+                       {QStringLiteral("missing_count"), missingCount},
+                       {QStringLiteral("analysis_current"), staleCount == 0 && missingCount == 0},
+                       {QStringLiteral("extractors"), extractorStates}};
+}
 } // namespace
 
 bool registerVibeCutMediaEvidenceTools(VibeCutToolSurface &surface, QString *error)
@@ -110,10 +196,23 @@ bool registerVibeCutMediaEvidenceTools(VibeCutToolSurface &surface, QString *err
                                           {QStringLiteral("input_schema"), listInput}},
                               listPolicy, listRecords, error)) return false;
 
+    const QJsonObject freshnessInput{{QStringLiteral("type"), QStringLiteral("object")},
+                                     {QStringLiteral("properties"), QJsonObject{{QStringLiteral("bin_id"), QJsonObject{{QStringLiteral("type"), QStringLiteral("string")}}}}},
+                                     {QStringLiteral("required"), QJsonArray{QStringLiteral("bin_id")}},
+                                     {QStringLiteral("additionalProperties"), false}};
+    VibeCutToolPolicy freshnessPolicy;
+    freshnessPolicy.name = QStringLiteral("media_evidence_freshness");
+    freshnessPolicy.risk = VibeCutToolRisk::ReadOnly;
+    if (!surface.registerTool(QJsonObject{{QStringLiteral("name"), freshnessPolicy.name},
+                                          {QStringLiteral("description"), QStringLiteral("Compare persistent extractor evidence fingerprints for one file-backed bin asset against its current source file and report each applicable extractor as fresh, stale, or missing. Read-only.")},
+                                          {QStringLiteral("input_schema"), freshnessInput}},
+                              freshnessPolicy, freshness, error)) return false;
+
     if (!registerVibeCutSourceExtractorTools(surface, error)) return false;
     if (!registerVibeCutSilenceExtractorTools(surface, error)) return false;
     if (!registerVibeCutLoudnessExtractorTools(surface, error)) return false;
     if (!registerVibeCutShotExtractorTools(surface, error)) return false;
     if (!registerVibeCutBlackExtractorTools(surface, error)) return false;
-    return registerVibeCutFreezeExtractorTools(surface, error);
+    if (!registerVibeCutFreezeExtractorTools(surface, error)) return false;
+    return registerVibeCutMediaAnalyzeTools(surface, error);
 }
