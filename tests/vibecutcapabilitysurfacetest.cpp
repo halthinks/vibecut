@@ -38,9 +38,9 @@ TEST_CASE("canonical VibeCut surface exposes governed editing breadth", "[vibecu
         QStringLiteral("audio_monitor_status"), QStringLiteral("audio_monitor_set"),
         QStringLiteral("bin_list"), QStringLiteral("bin_metadata_get"), QStringLiteral("bin_source_inspect"), QStringLiteral("bin_missing_list"),
         QStringLiteral("bin_folders_list"), QStringLiteral("bin_relink_scan_directory"), QStringLiteral("bus_effects_inspect"),
-        QStringLiteral("composition_a_track_inspect"), QStringLiteral("effect_group_inspect"), QStringLiteral("effect_keyframes_inspect"),
-        QStringLiteral("effects_available"), QStringLiteral("effects_inspect"), QStringLiteral("extractor_providers_list"),
-        QStringLiteral("media_evidence_freshness"), QStringLiteral("media_evidence_list"), QStringLiteral("media_evidence_summary"),
+        QStringLiteral("composition_a_track_inspect"), QStringLiteral("dead_air_cleanup_plan"),
+        QStringLiteral("effect_group_inspect"), QStringLiteral("effect_keyframes_inspect"), QStringLiteral("effects_available"), QStringLiteral("effects_inspect"),
+        QStringLiteral("extractor_providers_list"), QStringLiteral("media_evidence_freshness"), QStringLiteral("media_evidence_list"), QStringLiteral("media_evidence_summary"),
         QStringLiteral("mix_inspect"), QStringLiteral("project_preflight"), QStringLiteral("proxy_status"),
         QStringLiteral("render_profile_policy"), QStringLiteral("render_recommend"), QStringLiteral("routing_status"),
         QStringLiteral("audio_target_set"), QStringLiteral("video_target_set"), QStringLiteral("selection_list"), QStringLiteral("selection_set"), QStringLiteral("selection_clear"),
@@ -56,7 +56,8 @@ TEST_CASE("canonical VibeCut surface exposes governed editing breadth", "[vibecu
 
     const QStringList major = {
         QStringLiteral("bin_relink_missing"), QStringLiteral("bin_relink_missing_batch"), QStringLiteral("bin_replace_source"),
-        QStringLiteral("bulk_delete"), QStringLiteral("clip_ripple_trim"), QStringLiteral("clip_delete"), QStringLiteral("track_delete"),
+        QStringLiteral("bulk_delete"), QStringLiteral("clip_ripple_trim"), QStringLiteral("clip_delete"), QStringLiteral("dead_air_cleanup_apply"),
+        QStringLiteral("track_delete"),
     };
     for (const QString &name : major) {
         INFO(name.toStdString());
@@ -64,6 +65,7 @@ TEST_CASE("canonical VibeCut surface exposes governed editing breadth", "[vibecu
         CHECK(policies.value(name).risk == VibeCutToolRisk::MajorEdit);
         CHECK(policies.value(name).mutatesProject);
     }
+    CHECK(policies.value(QStringLiteral("dead_air_cleanup_apply")).reversible);
 
     REQUIRE(policies.contains(QStringLiteral("proxy_set_enabled")));
     CHECK(policies.value(QStringLiteral("proxy_set_enabled")).risk == VibeCutToolRisk::ExternalSideEffect);
