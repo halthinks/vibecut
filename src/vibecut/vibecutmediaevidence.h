@@ -4,6 +4,7 @@
 #include <QJsonArray>
 #include <QJsonObject>
 #include <QString>
+#include <QStringList>
 #include <QUrl>
 
 /** Provider-neutral, timestamp/range-addressable media evidence.
