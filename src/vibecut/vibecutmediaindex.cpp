@@ -30,7 +30,14 @@ QJsonObject VibeCutMediaSearchHit::toJson() const
 }
 
 void VibeCutMediaIndex::clear() { m_documents.clear(); }
-void VibeCutMediaIndex::add(const VibeCutMediaDocument &document) { if (!document.text.trimmed().isEmpty()) m_documents.append(document); }
+void VibeCutMediaIndex::add(const VibeCutMediaDocument &document)
+{
+    const bool searchableIdentity = !document.kind.trimmed().isEmpty() ||
+                                    !document.metadata.value(QStringLiteral("label")).toString().trimmed().isEmpty() ||
+                                    !document.metadata.value(QStringLiteral("speaker_name")).toString().trimmed().isEmpty() ||
+                                    !document.metadata.value(QStringLiteral("subject_id")).toString().trimmed().isEmpty();
+    if (!document.text.trimmed().isEmpty() || searchableIdentity) m_documents.append(document);
+}
 int VibeCutMediaIndex::size() const { return m_documents.size(); }
 
 QList<VibeCutMediaSearchHit> VibeCutMediaIndex::search(const QString &query, int limit) const
@@ -41,20 +48,31 @@ QList<VibeCutMediaSearchHit> VibeCutMediaIndex::search(const QString &query, int
     const QStringList tokens = needle.split(QRegularExpression(QStringLiteral("\\s+")), Qt::SkipEmptyParts);
     for (const VibeCutMediaDocument &document : m_documents) {
         int score = 0;
-        if (document.text.contains(needle, Qt::CaseInsensitive)) score += 1000;
-        if (document.kind.contains(needle, Qt::CaseInsensitive)) score += 700;
-
         const QString extractorId = document.metadata.value(QStringLiteral("extractor_id")).toString();
         const QString evidenceOrigin = document.metadata.value(QStringLiteral("evidence_origin")).toString();
+        const QString modality = document.metadata.value(QStringLiteral("modality")).toString();
+        const QString label = document.metadata.value(QStringLiteral("label")).toString();
+        const QString subjectId = document.metadata.value(QStringLiteral("subject_id")).toString();
+        const QString speakerId = document.metadata.value(QStringLiteral("speaker_id")).toString();
+        const QString speakerName = document.metadata.value(QStringLiteral("speaker_name")).toString();
+        const QString identityText = QStringList{document.kind, modality, label, subjectId, speakerId, speakerName, extractorId}.join(QLatin1Char(' '));
+
+        if (document.text.contains(needle, Qt::CaseInsensitive)) score += 1000;
+        if (identityText.contains(needle, Qt::CaseInsensitive)) score += 700;
         for (const QString &token : tokens) {
             if (token.size() <= 1) continue;
             if (document.text.contains(token, Qt::CaseInsensitive)) score += 25;
             if (document.kind.contains(token, Qt::CaseInsensitive)) score += 80;
+            if (modality.contains(token, Qt::CaseInsensitive)) score += 50;
+            if (label.contains(token, Qt::CaseInsensitive)) score += 80;
+            if (subjectId.contains(token, Qt::CaseInsensitive)) score += 60;
+            if (speakerId.contains(token, Qt::CaseInsensitive)) score += 60;
+            if (speakerName.contains(token, Qt::CaseInsensitive)) score += 120;
             if (extractorId.contains(token, Qt::CaseInsensitive)) score += 40;
         }
 
         if (score > 0 && evidenceOrigin == QLatin1String("extractor")) {
-            score += 10; // Prefer explicit derived evidence over incidental filename matches at equal textual relevance.
+            score += 10;
             const double confidence = document.metadata.value(QStringLiteral("confidence")).toDouble(-1.0);
             if (confidence >= 0.0) score += qBound(0, qRound(confidence * 20.0), 20);
         }
@@ -119,6 +137,7 @@ bool VibeCutMediaIndex::rebuildFromCurrentProject(QString *error)
                 document.endFrame = subtitles->getSubtitleEnd(subtitleId);
                 document.metadata = QJsonObject{{QStringLiteral("subtitle_id"), subtitleId},
                                                 {QStringLiteral("layer"), subtitles->getLayerForId(subtitleId)},
+                                                {QStringLiteral("modality"), QStringLiteral("text")},
                                                 {QStringLiteral("evidence_origin"), QStringLiteral("subtitle_track")}};
                 add(document);
             }
@@ -150,6 +169,11 @@ bool VibeCutMediaIndex::rebuildFromCurrentProject(QString *error)
         document.metadata.insert(QStringLiteral("source_fingerprint"), record.sourceFingerprint);
         document.metadata.insert(QStringLiteral("extractor_id"), record.extractorId);
         document.metadata.insert(QStringLiteral("extractor_version"), record.extractorVersion);
+        document.metadata.insert(QStringLiteral("modality"), record.modality);
+        document.metadata.insert(QStringLiteral("label"), record.label);
+        document.metadata.insert(QStringLiteral("subject_id"), record.subjectId);
+        document.metadata.insert(QStringLiteral("speaker_id"), record.speakerId);
+        document.metadata.insert(QStringLiteral("speaker_name"), record.speakerName);
         document.metadata.insert(QStringLiteral("confidence"), record.confidence);
         document.metadata.insert(QStringLiteral("produced_utc"), record.producedUtc);
         add(document);
