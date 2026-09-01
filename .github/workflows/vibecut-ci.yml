@@ -22,7 +22,7 @@ jobs:
       - name: Prepare container
         run: |
           apt-get update
-          apt-get install -y --no-install-recommends ca-certificates git bash
+          apt-get install -y --no-install-recommends ca-certificates git bash file dpkg-dev
 
       - name: Checkout branch
         uses: actions/checkout@v4
@@ -67,6 +67,26 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
           exit "$status"
+
+      - name: Build halthinks VibeCut Debian installer
+        if: success()
+        env:
+          VIBECUT_PACKAGE_REUSE_BUILD: 1
+          VIBECUT_PACKAGE_BUILD_DIR: ${{ github.workspace }}/build-vibecut
+          VIBECUT_PACKAGE_OUTPUT_DIR: ${{ github.workspace }}/packages
+        run: |
+          export VIBECUT_PACKAGE_VERSION="0.0.0+git.${GITHUB_SHA:0:12}"
+          bash packaging/vibecut/build-deb.sh
+          ls -lh packages/*.deb
+
+      - name: Upload VibeCut installer
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: vibecut-halthinks-deb-${{ github.run_id }}
+          path: packages/*.deb
+          if-no-files-found: error
+          retention-days: 14
 
       - name: Upload verification log
         if: always()
