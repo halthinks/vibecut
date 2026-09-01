@@ -3,7 +3,10 @@ name: VibeCut CI
 on:
   push:
     branches:
-      - agent/vibecut-architecture-slices
+      - 'agent/**'
+  pull_request:
+    branches:
+      - vibecut
   workflow_dispatch:
 
 permissions:
