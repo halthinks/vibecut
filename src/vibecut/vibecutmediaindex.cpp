@@ -9,6 +9,7 @@
 #include "mainwindow.h"
 #include "timeline2/model/timelineitemmodel.hpp"
 #include "timeline2/view/timelinewidget.h"
+#include "vibecutmediaevidence.h"
 
 #include <QJsonArray>
 #include <QRegularExpression>
@@ -85,7 +86,8 @@ bool VibeCutMediaIndex::rebuildFromCurrentProject(QString *error)
             document.startFrame = model->getClipPosition(clipId);
             document.endFrame = document.startFrame + model->getClipPlaytime(clipId);
             document.metadata = QJsonObject{{QStringLiteral("clip_id"), clipId}, {QStringLiteral("track_id"), trackId},
-                                            {QStringLiteral("bin_id"), model->getClipBinId(clipId)}};
+                                            {QStringLiteral("bin_id"), model->getClipBinId(clipId)},
+                                            {QStringLiteral("evidence_origin"), QStringLiteral("project_state")}};
             add(document);
         }
     }
@@ -102,10 +104,41 @@ bool VibeCutMediaIndex::rebuildFromCurrentProject(QString *error)
                 document.startFrame = subtitles->getSubtitlePosition(subtitleId).frames(fps);
                 document.endFrame = subtitles->getSubtitleEnd(subtitleId);
                 document.metadata = QJsonObject{{QStringLiteral("subtitle_id"), subtitleId},
-                                                {QStringLiteral("layer"), subtitles->getLayerForId(subtitleId)}};
+                                                {QStringLiteral("layer"), subtitles->getLayerForId(subtitleId)},
+                                                {QStringLiteral("evidence_origin"), QStringLiteral("subtitle_track")}};
                 add(document);
             }
         }
+    }
+
+    QString evidenceError;
+    const QJsonArray evidence = VibeCutMediaEvidence::loadCurrent(&evidenceError);
+    if (!evidenceError.isEmpty()) {
+        if (error) *error = QStringLiteral("Project/timeline index was rebuilt, but persistent media evidence was rejected: %1").arg(evidenceError);
+        return false;
+    }
+    for (const QJsonValue &value : evidence) {
+        VibeCutMediaEvidenceRecord record;
+        QString recordError;
+        if (!VibeCutMediaEvidenceRecord::fromJson(value.toObject(), record, &recordError)) {
+            if (error) *error = QStringLiteral("Persistent media evidence failed validation during index rebuild: %1").arg(recordError);
+            return false;
+        }
+        VibeCutMediaDocument document;
+        document.id = QStringLiteral("evidence:%1").arg(record.id);
+        document.kind = record.kind;
+        document.text = record.text;
+        document.startFrame = record.startFrame;
+        document.endFrame = record.endFrame;
+        document.metadata = record.metadata;
+        document.metadata.insert(QStringLiteral("evidence_origin"), QStringLiteral("extractor"));
+        document.metadata.insert(QStringLiteral("source_id"), record.sourceId);
+        document.metadata.insert(QStringLiteral("source_fingerprint"), record.sourceFingerprint);
+        document.metadata.insert(QStringLiteral("extractor_id"), record.extractorId);
+        document.metadata.insert(QStringLiteral("extractor_version"), record.extractorVersion);
+        document.metadata.insert(QStringLiteral("confidence"), record.confidence);
+        document.metadata.insert(QStringLiteral("produced_utc"), record.producedUtc);
+        add(document);
     }
     return true;
 }
