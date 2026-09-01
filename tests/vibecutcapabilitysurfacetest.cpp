@@ -44,6 +44,7 @@ TEST_CASE("canonical VibeCut surface exposes governed editing breadth", "[vibecu
         QStringLiteral("track_set_enabled"),
         QStringLiteral("transition_add"),
         QStringLiteral("transition_move"),
+        QStringLiteral("transition_parameter_set"),
         QStringLiteral("transition_resize"),
         QStringLiteral("transition_remove"),
     };
@@ -77,6 +78,7 @@ TEST_CASE("canonical VibeCut surface exposes governed editing breadth", "[vibecu
         QStringLiteral("selection_set"),
         QStringLiteral("selection_clear"),
         QStringLiteral("tracks_list"),
+        QStringLiteral("transition_parameters_inspect"),
         QStringLiteral("transitions_list"),
         QStringLiteral("render_presets_list"),
     };
