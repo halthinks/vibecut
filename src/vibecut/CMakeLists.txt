@@ -25,6 +25,7 @@ set(kdenlive_SRCS
   vibecut/vibecuteval.cpp
   vibecut/vibecutextractorprovider.cpp
   vibecut/vibecutextractorprovidertools.cpp
+  vibecut/vibecutextractorrequest.cpp
   vibecut/vibecutfreezeextractortools.cpp
   vibecut/vibecutgrouptools.cpp
   vibecut/vibecuthooks.cpp
