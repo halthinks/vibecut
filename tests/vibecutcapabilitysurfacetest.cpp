@@ -83,6 +83,8 @@ TEST_CASE("canonical VibeCut surface exposes governed editing breadth", "[vibecu
         QStringLiteral("effect_keyframes_inspect"),
         QStringLiteral("effects_available"),
         QStringLiteral("effects_inspect"),
+        QStringLiteral("media_evidence_list"),
+        QStringLiteral("media_evidence_summary"),
         QStringLiteral("mix_inspect"),
         QStringLiteral("project_preflight"),
         QStringLiteral("proxy_status"),
@@ -94,6 +96,8 @@ TEST_CASE("canonical VibeCut surface exposes governed editing breadth", "[vibecu
         QStringLiteral("selection_list"),
         QStringLiteral("selection_set"),
         QStringLiteral("selection_clear"),
+        QStringLiteral("sequence_inspect"),
+        QStringLiteral("sequences_list"),
         QStringLiteral("title_inspect"),
         QStringLiteral("tracks_list"),
         QStringLiteral("transition_parameters_inspect"),
@@ -127,6 +131,10 @@ TEST_CASE("canonical VibeCut surface exposes governed editing breadth", "[vibecu
     CHECK(policies.value(QStringLiteral("proxy_set_enabled")).risk == VibeCutToolRisk::ExternalSideEffect);
     CHECK(policies.value(QStringLiteral("proxy_set_enabled")).reversible);
     CHECK(policies.value(QStringLiteral("proxy_set_enabled")).mutatesProject);
+
+    REQUIRE(policies.contains(QStringLiteral("media_source_metadata_refresh")));
+    CHECK(policies.value(QStringLiteral("media_source_metadata_refresh")).risk == VibeCutToolRisk::ExternalSideEffect);
+    CHECK_FALSE(policies.value(QStringLiteral("media_source_metadata_refresh")).mutatesProject);
 
     REQUIRE(policies.contains(QStringLiteral("render_start")));
     CHECK(policies.value(QStringLiteral("render_start")).risk == VibeCutToolRisk::ExternalSideEffect);
