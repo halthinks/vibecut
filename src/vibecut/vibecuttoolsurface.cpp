@@ -20,6 +20,7 @@
 #include "vibecuteffecttools.h"
 #include "vibecutgrouptools.h"
 #include "vibecutmarkertools.h"
+#include "vibecutmediaevidencetools.h"
 #include "vibecutmemorytools.h"
 #include "vibecutmixtools.h"
 #include "vibecutpolicyoverrides.h"
@@ -111,6 +112,10 @@ VibeCutToolSurface::VibeCutToolSurface(VibeCutTools *baseTools)
     error.clear();
     if (!registerVibeCutMarkerTools(*this, &error)) {
         qWarning().noquote() << QStringLiteral("[VibeCut] guide tools unavailable: %1").arg(error);
+    }
+    error.clear();
+    if (!registerVibeCutMediaEvidenceTools(*this, &error)) {
+        qWarning().noquote() << QStringLiteral("[VibeCut] media evidence tools unavailable: %1").arg(error);
     }
     error.clear();
     if (!registerVibeCutMemoryTools(*this, &error)) {
