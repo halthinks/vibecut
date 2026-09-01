@@ -14,6 +14,7 @@
 #include "vibecutmixtools.h"
 #include "vibecutpolicyoverrides.h"
 #include "vibecutpreflighttools.h"
+#include "vibecutrelinkdiscoverytools.h"
 #include "vibecutrelinktools.h"
 #include "vibecutrendertools.h"
 #include "vibecutroutingtools.h"
@@ -67,6 +68,10 @@ VibeCutToolSurface::VibeCutToolSurface(VibeCutTools *baseTools)
     error.clear();
     if (!registerVibeCutPreflightTools(*this, &error)) {
         qWarning().noquote() << QStringLiteral("[VibeCut] preflight tools unavailable: %1").arg(error);
+    }
+    error.clear();
+    if (!registerVibeCutRelinkDiscoveryTools(*this, &error)) {
+        qWarning().noquote() << QStringLiteral("[VibeCut] relink discovery tools unavailable: %1").arg(error);
     }
     error.clear();
     if (!registerVibeCutRelinkTools(*this, &error)) {
