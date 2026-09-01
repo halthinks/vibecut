@@ -72,6 +72,7 @@ set(kdenlive_SRCS
   vibecut/vibecutsubtitlepipeline.cpp
   vibecut/vibecutsubtitletools.cpp
   vibecut/vibecuttakequalitytools.cpp
+  vibecut/vibecuttakeselectiontools.cpp
   vibecut/vibecuttitleinspecttools.cpp
   vibecut/vibecuttitletools.cpp
   vibecut/vibecuttoolpolicies.cpp
