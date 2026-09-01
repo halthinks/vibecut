@@ -136,6 +136,11 @@ TEST_CASE("canonical VibeCut surface exposes governed editing breadth", "[vibecu
     CHECK(policies.value(QStringLiteral("media_source_metadata_refresh")).risk == VibeCutToolRisk::ExternalSideEffect);
     CHECK_FALSE(policies.value(QStringLiteral("media_source_metadata_refresh")).mutatesProject);
 
+    REQUIRE(policies.contains(QStringLiteral("media_silence_refresh")));
+    CHECK(policies.value(QStringLiteral("media_silence_refresh")).risk == VibeCutToolRisk::ExternalSideEffect);
+    CHECK(policies.value(QStringLiteral("media_silence_refresh")).asynchronous);
+    CHECK_FALSE(policies.value(QStringLiteral("media_silence_refresh")).mutatesProject);
+
     REQUIRE(policies.contains(QStringLiteral("render_start")));
     CHECK(policies.value(QStringLiteral("render_start")).risk == VibeCutToolRisk::ExternalSideEffect);
     CHECK(policies.value(QStringLiteral("render_start")).asynchronous);
