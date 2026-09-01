@@ -2,6 +2,7 @@
 #include "vibecutmediaevidencetools.h"
 
 #include "vibecutmediaevidence.h"
+#include "vibecutsourceextractortools.h"
 #include "vibecuttoolsurface.h"
 
 #include <QHash>
@@ -99,8 +100,10 @@ bool registerVibeCutMediaEvidenceTools(VibeCutToolSurface &surface, QString *err
     VibeCutToolPolicy listPolicy;
     listPolicy.name = QStringLiteral("media_evidence_list");
     listPolicy.risk = VibeCutToolRisk::ReadOnly;
-    return surface.registerTool(QJsonObject{{QStringLiteral("name"), listPolicy.name},
-                                            {QStringLiteral("description"), QStringLiteral("List persistent extractor-produced evidence records with optional source/extractor/kind filters, including provenance, confidence and source fingerprint. Read-only.")},
-                                            {QStringLiteral("input_schema"), listInput}},
-                                listPolicy, listRecords, error);
+    if (!surface.registerTool(QJsonObject{{QStringLiteral("name"), listPolicy.name},
+                                          {QStringLiteral("description"), QStringLiteral("List persistent extractor-produced evidence records with optional source/extractor/kind filters, including provenance, confidence and source fingerprint. Read-only.")},
+                                          {QStringLiteral("input_schema"), listInput}},
+                              listPolicy, listRecords, error)) return false;
+
+    return registerVibeCutSourceExtractorTools(surface, error);
 }
