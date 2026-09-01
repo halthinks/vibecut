@@ -15,6 +15,7 @@ TEST_CASE("canonical VibeCut surface exposes governed editing breadth", "[vibecu
         QStringLiteral("bin_insert_timeline"),
         QStringLiteral("bin_metadata_set"),
         QStringLiteral("bin_move_to_folder"),
+        QStringLiteral("bulk_clip_copy_to"),
         QStringLiteral("bulk_clip_move"),
         QStringLiteral("clip_move"),
         QStringLiteral("clip_split"),
