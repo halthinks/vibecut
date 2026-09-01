@@ -137,7 +137,7 @@ private:
         connect(m_process, &QProcess::readyRead, this, [this]() {
             if (!m_process || !m_tools || !m_tools->jobManager()) return;
             const QString output = QString::fromUtf8(m_process->readAll()).trimmed();
-            if (!output.isEmpty()) m_lastOutput = (m_lastOutput + QLatin1Char('\n') + output).right(3000);
+            if (!output.isEmpty()) m_lastOutput = QString(m_lastOutput + QLatin1Char('\n') + output).right(3000);
         });
         connect(m_process, &QProcess::errorOccurred, this, [this](QProcess::ProcessError error) {
             if (error == QProcess::FailedToStart && !m_cancelRequested) {
@@ -148,7 +148,7 @@ private:
                 [this](int exitCode, QProcess::ExitStatus exitStatus) {
                     if (!m_process) return;
                     const QString tail = QString::fromUtf8(m_process->readAll()).trimmed();
-                    if (!tail.isEmpty()) m_lastOutput = (m_lastOutput + QLatin1Char('\n') + tail).right(3000);
+                    if (!tail.isEmpty()) m_lastOutput = QString(m_lastOutput + QLatin1Char('\n') + tail).right(3000);
                     m_process->deleteLater();
                     m_process = nullptr;
                     if (m_cancelRequested) {
@@ -267,9 +267,6 @@ QJsonObject startRender(VibeCutTools *tools, const QJsonObject &input)
     }
     if (jobs.empty()) return err(QStringLiteral("Render preparation produced no jobs."));
 
-    // Preserve the existing output until Kdenlive has successfully generated
-    // the renderer jobs/playlist. Only an explicit approved overwrite removes
-    // it, immediately before the renderer process begins.
     if (outputExists && overwrite && !QFile::remove(outputFile)) {
         cleanupPreparedJobs(jobs);
         return err(QStringLiteral("Render jobs were prepared, but the approved existing output could not be removed: %1").arg(outputFile));
