@@ -190,7 +190,7 @@ QJsonObject exportPolicy(const QJsonObject &input)
 
     const QJsonObject recommendation = recommendFor(destination);
     const QJsonObject preflight = vibeCutProjectPreflight();
-    const int proxyOnly = preflight.value(QStringLiteral("proxy_only_assets")).toInt(0);
+    const int proxyOnly = preflight.value(QStringLiteral("proxy_only_asset_count")).toInt(0);
     QJsonArray blockers;
     if (requireOriginals && proxyOnly > 0) {
         blockers.append(QJsonObject{{QStringLiteral("code"), QStringLiteral("originals_required")},
