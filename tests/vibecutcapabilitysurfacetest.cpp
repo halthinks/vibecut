@@ -81,6 +81,7 @@ TEST_CASE("canonical VibeCut surface exposes governed editing breadth", "[vibecu
         QStringLiteral("mix_inspect"),
         QStringLiteral("project_preflight"),
         QStringLiteral("proxy_status"),
+        QStringLiteral("render_profile_policy"),
         QStringLiteral("render_recommend"),
         QStringLiteral("routing_status"),
         QStringLiteral("audio_target_set"),
