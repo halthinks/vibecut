@@ -39,6 +39,7 @@
 #include "vibecutsequencetools.h"
 #include "vibecutsimilaritytools.h"
 #include "vibecutsubtitleedittools.h"
+#include "vibecuttakequalitytools.h"
 #include "vibecuttitleinspecttools.h"
 #include "vibecuttitletools.h"
 #include "vibecuttracktools.h"
@@ -122,6 +123,8 @@ VibeCutToolSurface::VibeCutToolSurface(VibeCutTools *baseTools)
     if (!registerVibeCutSequenceTools(*this, &error)) qWarning().noquote() << QStringLiteral("[VibeCut] sequence tools unavailable: %1").arg(error);
     error.clear();
     if (!registerVibeCutSubtitleEditTools(*this, &error)) qWarning().noquote() << QStringLiteral("[VibeCut] subtitle edit tools unavailable: %1").arg(error);
+    error.clear();
+    if (!registerVibeCutTakeQualityTools(*this, &error)) qWarning().noquote() << QStringLiteral("[VibeCut] take quality tools unavailable: %1").arg(error);
     error.clear();
     if (!registerVibeCutTitleTools(*this, &error)) qWarning().noquote() << QStringLiteral("[VibeCut] title tools unavailable: %1").arg(error);
     error.clear();
