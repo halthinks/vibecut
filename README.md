@@ -24,7 +24,7 @@ A user should be able to say things such as:
 
 - “Find the dead air in this interview and show me what you would remove.”
 - “Clean this dialogue, transcribe it, and find every place we discuss the launch.”
-- “Keep the best take of each repeated line, but let me review the choices first.”
+- “Keep the best take of each repeated line, let me review the choices, then apply my selections as one undoable edit.”
 - “Move this section, preserve linked audio/video, and tell me exactly what changed.”
 - “Find missing media and explain what can be relinked automatically.”
 - “Prepare a review render using the presets actually installed on this machine.”
@@ -78,9 +78,9 @@ The assistant is expected to inspect live state first, work from real project/me
 
 ### 7. Broad native timeline editing
 
-**User experience:** the agent can perform real nonlinear editing tasks including clip movement, split, trim, ripple trim, deletion, copying, group movement, guide operations, and governed bulk operations.
+**User experience:** the agent can perform real nonlinear editing tasks including clip movement, split, trim, ripple trim, deletion, copying, group movement, guide operations, governed bulk operations, and exact governed timeline-range removal.
 
-**Technical basis:** operations are routed through Kdenlive timeline models/functions and preserve stable timeline identifiers, group topology, exact frame positions, and native undo behavior where supported.
+**Technical basis:** operations are routed through Kdenlive timeline models/functions and preserve stable timeline identifiers, group topology, exact frame positions, and native undo behavior where supported. `timeline_range_remove` uses Kdenlive’s accumulated zone-extraction seam with explicit lift/ripple semantics, locked-track refusal and live postcondition verification.
 
 ### 8. Tracks, routing, groups, and selection awareness
 
@@ -98,13 +98,13 @@ The assistant is expected to inspect live state first, work from real project/me
 
 **User experience:** the assistant can work with real installed transitions and compositions and can inspect or modify same-track mixes without pretending unsupported transition names exist.
 
-**Technical basis:** transition and mix tools query the current runtime, operate on actual composition/mix objects, expose A-track/parameters, and verify resulting timeline state.
+**Technical basis:** transition and mix tools query the current runtime, operate on actual composition/mix objects, expose A-track/parameters, and verify resulting timeline state. Mix type/parameter breadth remains intentionally constrained to backend seams that Kdenlive exposes safely.
 
 ### 11. Titles and title-item inspection
 
 **User experience:** the agent can create title assets, place them on the timeline, inspect title content, and edit supported title items.
 
-**Technical basis:** title operations create and modify Kdenlive-native title/bin artifacts instead of rendering text into opaque external media.
+**Technical basis:** title operations create and modify Kdenlive-native title/bin artifacts instead of rendering text into opaque external media. Richer shape/image/template/brand-pack work remains sequenced behind safe native element-editing seams and evaluation fixtures.
 
 ### 12. Bin and media-management capabilities
 
@@ -155,11 +155,11 @@ Current deterministic evidence paths include:
 
 **Technical basis:** dead-air planning maps persisted source evidence to exact live timeline instances. Execution revalidates the evidence and timeline topology, uses native cuts/deletions, supports linked-group-aware cleanup, and rolls back on failure.
 
-### 18. Repeated-take intelligence
+### 18. Repeated-take intelligence and execution
 
-**User experience:** repeated lines or takes can be grouped for editorial review. The system can expose available quality evidence without pretending that an algorithm automatically knows which performance is creatively “best.”
+**User experience:** repeated lines or takes can be grouped for editorial review. The system exposes available quality evidence without pretending that an algorithm automatically knows which performance is creatively “best.” After the user explicitly selects the take to keep, VibeCut can now execute the rejected-take removals instead of stopping at a plan.
 
-**Technical basis:** transcript/subtitle similarity produces candidate groups; review tooling adds source/timeline context and measured quality evidence; explicit selection plans preserve the human/editorial choice of which take to keep.
+**Technical basis:** transcript/subtitle similarity produces candidate groups; review tooling adds source/timeline context and measured quality evidence; explicit selection plans preserve the human/editorial choice. `repeated_take_selection_execute` revalidates the current review, requires explicit lift/ripple semantics, rejects overlapping removal ranges, applies removals right-to-left through the governed native range-removal transaction, rolls back on failure, verifies each mutation, and commits the successful batch as one Undo step.
 
 ### 19. Take-quality context without invented scores
 
@@ -195,7 +195,7 @@ Current deterministic evidence paths include:
 
 **User experience:** VibeCut is not structurally tied to one model vendor.
 
-**Technical basis:** provider registries normalize model-provider construction and requests behind stable interfaces.
+**Technical basis:** provider registries normalize model-provider construction and requests behind stable interfaces. Additional adapters and per-task routing are sequenced after evidence/task contracts stabilize so providers do not dictate the architecture.
 
 ### 25. Project rules, policy, and memory
 
@@ -214,6 +214,21 @@ Current deterministic evidence paths include:
 **User experience:** longer sessions can remain usable without corrupting the relationship between tool calls, tool results, and the current project state.
 
 **Technical basis:** conversation compaction preserves structured tool protocol and essential project context rather than naively truncating message history.
+
+---
+
+## Next capability sequence
+
+The remaining capability work is deliberately dependency-ordered rather than a flat wishlist:
+
+1. **Golden editing fixtures and quantitative verified-success / Undo-fidelity evaluation** across the existing mutation surface.
+2. **Evidence depth:** diarization + user speaker naming, OCR/on-screen text, richer noise/room-tone/audio-event analysis, and visual subject/object/action evidence.
+3. **Retrieval:** text/visual embeddings, cross-modal semantic search, and stronger duplicate/near-duplicate detection.
+4. **Editorial synthesis:** rough cuts, highlights/shorts, B-roll planning, pacing analysis, and narrative analysis.
+5. **Presentation/audio breadth:** richer title shapes/images/templates/brand packs and mixer gain/pan/solo plus mix type/parameter edits only where Kdenlive exposes a safe backend seam.
+6. **Provider scale:** additional model/provider adapters and per-task routing after task/evidence contracts are stable.
+
+`TODO.md` is the dependency-ordered full roadmap; `VIBECUT_ROADMAP_STATUS.md` is the concise live-state ledger.
 
 ---
 
@@ -280,7 +295,7 @@ The repository verification gate is:
 bash scripts/vibecut-verify.sh
 ```
 
-That gate validates the dependency contract, configures CMake, compiles the tree, and runs the `vibecut*` CTest suite. GitHub Actions is also used on the halthinks development branch as a hard compile/test environment while this large integration branch is being stabilized.
+That repository-local gate is authoritative: it validates the dependency contract, configures CMake, compiles the tree, and runs the `vibecut*` CTest suite. Branch GitHub Actions may supplement the halthinks hardening cycle, but they do not replace the repository-local gate or the hands-on editor smoke matrix.
 
 ## Installation packaging
 
@@ -290,7 +305,7 @@ See `packaging/vibecut/README.md` for the halthinks/VibeCut package contract and
 
 ## Development status
 
-This fork is under active integration and compiler/test hardening. A large amount of the functionality above is implemented in source, but the integration branch is not considered release-ready until the complete build, VibeCut test suite, and hands-on editing smoke matrix are green.
+The integration branch now includes source implementation for governed timeline-range removal and final repeated-take selection execution. Those capabilities—and the broader integration branch—are not considered release-ready until the complete build, VibeCut test suite, package checks, and hands-on editing/Undo smoke matrix are green. Source implementation is not treated as proof of runtime correctness.
 
 No claim in this README should be interpreted as replacing Kdenlive’s own feature set or authorship. The purpose of this layer is to describe the additional agentic/editor-governance capability introduced by the halthinks fork.
 
@@ -358,5 +373,3 @@ Kdenlive's primary development happens on [KDE Invent](https://invent.kde.org/mu
 - Look for issues tagged with "good first issue" or "help wanted"
 
 Need help getting started? Join our Matrix channel `#kdenlive-dev:kde.org` - our community is friendly and always ready to help new contributors!
-
-Please get in touch with us before working on a task, either by commenting in the issue or through our Matrix channel.
