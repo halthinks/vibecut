@@ -40,6 +40,7 @@
 #include "vibecutsimilaritytools.h"
 #include "vibecutsubtitleedittools.h"
 #include "vibecuttakequalitytools.h"
+#include "vibecuttakeselectiontools.h"
 #include "vibecuttitleinspecttools.h"
 #include "vibecuttitletools.h"
 #include "vibecuttracktools.h"
@@ -115,6 +116,8 @@ VibeCutToolSurface::VibeCutToolSurface(VibeCutTools *baseTools)
     if (!registerVibeCutRenderRecommendTools(*this, &error)) qWarning().noquote() << QStringLiteral("[VibeCut] render recommendation tools unavailable: %1").arg(error);
     error.clear();
     if (!registerVibeCutRepeatedTakeTools(*this, &error)) qWarning().noquote() << QStringLiteral("[VibeCut] repeated-take tools unavailable: %1").arg(error);
+    error.clear();
+    if (!registerVibeCutTakeSelectionTools(*this, &error)) qWarning().noquote() << QStringLiteral("[VibeCut] repeated-take selection tools unavailable: %1").arg(error);
     error.clear();
     if (!registerVibeCutRoutingTools(*this, &error)) qWarning().noquote() << QStringLiteral("[VibeCut] routing tools unavailable: %1").arg(error);
     error.clear();
