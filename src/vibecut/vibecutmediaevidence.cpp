@@ -21,8 +21,7 @@ QString pathFor(const QUrl &projectUrl)
 
 QJsonObject rootFor(const QJsonArray &records)
 {
-    return QJsonObject{{QStringLiteral("version"), VibeCutMediaEvidence::SchemaVersion},
-                       {QStringLiteral("records"), records}};
+    return QJsonObject{{QStringLiteral("version"), VibeCutMediaEvidence::SchemaVersion}, {QStringLiteral("records"), records}};
 }
 
 bool saveForProjectUrl(const QUrl &projectUrl, const QJsonArray &records, QString *error)
@@ -57,18 +56,12 @@ bool saveForProjectUrl(const QUrl &projectUrl, const QJsonArray &records, QStrin
 
 QJsonObject VibeCutMediaEvidenceRecord::toJson() const
 {
-    return QJsonObject{{QStringLiteral("id"), id},
-                       {QStringLiteral("source_id"), sourceId},
-                       {QStringLiteral("source_fingerprint"), sourceFingerprint},
-                       {QStringLiteral("extractor_id"), extractorId},
-                       {QStringLiteral("extractor_version"), extractorVersion},
-                       {QStringLiteral("kind"), kind},
-                       {QStringLiteral("start_frame"), startFrame},
-                       {QStringLiteral("end_frame"), endFrame},
-                       {QStringLiteral("text"), text},
-                       {QStringLiteral("confidence"), confidence},
-                       {QStringLiteral("produced_utc"), producedUtc},
-                       {QStringLiteral("metadata"), metadata}};
+    return QJsonObject{{QStringLiteral("id"), id}, {QStringLiteral("source_id"), sourceId},
+                       {QStringLiteral("source_fingerprint"), sourceFingerprint}, {QStringLiteral("extractor_id"), extractorId},
+                       {QStringLiteral("extractor_version"), extractorVersion}, {QStringLiteral("kind"), kind},
+                       {QStringLiteral("start_frame"), startFrame}, {QStringLiteral("end_frame"), endFrame},
+                       {QStringLiteral("text"), text}, {QStringLiteral("confidence"), confidence},
+                       {QStringLiteral("produced_utc"), producedUtc}, {QStringLiteral("metadata"), metadata}};
 }
 
 bool VibeCutMediaEvidenceRecord::fromJson(const QJsonObject &object, VibeCutMediaEvidenceRecord &record, QString *error)
@@ -86,9 +79,7 @@ bool VibeCutMediaEvidenceRecord::fromJson(const QJsonObject &object, VibeCutMedi
     record.confidence = object.value(QStringLiteral("confidence")).toDouble(-1.0);
     record.producedUtc = object.value(QStringLiteral("produced_utc")).toString().trimmed();
     record.metadata = object.value(QStringLiteral("metadata")).toObject();
-
-    if (record.sourceId.isEmpty() || record.sourceFingerprint.isEmpty() || record.extractorId.isEmpty() ||
-        record.extractorVersion.isEmpty() || record.kind.isEmpty()) {
+    if (record.sourceId.isEmpty() || record.sourceFingerprint.isEmpty() || record.extractorId.isEmpty() || record.extractorVersion.isEmpty() || record.kind.isEmpty()) {
         if (error) *error = QStringLiteral("Media evidence requires source_id, source_fingerprint, extractor_id, extractor_version and kind.");
         return false;
     }
@@ -105,10 +96,7 @@ bool VibeCutMediaEvidenceRecord::fromJson(const QJsonObject &object, VibeCutMedi
     return true;
 }
 
-QString VibeCutMediaEvidence::fileName()
-{
-    return QStringLiteral(".vibecutmedia.json");
-}
+QString VibeCutMediaEvidence::fileName() { return QStringLiteral(".vibecutmedia.json"); }
 
 bool VibeCutMediaEvidence::canPersistCurrent(QString *error)
 {
@@ -124,9 +112,10 @@ bool VibeCutMediaEvidence::canPersistCurrent(QString *error)
         return false;
     }
     const QFileInfo projectInfo(projectUrl.toLocalFile());
-    QDir directory = projectInfo.absoluteDir();
-    if (!directory.exists() || !directory.isReadable()) {
-        if (error) *error = QStringLiteral("Project directory is unavailable for media-evidence persistence.");
+    const QDir directory = projectInfo.absoluteDir();
+    const QFileInfo directoryInfo(directory.absolutePath());
+    if (!directory.exists() || !directoryInfo.isWritable()) {
+        if (error) *error = QStringLiteral("Project directory is not writable for media-evidence persistence.");
         return false;
     }
     return true;
@@ -189,12 +178,8 @@ QJsonArray VibeCutMediaEvidence::loadCurrent(QString *error)
     return loadForProjectUrl(pCore->currentDoc()->url(), error);
 }
 
-bool VibeCutMediaEvidence::replaceSourceExtractorCurrent(const QString &sourceId,
-                                                         const QString &sourceFingerprint,
-                                                         const QString &extractorId,
-                                                         const QString &extractorVersion,
-                                                         const QList<VibeCutMediaEvidenceRecord> &records,
-                                                         QString *error)
+bool VibeCutMediaEvidence::replaceSourceExtractorCurrent(const QString &sourceId, const QString &sourceFingerprint, const QString &extractorId,
+                                                         const QString &extractorVersion, const QList<VibeCutMediaEvidenceRecord> &records, QString *error)
 {
     if (error) error->clear();
     if (!pCore || !pCore->currentDoc()) {
@@ -205,21 +190,18 @@ bool VibeCutMediaEvidence::replaceSourceExtractorCurrent(const QString &sourceId
         if (error) *error = QStringLiteral("source/extractor identity fields must not be empty.");
         return false;
     }
-
     QString loadError;
     const QJsonArray current = loadCurrent(&loadError);
     if (!loadError.isEmpty()) {
         if (error) *error = loadError;
         return false;
     }
-
     QJsonArray next;
     for (const QJsonValue &value : current) {
         const QJsonObject object = value.toObject();
         if (object.value(QStringLiteral("source_id")).toString() == sourceId && object.value(QStringLiteral("extractor_id")).toString() == extractorId) continue;
         next.append(object);
     }
-
     for (VibeCutMediaEvidenceRecord record : records) {
         if (record.sourceId.isEmpty()) record.sourceId = sourceId;
         if (record.sourceFingerprint.isEmpty()) record.sourceFingerprint = sourceFingerprint;
