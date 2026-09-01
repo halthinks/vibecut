@@ -31,6 +31,7 @@
 #include "vibecutrendertools.h"
 #include "vibecutroutingtools.h"
 #include "vibecutselectiontools.h"
+#include "vibecutsequencetools.h"
 #include "vibecutsubtitleedittools.h"
 #include "vibecuttitleinspecttools.h"
 #include "vibecuttitletools.h"
@@ -146,6 +147,10 @@ VibeCutToolSurface::VibeCutToolSurface(VibeCutTools *baseTools)
     error.clear();
     if (!registerVibeCutSelectionTools(*this, &error)) {
         qWarning().noquote() << QStringLiteral("[VibeCut] selection tools unavailable: %1").arg(error);
+    }
+    error.clear();
+    if (!registerVibeCutSequenceTools(*this, &error)) {
+        qWarning().noquote() << QStringLiteral("[VibeCut] sequence tools unavailable: %1").arg(error);
     }
     error.clear();
     if (!registerVibeCutSubtitleEditTools(*this, &error)) {
