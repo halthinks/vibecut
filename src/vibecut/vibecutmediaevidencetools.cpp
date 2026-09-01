@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL */
 #include "vibecutmediaevidencetools.h"
 
+#include "vibecutblackextractortools.h"
 #include "vibecutloudnessextractortools.h"
 #include "vibecutmediaevidence.h"
 #include "vibecutshotextractortools.h"
@@ -111,5 +112,6 @@ bool registerVibeCutMediaEvidenceTools(VibeCutToolSurface &surface, QString *err
     if (!registerVibeCutSourceExtractorTools(surface, error)) return false;
     if (!registerVibeCutSilenceExtractorTools(surface, error)) return false;
     if (!registerVibeCutLoudnessExtractorTools(surface, error)) return false;
-    return registerVibeCutShotExtractorTools(surface, error);
+    if (!registerVibeCutShotExtractorTools(surface, error)) return false;
+    return registerVibeCutBlackExtractorTools(surface, error);
 }
