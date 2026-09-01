@@ -60,6 +60,8 @@ QList<QPair<double, double>> parseSilence(const QString &stderrText)
 QJsonObject startSilence(VibeCutTools *tools, const QJsonObject &input)
 {
     if (!tools || !pCore) return err(QStringLiteral("VibeCut/Kdenlive core is unavailable."));
+    QString persistError;
+    if (!VibeCutMediaEvidence::canPersistCurrent(&persistError)) return err(persistError);
     const QString binId = input.value(QStringLiteral("bin_id")).toString().trimmed();
     if (binId.isEmpty()) return err(QStringLiteral("bin_id must not be empty."));
 
@@ -156,7 +158,7 @@ QJsonObject startSilence(VibeCutTools *tools, const QJsonObject &input)
     });
 
     QObject::connect(process, &QProcess::errorOccurred, tools, [jobs, process, jobId](QProcess::ProcessError processError) {
-        if (processError == QProcess::Crashed) return; // finished() handles cancellation/crash state.
+        if (processError == QProcess::Crashed) return;
         VibeCutJob job;
         if (jobs->job(jobId, job) && !job.terminal()) {
             jobs->markFailed(jobId, QStringLiteral("Could not start/run FFmpeg silencedetect: %1").arg(process->errorString()));
