@@ -6,6 +6,7 @@
 #include "vibecuttoolsurface.h"
 
 #include "vibecutaudiomonitortools.h"
+#include "vibecutbinfoldertools.h"
 #include "vibecutbinmetadatatools.h"
 #include "vibecutbintools.h"
 #include "vibecutbulkcopytools.h"
@@ -58,6 +59,10 @@ VibeCutToolSurface::VibeCutToolSurface(VibeCutTools *baseTools)
     error.clear();
     if (!registerVibeCutBinMetadataTools(*this, &error)) {
         qWarning().noquote() << QStringLiteral("[VibeCut] bin metadata tools unavailable: %1").arg(error);
+    }
+    error.clear();
+    if (!registerVibeCutBinFolderTools(*this, &error)) {
+        qWarning().noquote() << QStringLiteral("[VibeCut] bin folder tools unavailable: %1").arg(error);
     }
     error.clear();
     if (!registerVibeCutBulkTools(*this, &error)) {
