@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL */
 #include "vibecutrenderrecommendtools.h"
 
+#include "core.h"
 #include "renderpresets/renderpresetmodel.hpp"
 #include "renderpresets/renderpresetrepository.hpp"
 #include "vibecutpreflighttools.h"
@@ -72,16 +73,8 @@ void scoreCommon(Candidate &candidate, const QString &destination)
     }
 }
 
-QJsonObject recommend(const QJsonObject &input)
+QJsonObject recommendFor(const QString &destination)
 {
-    const QString destination = input.value(QStringLiteral("destination")).toString(QStringLiteral("general")).trimmed().toLower();
-    const QStringList allowed{QStringLiteral("general"), QStringLiteral("youtube"), QStringLiteral("review"), QStringLiteral("archive"),
-                              QStringLiteral("social"), QStringLiteral("audio")};
-    if (!allowed.contains(destination)) {
-        return QJsonObject{{QStringLiteral("ok"), false},
-                           {QStringLiteral("error"), QStringLiteral("destination must be one of: %1").arg(allowed.join(QStringLiteral(", ")))}};
-    }
-
     std::vector<Candidate> candidates;
     for (const QString &presetId : RenderPresetRepository::get()->getAllPresets()) {
         if (!RenderPresetRepository::get()->presetExists(presetId)) continue;
@@ -122,13 +115,103 @@ QJsonObject recommend(const QJsonObject &input)
                                   {QStringLiteral("reasons"), reasons}});
     }
 
+    return QJsonObject{{QStringLiteral("recommended_preset"), limit > 0 ? candidates.front().name : QString()},
+                       {QStringLiteral("ranked"), ranked}};
+}
+
+QJsonObject recommend(const QJsonObject &input)
+{
+    const QString destination = input.value(QStringLiteral("destination")).toString(QStringLiteral("general")).trimmed().toLower();
+    const QStringList allowed{QStringLiteral("general"), QStringLiteral("youtube"), QStringLiteral("review"), QStringLiteral("archive"),
+                              QStringLiteral("social"), QStringLiteral("audio")};
+    if (!allowed.contains(destination)) {
+        return QJsonObject{{QStringLiteral("ok"), false},
+                           {QStringLiteral("error"), QStringLiteral("destination must be one of: %1").arg(allowed.join(QStringLiteral(", ")))}};
+    }
+
+    QJsonObject result = recommendFor(destination);
+    result.insert(QStringLiteral("ok"), true);
+    result.insert(QStringLiteral("destination"), destination);
+    result.insert(QStringLiteral("preflight"), vibeCutProjectPreflight());
+    result.insert(QStringLiteral("note"), QStringLiteral("Recommendation ranks installed Kdenlive presets by deterministic container/codec/destination heuristics. It does not change project resolution/aspect ratio; conform remains a separate governed edit."));
+    return result;
+}
+
+QJsonObject exportPolicy(const QJsonObject &input)
+{
+    const QString profile = input.value(QStringLiteral("profile")).toString().trimmed().toLower();
+    const QStringList allowed{QStringLiteral("youtube"), QStringLiteral("review_proxy"), QStringLiteral("archive_master"),
+                              QStringLiteral("social_vertical"), QStringLiteral("social_square"), QStringLiteral("audio_master")};
+    if (!allowed.contains(profile)) {
+        return QJsonObject{{QStringLiteral("ok"), false}, {QStringLiteral("error"), QStringLiteral("profile must be one of: %1").arg(allowed.join(QStringLiteral(", ")))}};
+    }
+
+    QString destination;
+    bool useProxies = false;
+    bool requireOriginals = true;
+    int targetW = 0;
+    int targetH = 0;
+    QString purpose;
+    if (profile == QLatin1String("youtube")) {
+        destination = QStringLiteral("youtube");
+        purpose = QStringLiteral("High-quality broadly compatible upload master preserving project aspect ratio.");
+    } else if (profile == QLatin1String("review_proxy")) {
+        destination = QStringLiteral("review");
+        useProxies = true;
+        requireOriginals = false;
+        purpose = QStringLiteral("Fast lightweight review copy; proxy-only media is acceptable.");
+    } else if (profile == QLatin1String("archive_master")) {
+        destination = QStringLiteral("archive");
+        purpose = QStringLiteral("High-quality mezzanine/lossless archive master; originals required.");
+    } else if (profile == QLatin1String("social_vertical")) {
+        destination = QStringLiteral("social");
+        targetW = 1080;
+        targetH = 1920;
+        purpose = QStringLiteral("9:16 vertical social delivery; project may require a separate governed reframe/conform edit before render.");
+    } else if (profile == QLatin1String("social_square")) {
+        destination = QStringLiteral("social");
+        targetW = 1080;
+        targetH = 1080;
+        purpose = QStringLiteral("1:1 square social delivery; project may require a separate governed reframe/conform edit before render.");
+    } else {
+        destination = QStringLiteral("audio");
+        targetW = 0;
+        targetH = 0;
+        purpose = QStringLiteral("Lossless audio master when an installed audio preset is available.");
+    }
+
+    const QSize frameSize = pCore ? pCore->getCurrentFrameSize() : QSize();
+    bool requiresConform = false;
+    if (targetW > 0 && targetH > 0 && frameSize.width() > 0 && frameSize.height() > 0) {
+        const qint64 lhs = static_cast<qint64>(frameSize.width()) * targetH;
+        const qint64 rhs = static_cast<qint64>(frameSize.height()) * targetW;
+        requiresConform = lhs != rhs;
+    }
+
+    const QJsonObject recommendation = recommendFor(destination);
     const QJsonObject preflight = vibeCutProjectPreflight();
-    return QJsonObject{{QStringLiteral("ok"), true},
-                       {QStringLiteral("destination"), destination},
-                       {QStringLiteral("recommended_preset"), limit > 0 ? candidates.front().name : QString()},
-                       {QStringLiteral("ranked"), ranked},
-                       {QStringLiteral("preflight"), preflight},
-                       {QStringLiteral("note"), QStringLiteral("Recommendation ranks installed Kdenlive presets by deterministic container/codec/destination heuristics. It does not change project resolution/aspect ratio; social/vertical conform remains a separate editing decision.")}};
+    const int proxyOnly = preflight.value(QStringLiteral("proxy_only_assets")).toInt(0);
+    QJsonArray blockers;
+    if (requireOriginals && proxyOnly > 0) {
+        blockers.append(QJsonObject{{QStringLiteral("code"), QStringLiteral("originals_required")},
+                                    {QStringLiteral("message"), QStringLiteral("This export profile requires original media, but proxy-only assets are present.")},
+                                    {QStringLiteral("count"), proxyOnly}});
+    }
+    if (requiresConform) {
+        blockers.append(QJsonObject{{QStringLiteral("code"), QStringLiteral("conform_required")},
+                                    {QStringLiteral("message"), QStringLiteral("Project aspect ratio does not match the requested delivery profile; perform a governed reframe/conform edit before rendering.")}});
+    }
+
+    return QJsonObject{{QStringLiteral("ok"), true}, {QStringLiteral("profile"), profile},
+                       {QStringLiteral("purpose"), purpose}, {QStringLiteral("destination_class"), destination},
+                       {QStringLiteral("recommended_preset"), recommendation.value(QStringLiteral("recommended_preset"))},
+                       {QStringLiteral("ranked_presets"), recommendation.value(QStringLiteral("ranked"))},
+                       {QStringLiteral("use_proxies"), useProxies}, {QStringLiteral("require_originals"), requireOriginals},
+                       {QStringLiteral("project_width"), frameSize.width()}, {QStringLiteral("project_height"), frameSize.height()},
+                       {QStringLiteral("target_width"), targetW}, {QStringLiteral("target_height"), targetH},
+                       {QStringLiteral("requires_conform"), requiresConform},
+                       {QStringLiteral("ready_for_profile"), preflight.value(QStringLiteral("ready_for_long_jobs")).toBool(false) && blockers.isEmpty()},
+                       {QStringLiteral("blockers"), blockers}, {QStringLiteral("preflight"), preflight}};
 }
 } // namespace
 
@@ -145,5 +228,19 @@ bool registerVibeCutRenderRecommendTools(VibeCutToolSurface &surface, QString *e
     VibeCutToolPolicy policy;
     policy.name = QStringLiteral("render_recommend");
     policy.risk = VibeCutToolRisk::ReadOnly;
-    return surface.registerTool(schema, policy, recommend, error);
+    if (!surface.registerTool(schema, policy, recommend, error)) return false;
+
+    const QJsonObject policyInput{{QStringLiteral("type"), QStringLiteral("object")},
+                                  {QStringLiteral("properties"), QJsonObject{
+                                      {QStringLiteral("profile"), QJsonObject{{QStringLiteral("type"), QStringLiteral("string")},
+                                                                              {QStringLiteral("enum"), QJsonArray{QStringLiteral("youtube"), QStringLiteral("review_proxy"), QStringLiteral("archive_master"), QStringLiteral("social_vertical"), QStringLiteral("social_square"), QStringLiteral("audio_master")}}}}},
+                                  {QStringLiteral("required"), QJsonArray{QStringLiteral("profile")}},
+                                  {QStringLiteral("additionalProperties"), false}};
+    const QJsonObject policySchema{{QStringLiteral("name"), QStringLiteral("render_profile_policy")},
+                                   {QStringLiteral("description"), QStringLiteral("Resolve a named product export profile into explicit original/proxy requirements, target geometry/conform requirement, current preflight blockers, and the best installed Kdenlive preset. Read-only; does not silently reframe the project or start rendering.")},
+                                   {QStringLiteral("input_schema"), policyInput}};
+    VibeCutToolPolicy profilePolicy;
+    profilePolicy.name = QStringLiteral("render_profile_policy");
+    profilePolicy.risk = VibeCutToolRisk::ReadOnly;
+    return surface.registerTool(policySchema, profilePolicy, exportPolicy, error);
 }
