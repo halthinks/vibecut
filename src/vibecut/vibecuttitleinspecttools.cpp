@@ -6,6 +6,7 @@
 #include "core.h"
 #include "vibecuttoolsurface.h"
 
+#include <QColor>
 #include <QDomDocument>
 #include <QJsonArray>
 
@@ -55,6 +56,50 @@ bool parseXml(const QString &xml, QDomDocument &document, QString &error)
         return false;
     }
     return true;
+}
+
+QDomElement textItemAt(QDomDocument &document, int wantedIndex)
+{
+    QDomNodeList nodes = document.documentElement().elementsByTagName(QStringLiteral("item"));
+    int textIndex = 0;
+    for (int i = 0; i < nodes.count(); ++i) {
+        QDomElement item = nodes.at(i).toElement();
+        if (item.attribute(QStringLiteral("type")) != QLatin1String("QGraphicsTextItem")) continue;
+        if (textIndex == wantedIndex) return item;
+        ++textIndex;
+    }
+    return QDomElement();
+}
+
+QString kdenliveColor(const QColor &color)
+{
+    return QStringLiteral("%1,%2,%3,%4").arg(color.red()).arg(color.green()).arg(color.blue()).arg(color.alpha());
+}
+
+QJsonObject applyTitleXml(const std::shared_ptr<ProjectClip> &clip, const QString &oldXml, const QString &newXml, const QString &undoText)
+{
+    if (oldXml == newXml) return QJsonObject{{QStringLiteral("ok"), true}, {QStringLiteral("changed"), false}, {QStringLiteral("verified"), true}};
+    clip->setProducerProperty(QStringLiteral("xmldata"), newXml);
+    clip->reloadTimeline();
+    if (clip->getProducerProperty(QStringLiteral("xmldata")) != newXml) {
+        clip->setProducerProperty(QStringLiteral("xmldata"), oldXml);
+        clip->reloadTimeline();
+        return err(QStringLiteral("Title XML update did not verify on the live producer."));
+    }
+
+    const std::shared_ptr<ProjectClip> retained = clip;
+    Fun undo = [retained, oldXml]() {
+        retained->setProducerProperty(QStringLiteral("xmldata"), oldXml);
+        retained->reloadTimeline();
+        return retained->getProducerProperty(QStringLiteral("xmldata")) == oldXml;
+    };
+    Fun redo = [retained, newXml]() {
+        retained->setProducerProperty(QStringLiteral("xmldata"), newXml);
+        retained->reloadTimeline();
+        return retained->getProducerProperty(QStringLiteral("xmldata")) == newXml;
+    };
+    pCore->pushUndo(undo, redo, undoText);
+    return QJsonObject{{QStringLiteral("ok"), true}, {QStringLiteral("changed"), true}, {QStringLiteral("verified"), true}};
 }
 
 QJsonObject itemSummary(const QDomElement &item, int itemIndex, int textIndex)
@@ -141,58 +186,82 @@ QJsonObject setTextItem(const QJsonObject &input)
     QDomDocument document;
     QString parseError;
     if (!parseXml(oldXml, document, parseError)) return err(parseError);
-
-    QDomNodeList nodes = document.documentElement().elementsByTagName(QStringLiteral("item"));
-    QDomElement target;
-    int textIndex = 0;
-    for (int i = 0; i < nodes.count(); ++i) {
-        QDomElement item = nodes.at(i).toElement();
-        if (item.attribute(QStringLiteral("type")) != QLatin1String("QGraphicsTextItem")) continue;
-        if (textIndex == wantedIndex) {
-            target = item;
-            break;
-        }
-        ++textIndex;
-    }
+    QDomElement target = textItemAt(document, wantedIndex);
     if (target.isNull()) return err(QStringLiteral("Title has no text item at index %1. Call title_inspect first.").arg(wantedIndex));
     QDomElement content = target.firstChildElement(QStringLiteral("content"));
     if (content.isNull()) return err(QStringLiteral("Selected title text item has no content node."));
 
     const QString oldText = content.text();
-    if (oldText == text) {
-        return QJsonObject{{QStringLiteral("ok"), true}, {QStringLiteral("bin_id"), binId},
-                           {QStringLiteral("text_item_index"), wantedIndex}, {QStringLiteral("old_text"), oldText},
-                           {QStringLiteral("text"), text}, {QStringLiteral("changed"), false}, {QStringLiteral("verified"), true}};
-    }
-
     while (!content.firstChild().isNull()) content.removeChild(content.firstChild());
     content.appendChild(document.createTextNode(text));
-    const QString newXml = document.toString();
+    const QJsonObject applied = applyTitleXml(clip, oldXml, document.toString(), QStringLiteral("VibeCut: edit title text element"));
+    if (!applied.value(QStringLiteral("ok")).toBool()) return applied;
+    QJsonObject result = applied;
+    result.insert(QStringLiteral("bin_id"), binId);
+    result.insert(QStringLiteral("text_item_index"), wantedIndex);
+    result.insert(QStringLiteral("old_text"), oldText);
+    result.insert(QStringLiteral("text"), text);
+    return result;
+}
 
-    clip->setProducerProperty(QStringLiteral("xmldata"), newXml);
-    clip->reloadTimeline();
-    if (clip->getProducerProperty(QStringLiteral("xmldata")) != newXml) {
-        clip->setProducerProperty(QStringLiteral("xmldata"), oldXml);
-        clip->reloadTimeline();
-        return err(QStringLiteral("Title text-item update did not verify on the live producer."));
+QJsonObject setTextItemStyle(const QJsonObject &input)
+{
+    const QString binId = input.value(QStringLiteral("bin_id")).toString().trimmed();
+    const int wantedIndex = input.value(QStringLiteral("text_item_index")).toInt(-1);
+    if (binId.isEmpty()) return err(QStringLiteral("bin_id must not be empty."));
+    if (wantedIndex < 0) return err(QStringLiteral("text_item_index must be >= 0."));
+
+    const QStringList editable = {QStringLiteral("x"), QStringLiteral("y"), QStringLiteral("font_family"), QStringLiteral("font_pixel_size"),
+                                  QStringLiteral("font_color"), QStringLiteral("font_weight"), QStringLiteral("italic"), QStringLiteral("z_index")};
+    bool any = false;
+    for (const QString &key : editable) any = any || input.contains(key);
+    if (!any) return err(QStringLiteral("Specify at least one style/position field to change."));
+
+    QJsonObject failure;
+    const std::shared_ptr<ProjectClip> clip = titleClip(binId, true, failure);
+    if (!clip) return failure;
+    const QString oldXml = clip->getProducerProperty(QStringLiteral("xmldata"));
+    QDomDocument document;
+    QString parseError;
+    if (!parseXml(oldXml, document, parseError)) return err(parseError);
+    QDomElement target = textItemAt(document, wantedIndex);
+    if (target.isNull()) return err(QStringLiteral("Title has no text item at index %1. Call title_inspect first.").arg(wantedIndex));
+    QDomElement content = target.firstChildElement(QStringLiteral("content"));
+    QDomElement position = target.firstChildElement(QStringLiteral("position"));
+    if (content.isNull() || position.isNull()) return err(QStringLiteral("Selected title text item is missing content or position metadata."));
+
+    if (input.contains(QStringLiteral("x"))) position.setAttribute(QStringLiteral("x"), input.value(QStringLiteral("x")).toDouble());
+    if (input.contains(QStringLiteral("y"))) position.setAttribute(QStringLiteral("y"), input.value(QStringLiteral("y")).toDouble());
+    if (input.contains(QStringLiteral("font_family"))) {
+        const QString family = input.value(QStringLiteral("font_family")).toString().trimmed();
+        if (family.isEmpty()) return err(QStringLiteral("font_family must not be empty."));
+        content.setAttribute(QStringLiteral("font"), family);
     }
+    if (input.contains(QStringLiteral("font_pixel_size"))) {
+        const int size = input.value(QStringLiteral("font_pixel_size")).toInt(-1);
+        if (size <= 0) return err(QStringLiteral("font_pixel_size must be > 0."));
+        content.setAttribute(QStringLiteral("font-pixel-size"), size);
+    }
+    if (input.contains(QStringLiteral("font_color"))) {
+        const QColor color(input.value(QStringLiteral("font_color")).toString());
+        if (!color.isValid()) return err(QStringLiteral("font_color must be a valid Qt color such as #ffffff."));
+        content.setAttribute(QStringLiteral("font-color"), kdenliveColor(color));
+    }
+    if (input.contains(QStringLiteral("font_weight"))) {
+        const int weight = input.value(QStringLiteral("font_weight")).toInt(-1);
+        if (weight < 0 || weight > 99) return err(QStringLiteral("font_weight must be between 0 and 99."));
+        content.setAttribute(QStringLiteral("font-weight"), weight);
+    }
+    if (input.contains(QStringLiteral("italic"))) content.setAttribute(QStringLiteral("font-italic"), input.value(QStringLiteral("italic")).toBool() ? 1 : 0);
+    if (input.contains(QStringLiteral("z_index"))) target.setAttribute(QStringLiteral("z-index"), input.value(QStringLiteral("z_index")).toInt());
 
-    const std::shared_ptr<ProjectClip> retained = clip;
-    Fun undo = [retained, oldXml]() {
-        retained->setProducerProperty(QStringLiteral("xmldata"), oldXml);
-        retained->reloadTimeline();
-        return retained->getProducerProperty(QStringLiteral("xmldata")) == oldXml;
-    };
-    Fun redo = [retained, newXml]() {
-        retained->setProducerProperty(QStringLiteral("xmldata"), newXml);
-        retained->reloadTimeline();
-        return retained->getProducerProperty(QStringLiteral("xmldata")) == newXml;
-    };
-    pCore->pushUndo(undo, redo, QStringLiteral("VibeCut: edit title text element"));
-
-    return QJsonObject{{QStringLiteral("ok"), true}, {QStringLiteral("bin_id"), binId},
-                       {QStringLiteral("text_item_index"), wantedIndex}, {QStringLiteral("old_text"), oldText},
-                       {QStringLiteral("text"), text}, {QStringLiteral("changed"), true}, {QStringLiteral("verified"), true}};
+    const QJsonObject applied = applyTitleXml(clip, oldXml, document.toString(), QStringLiteral("VibeCut: edit title text style"));
+    if (!applied.value(QStringLiteral("ok")).toBool()) return applied;
+    QJsonObject result = applied;
+    result.insert(QStringLiteral("bin_id"), binId);
+    result.insert(QStringLiteral("text_item_index"), wantedIndex);
+    result.insert(QStringLiteral("item"), itemSummary(target, -1, wantedIndex));
+    return result;
 }
 } // namespace
 
@@ -225,5 +294,29 @@ bool registerVibeCutTitleInspectTools(VibeCutToolSurface &surface, QString *erro
     setPolicy.risk = VibeCutToolRisk::ReversibleEdit;
     setPolicy.reversible = true;
     setPolicy.mutatesProject = true;
-    return surface.registerTool(setSchema, setPolicy, setTextItem, error);
+    if (!surface.registerTool(setSchema, setPolicy, setTextItem, error)) return false;
+
+    const QJsonObject styleInput{{QStringLiteral("type"), QStringLiteral("object")},
+                                 {QStringLiteral("properties"), QJsonObject{
+                                     {QStringLiteral("bin_id"), QJsonObject{{QStringLiteral("type"), QStringLiteral("string")}}},
+                                     {QStringLiteral("text_item_index"), QJsonObject{{QStringLiteral("type"), QStringLiteral("integer")}, {QStringLiteral("minimum"), 0}}},
+                                     {QStringLiteral("x"), QJsonObject{{QStringLiteral("type"), QStringLiteral("number")}}},
+                                     {QStringLiteral("y"), QJsonObject{{QStringLiteral("type"), QStringLiteral("number")}}},
+                                     {QStringLiteral("font_family"), QJsonObject{{QStringLiteral("type"), QStringLiteral("string")}}},
+                                     {QStringLiteral("font_pixel_size"), QJsonObject{{QStringLiteral("type"), QStringLiteral("integer")}, {QStringLiteral("minimum"), 1}}},
+                                     {QStringLiteral("font_color"), QJsonObject{{QStringLiteral("type"), QStringLiteral("string")}}},
+                                     {QStringLiteral("font_weight"), QJsonObject{{QStringLiteral("type"), QStringLiteral("integer")}, {QStringLiteral("minimum"), 0}, {QStringLiteral("maximum"), 99}}},
+                                     {QStringLiteral("italic"), QJsonObject{{QStringLiteral("type"), QStringLiteral("boolean")}}},
+                                     {QStringLiteral("z_index"), QJsonObject{{QStringLiteral("type"), QStringLiteral("integer")}}}}},
+                                 {QStringLiteral("required"), QJsonArray{QStringLiteral("bin_id"), QStringLiteral("text_item_index")}},
+                                 {QStringLiteral("additionalProperties"), false}};
+    const QJsonObject styleSchema{{QStringLiteral("name"), QStringLiteral("title_text_item_style_set")},
+                                  {QStringLiteral("description"), QStringLiteral("Edit only selected position/font/color/weight/italic/z-index attributes of one indexed title text element while preserving all unrelated Kdenlive title XML. Reloads every timeline instance, verifies exact XML, and creates one undo command. Call title_inspect first.")},
+                                  {QStringLiteral("input_schema"), styleInput}};
+    VibeCutToolPolicy stylePolicy;
+    stylePolicy.name = QStringLiteral("title_text_item_style_set");
+    stylePolicy.risk = VibeCutToolRisk::ReversibleEdit;
+    stylePolicy.reversible = true;
+    stylePolicy.mutatesProject = true;
+    return surface.registerTool(styleSchema, stylePolicy, setTextItemStyle, error);
 }
