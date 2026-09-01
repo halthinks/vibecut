@@ -15,3 +15,36 @@ TEST_CASE("media index ranks exact transcript phrases above token-only matches",
     CHECK(hits.first().document.id == QStringLiteral("a"));
     CHECK(hits.first().score > hits.last().score);
 }
+
+TEST_CASE("media index searches cross-modal evidence identity without requiring text", "[vibecut][media]")
+{
+    VibeCutMediaIndex index;
+    VibeCutMediaDocument speaker;
+    speaker.id = QStringLiteral("speaker-turn");
+    speaker.kind = QStringLiteral("speaker_turn");
+    speaker.startFrame = 100;
+    speaker.endFrame = 140;
+    speaker.metadata = QJsonObject{{QStringLiteral("evidence_origin"), QStringLiteral("extractor")},
+                                   {QStringLiteral("modality"), QStringLiteral("audio")},
+                                   {QStringLiteral("speaker_id"), QStringLiteral("speaker:0")},
+                                   {QStringLiteral("speaker_name"), QStringLiteral("Alice")},
+                                   {QStringLiteral("confidence"), 0.95}};
+    index.add(speaker);
+
+    VibeCutMediaDocument object;
+    object.id = QStringLiteral("visual-object");
+    object.kind = QStringLiteral("object");
+    object.metadata = QJsonObject{{QStringLiteral("evidence_origin"), QStringLiteral("extractor")},
+                                  {QStringLiteral("modality"), QStringLiteral("visual")},
+                                  {QStringLiteral("label"), QStringLiteral("red gearbox")},
+                                  {QStringLiteral("subject_id"), QStringLiteral("subject:42")}};
+    index.add(object);
+
+    const QList<VibeCutMediaSearchHit> speakerHits = index.search(QStringLiteral("Alice"));
+    REQUIRE(speakerHits.size() == 1);
+    CHECK(speakerHits.first().document.id == QStringLiteral("speaker-turn"));
+
+    const QList<VibeCutMediaSearchHit> objectHits = index.search(QStringLiteral("red gearbox"));
+    REQUIRE(objectHits.size() == 1);
+    CHECK(objectHits.first().document.id == QStringLiteral("visual-object"));
+}
