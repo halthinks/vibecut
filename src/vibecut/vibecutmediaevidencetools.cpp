@@ -2,6 +2,7 @@
 #include "vibecutmediaevidencetools.h"
 
 #include "vibecutmediaevidence.h"
+#include "vibecutsilenceextractortools.h"
 #include "vibecutsourceextractortools.h"
 #include "vibecuttoolsurface.h"
 
@@ -105,5 +106,6 @@ bool registerVibeCutMediaEvidenceTools(VibeCutToolSurface &surface, QString *err
                                           {QStringLiteral("input_schema"), listInput}},
                               listPolicy, listRecords, error)) return false;
 
-    return registerVibeCutSourceExtractorTools(surface, error);
+    if (!registerVibeCutSourceExtractorTools(surface, error)) return false;
+    return registerVibeCutSilenceExtractorTools(surface, error);
 }
