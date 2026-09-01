@@ -33,6 +33,16 @@ QString statFingerprint(const QFileInfo &info)
     return QString::fromLatin1(QCryptographicHash::hash(payload, QCryptographicHash::Sha256).toHex());
 }
 
+QHash<QString, QString> expectedExtractorVersions()
+{
+    return QHash<QString, QString>{{QStringLiteral("source_metadata"), QStringLiteral("1.0.0")},
+                                   {QStringLiteral("silence_detect"), QStringLiteral("1.0.0")},
+                                   {QStringLiteral("loudness_detect"), QStringLiteral("1.0.0")},
+                                   {QStringLiteral("shot_boundary"), QStringLiteral("1.0.0")},
+                                   {QStringLiteral("black_detect"), QStringLiteral("1.0.0")},
+                                   {QStringLiteral("freeze_detect"), QStringLiteral("1.0.0")}};
+}
+
 QJsonObject summary(const QJsonObject &)
 {
     QString error;
@@ -126,8 +136,8 @@ QJsonObject freshness(const QJsonObject &input)
         states.insert(extractor, state);
     }
 
-    const QStringList expected{QStringLiteral("source_metadata"), QStringLiteral("silence_detect"), QStringLiteral("loudness_detect"),
-                               QStringLiteral("shot_boundary"), QStringLiteral("black_detect"), QStringLiteral("freeze_detect")};
+    const QHash<QString, QString> expectedVersions = expectedExtractorVersions();
+    const QStringList expected = expectedVersions.keys();
     QJsonArray extractorStates;
     int freshCount = 0;
     int staleCount = 0;
@@ -139,13 +149,20 @@ QJsonObject freshness(const QJsonObject &input)
         if (!applicable) continue;
         const bool present = states.contains(extractor);
         const State state = states.value(extractor);
-        const bool fresh = present && state.fingerprint == currentFingerprint;
+        const QString expectedVersion = expectedVersions.value(extractor);
+        const bool fingerprintFresh = present && state.fingerprint == currentFingerprint;
+        const bool versionFresh = present && state.version == expectedVersion;
+        const bool fresh = fingerprintFresh && versionFresh;
         QString status;
+        QString staleReason;
         if (!present) {
             status = QStringLiteral("missing");
             ++missingCount;
         } else if (!fresh) {
             status = QStringLiteral("stale");
+            if (!fingerprintFresh && !versionFresh) staleReason = QStringLiteral("source_and_extractor_version_changed");
+            else if (!fingerprintFresh) staleReason = QStringLiteral("source_changed");
+            else staleReason = QStringLiteral("extractor_version_changed");
             ++staleCount;
         } else {
             status = QStringLiteral("fresh");
@@ -153,8 +170,10 @@ QJsonObject freshness(const QJsonObject &input)
         }
         extractorStates.append(QJsonObject{{QStringLiteral("extractor_id"), extractor},
                                             {QStringLiteral("status"), status},
+                                            {QStringLiteral("stale_reason"), staleReason},
                                             {QStringLiteral("record_count"), state.count},
                                             {QStringLiteral("extractor_version"), state.version},
+                                            {QStringLiteral("expected_extractor_version"), expectedVersion},
                                             {QStringLiteral("stored_fingerprint"), state.fingerprint},
                                             {QStringLiteral("current_fingerprint"), currentFingerprint}});
     }
@@ -204,7 +223,7 @@ bool registerVibeCutMediaEvidenceTools(VibeCutToolSurface &surface, QString *err
     freshnessPolicy.name = QStringLiteral("media_evidence_freshness");
     freshnessPolicy.risk = VibeCutToolRisk::ReadOnly;
     if (!surface.registerTool(QJsonObject{{QStringLiteral("name"), freshnessPolicy.name},
-                                          {QStringLiteral("description"), QStringLiteral("Compare persistent extractor evidence fingerprints for one file-backed bin asset against its current source file and report each applicable extractor as fresh, stale, or missing. Read-only.")},
+                                          {QStringLiteral("description"), QStringLiteral("Compare persistent extractor source fingerprints and extractor versions for one file-backed bin asset against the current source and built-in extractor versions; report each applicable extractor as fresh, stale, or missing. Read-only.")},
                                           {QStringLiteral("input_schema"), freshnessInput}},
                               freshnessPolicy, freshness, error)) return false;
 
