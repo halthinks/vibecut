@@ -2,6 +2,7 @@
 #include "vibecutextractorprovidertools.h"
 
 #include "vibecutextractorprovider.h"
+#include "vibecutextractorrequest.h"
 #include "vibecutjobmanager.h"
 #include "vibecutmediaevidence.h"
 #include "vibecuttools.h"
@@ -64,6 +65,10 @@ QJsonObject startProvider(VibeCutTools *tools, const QJsonObject &input)
         return err(configuredError.isEmpty() ? QStringLiteral("Extractor provider '%1' is not configured.").arg(providerId) : configuredError);
     }
 
+    QJsonObject normalizedRequest;
+    QString normalizeError;
+    if (!normalizeVibeCutExtractorRequest(capability, request, normalizedRequest, &normalizeError)) return err(normalizeError);
+
     VibeCutExtractorProviderContext context;
     context.jobs = tools->jobManager();
     context.persistEvidence = [](const QString &sourceId,
@@ -76,11 +81,13 @@ QJsonObject startProvider(VibeCutTools *tools, const QJsonObject &input)
     };
 
     QString startError;
-    QJsonObject result = provider->start(capability, request, context, &startError);
+    QJsonObject result = provider->start(capability, normalizedRequest, context, &startError);
     if (!startError.isEmpty()) return err(startError);
     if (!result.contains(QStringLiteral("ok"))) result.insert(QStringLiteral("ok"), true);
     result.insert(QStringLiteral("provider_id"), providerId);
     result.insert(QStringLiteral("capability"), capability);
+    result.insert(QStringLiteral("source_id"), normalizedRequest.value(QStringLiteral("source_id")));
+    result.insert(QStringLiteral("source_fingerprint"), normalizedRequest.value(QStringLiteral("source_fingerprint")));
     return result;
 }
 } // namespace
@@ -107,8 +114,9 @@ bool registerVibeCutExtractorProviderTools(VibeCutToolSurface &surface, QString 
                                  {QStringLiteral("properties"), QJsonObject{
                                      {QStringLiteral("provider_id"), QJsonObject{{QStringLiteral("type"), QStringLiteral("string")}}},
                                      {QStringLiteral("capability"), QJsonObject{{QStringLiteral("type"), QStringLiteral("string")}}},
-                                     {QStringLiteral("request"), QJsonObject{{QStringLiteral("type"), QStringLiteral("object")}}}}},
-                                 {QStringLiteral("required"), QJsonArray{QStringLiteral("provider_id"), QStringLiteral("capability")}},
+                                     {QStringLiteral("request"), QJsonObject{{QStringLiteral("type"), QStringLiteral("object")},
+                                                                              {QStringLiteral("description"), QStringLiteral("Provider-neutral request. Must contain bin_id; optional start_frame/end_frame and provider parameters are normalized against live Kdenlive source state before dispatch.")}}}}},
+                                 {QStringLiteral("required"), QJsonArray{QStringLiteral("provider_id"), QStringLiteral("capability"), QStringLiteral("request")}},
                                  {QStringLiteral("additionalProperties"), false}};
     VibeCutToolPolicy startPolicy;
     startPolicy.name = QStringLiteral("extractor_provider_start");
@@ -116,7 +124,7 @@ bool registerVibeCutExtractorProviderTools(VibeCutToolSurface &surface, QString 
     startPolicy.asynchronous = true;
     startPolicy.mutatesProject = false;
     return surface.registerTool(QJsonObject{{QStringLiteral("name"), startPolicy.name},
-                                            {QStringLiteral("description"), QStringLiteral("Start one explicitly registered model-backed media extractor capability through the shared VibeCut JobManager and validated evidence sink. The provider must declare the requested capability; no arbitrary executable/provider or generic evidence-write escape hatch is exposed.")},
+                                            {QStringLiteral("description"), QStringLiteral("Start one explicitly registered model-backed media extractor capability through normalized authoritative source metadata, the shared VibeCut JobManager, and the validated evidence sink. The provider never receives a caller-invented source path or generic evidence-write escape hatch.")},
                                             {QStringLiteral("input_schema"), startInput}},
                                 startPolicy, [tools](const QJsonObject &input) { return startProvider(tools, input); }, error);
 }
