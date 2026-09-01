@@ -33,6 +33,7 @@ public:
     static constexpr qint64 MaxBytes = 64LL * 1024LL * 1024LL;
 
     static QString fileName();
+    static bool canPersistCurrent(QString *error = nullptr);
     static QJsonArray loadForProjectUrl(const QUrl &projectUrl, QString *error = nullptr);
     static QJsonArray loadCurrent(QString *error = nullptr);
 
