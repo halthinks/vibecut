@@ -31,6 +31,56 @@ TEST_CASE("media evidence records round-trip and validate", "[vibecut][media][ev
     CHECK(parsed.startFrame == 10);
     CHECK(parsed.endFrame == 30);
     CHECK(parsed.confidence == 1.0);
+    CHECK(parsed.modality == QStringLiteral("audio"));
+}
+
+TEST_CASE("media evidence supports backward compatible cross-modal identity", "[vibecut][media][evidence]")
+{
+    QJsonObject legacy{{QStringLiteral("source_id"), QStringLiteral("bin:9")},
+                       {QStringLiteral("source_fingerprint"), QStringLiteral("fp")},
+                       {QStringLiteral("extractor_id"), QStringLiteral("ocr")},
+                       {QStringLiteral("extractor_version"), QStringLiteral("1")},
+                       {QStringLiteral("kind"), QStringLiteral("on_screen_text")},
+                       {QStringLiteral("start_frame"), 12},
+                       {QStringLiteral("end_frame"), 40},
+                       {QStringLiteral("text"), QStringLiteral("SALE 50%")},
+                       {QStringLiteral("confidence"), 0.91}};
+    VibeCutMediaEvidenceRecord parsed;
+    QString error;
+    REQUIRE(VibeCutMediaEvidenceRecord::fromJson(legacy, parsed, &error));
+    CHECK(error.isEmpty());
+    CHECK(parsed.modality == QStringLiteral("visual"));
+    CHECK(parsed.toJson().value(QStringLiteral("modality")).toString() == QStringLiteral("visual"));
+
+    legacy.insert(QStringLiteral("kind"), QStringLiteral("speaker_turn"));
+    legacy.insert(QStringLiteral("speaker_id"), QStringLiteral("speaker:0"));
+    legacy.insert(QStringLiteral("speaker_name"), QStringLiteral("Alice"));
+    legacy.insert(QStringLiteral("label"), QStringLiteral("dialogue"));
+    REQUIRE(VibeCutMediaEvidenceRecord::fromJson(legacy, parsed, &error));
+    CHECK(parsed.modality == QStringLiteral("audio"));
+    CHECK(parsed.speakerId == QStringLiteral("speaker:0"));
+    CHECK(parsed.speakerName == QStringLiteral("Alice"));
+    CHECK(parsed.label == QStringLiteral("dialogue"));
+}
+
+TEST_CASE("media evidence rejects ungoverned speaker aliases and invalid modality", "[vibecut][media][evidence]")
+{
+    QJsonObject record{{QStringLiteral("source_id"), QStringLiteral("bin:1")},
+                       {QStringLiteral("source_fingerprint"), QStringLiteral("fp")},
+                       {QStringLiteral("extractor_id"), QStringLiteral("diarization")},
+                       {QStringLiteral("extractor_version"), QStringLiteral("1")},
+                       {QStringLiteral("kind"), QStringLiteral("speaker_turn")},
+                       {QStringLiteral("speaker_name"), QStringLiteral("Alice")}};
+    VibeCutMediaEvidenceRecord parsed;
+    QString error;
+    CHECK_FALSE(VibeCutMediaEvidenceRecord::fromJson(record, parsed, &error));
+    CHECK(error.contains(QStringLiteral("speaker_id")));
+
+    record.remove(QStringLiteral("speaker_name"));
+    record.insert(QStringLiteral("modality"), QStringLiteral("smell"));
+    error.clear();
+    CHECK_FALSE(VibeCutMediaEvidenceRecord::fromJson(record, parsed, &error));
+    CHECK(error.contains(QStringLiteral("modality")));
 }
 
 TEST_CASE("media evidence rejects invalid provenance ranges and confidence", "[vibecut][media][evidence]")
@@ -109,4 +159,5 @@ TEST_CASE("media evidence sidecar loading fails closed", "[vibecut][media][evide
     CHECK(error.isEmpty());
     REQUIRE(loaded.size() == 1);
     CHECK(loaded.first().toObject().value(QStringLiteral("extractor_id")).toString() == QStringLiteral("source_metadata"));
+    CHECK(loaded.first().toObject().value(QStringLiteral("modality")).toString() == QStringLiteral("source"));
 }
