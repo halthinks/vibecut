@@ -29,6 +29,9 @@ jobs:
         with:
           fetch-depth: 1
 
+      - name: Trust checked-out workspace
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
       - name: Bootstrap matching Kdenlive build stack
         env:
           DEBIAN_FRONTEND: noninteractive
