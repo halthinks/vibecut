@@ -6,6 +6,7 @@
 #include "vibecuttools.h"
 
 #include "core.h"
+#include "doc/docundostack.hpp"
 #include "doc/kdenlivedoc.h"
 #include "vibecutjobmanager.h"
 #include "vibecutprojectrevision.h"
