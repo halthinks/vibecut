@@ -2,6 +2,9 @@
 #include "catch.hpp"
 #include "vibecut/vibecutscript.h"
 
+#include <QJsonArray>
+#include <QJsonObject>
+
 TEST_CASE("VibeScript returns only a JSON plan object", "[vibecut][script]")
 {
     const QString source = QStringLiteral(
