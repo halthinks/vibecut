@@ -26,6 +26,8 @@ set(kdenlive_SRCS
   vibecut/vibecutjobmanager.cpp
   vibecut/vibecutjobtools.cpp
   vibecut/vibecutmarkertools.cpp
+  vibecut/vibecutmediaevidence.cpp
+  vibecut/vibecutmediaevidencetools.cpp
   vibecut/vibecutmediaindex.cpp
   vibecut/vibecutmediatools.cpp
   vibecut/vibecutmemorytools.cpp
