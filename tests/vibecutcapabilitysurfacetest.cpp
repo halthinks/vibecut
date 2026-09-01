@@ -76,7 +76,8 @@ TEST_CASE("canonical VibeCut surface exposes governed editing breadth", "[vibecu
 
     const QStringList asyncMedia = {
         QStringLiteral("media_silence_refresh"), QStringLiteral("media_loudness_refresh"), QStringLiteral("media_shots_refresh"),
-        QStringLiteral("media_black_refresh"), QStringLiteral("media_freeze_refresh"), QStringLiteral("media_analyze_refresh"),
+        QStringLiteral("media_black_refresh"), QStringLiteral("media_freeze_refresh"), QStringLiteral("media_blur_refresh"),
+        QStringLiteral("media_analyze_refresh"),
     };
     for (const QString &name : asyncMedia) {
         INFO(name.toStdString());
