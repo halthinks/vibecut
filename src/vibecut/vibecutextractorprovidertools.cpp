@@ -1,10 +1,12 @@
 /* SPDX-License-Identifier: GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL */
 #include "vibecutextractorprovidertools.h"
 
+#include "vibecutdiarizationsetuptools.h"
 #include "vibecutextractorevidencecontract.h"
 #include "vibecutextractorprovider.h"
 #include "vibecutextractorrequest.h"
 #include "vibecutjobmanager.h"
+#include "vibecutlocaldiarizationprovider.h"
 #include "vibecutmediaevidence.h"
 #include "vibecutspeakeridentitytools.h"
 #include "vibecuttools.h"
@@ -103,6 +105,8 @@ QJsonObject startProvider(VibeCutTools *tools, const QJsonObject &input)
 
 bool registerVibeCutExtractorProviderTools(VibeCutToolSurface &surface, QString *error)
 {
+    ensureVibeCutBuiltinExtractorProvidersRegistered();
+
     const QJsonObject listInput{{QStringLiteral("type"), QStringLiteral("object")},
                                 {QStringLiteral("properties"), QJsonObject{{QStringLiteral("capability"), QJsonObject{{QStringLiteral("type"), QStringLiteral("string")}}}}},
                                 {QStringLiteral("additionalProperties"), false}};
@@ -110,7 +114,7 @@ bool registerVibeCutExtractorProviderTools(VibeCutToolSurface &surface, QString 
     listPolicy.name = QStringLiteral("extractor_providers_list");
     listPolicy.risk = VibeCutToolRisk::ReadOnly;
     if (!surface.registerTool(QJsonObject{{QStringLiteral("name"), listPolicy.name},
-                                          {QStringLiteral("description"), QStringLiteral("List externally registered media-extractor providers and their declared capabilities/configuration state, optionally filtered by capability such as ocr, diarization, embeddings, objects, faces, or audio_events.")},
+                                          {QStringLiteral("description"), QStringLiteral("List built-in and externally registered media-extractor providers and their declared capabilities/configuration state, optionally filtered by capability such as ocr, diarization, embeddings, objects, faces, or audio_events.")},
                                           {QStringLiteral("input_schema"), listInput}},
                               listPolicy, listProviders, error)) return false;
 
@@ -137,5 +141,6 @@ bool registerVibeCutExtractorProviderTools(VibeCutToolSurface &surface, QString 
                                           {QStringLiteral("input_schema"), startInput}},
                               startPolicy, [tools](const QJsonObject &input) { return startProvider(tools, input); }, error)) return false;
 
+    if (!registerVibeCutDiarizationSetupTools(surface, error)) return false;
     return registerVibeCutSpeakerIdentityTools(surface, error);
 }
