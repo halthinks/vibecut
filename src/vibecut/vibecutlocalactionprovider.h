@@ -2,6 +2,7 @@
 #pragma once
 
 #include <QString>
+#include <limits>
 
 void ensureVibeCutLocalActionProviderRegistered();
 QString vibeCutActionScript();
