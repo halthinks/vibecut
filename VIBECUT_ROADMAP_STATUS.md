@@ -17,6 +17,7 @@ This file is the concise live-state ledger for the halthinks/VibeCut fork. It in
 - Provider registry/hooks, KWallet secret storage and provider hot reload.
 - VibeScript plan-only sandbox.
 - Local verification gate plus optional branch-scoped CI hardening.
+- **Governance hardening:** a code-defined `confirmationRequired=true` is a non-waivable lower bound. Project `auto_allow` can no longer clear hard confirmation; `always_confirm` may still make policy stricter and wins conflicts.
 
 ## Phase 1 — native professional editing vocabulary — STRONG SOURCE BASELINE
 
@@ -25,8 +26,8 @@ This file is the concise live-state ledger for the halthinks/VibeCut fork. It in
 - Selection inspect/set/clear.
 - Group create/ungroup and group-relative movement.
 - Transactional `bulk_delete`, `bulk_clip_move`, `bulk_clip_copy_to` with dry-run/rollback/verification.
-- **New source implementation:** reusable governed `timeline_range_remove` with explicit `lift` / `ripple` semantics, native `TimelineFunctions::extractZoneWithUndo`, locked-track refusal, live postcondition verification and one Undo transaction.
-- **New source implementation:** `repeated_take_selection_execute` revalidates explicit human keep choices, rejects overlapping removals, executes rejected ranges right-to-left through the same range-removal transaction path, rolls back on failure and commits one atomic Undo step.
+- **Source implementation:** reusable governed `timeline_range_remove` with explicit `lift` / `ripple` semantics, native `TimelineFunctions::extractZoneWithUndo`, locked-track refusal, live postcondition verification and one Undo transaction.
+- **Source implementation:** `repeated_take_selection_execute` revalidates explicit human keep choices, rejects overlapping removals, executes rejected ranges right-to-left through the same range-removal transaction path, rolls back on failure and commits one atomic Undo step.
 
 ### Effects / transitions / mixes
 - Installed-effect discovery; effect inspect/add/remove/parameter edit.
@@ -73,15 +74,19 @@ The integration branch has broad source implementation, but **source-complete is
 1. Run repository-local `scripts/vibecut-verify.sh` on a host with the required Kdenlive stack.
 2. CMake configure succeeds.
 3. Full Kdenlive/VibeCut compile and link succeed.
-4. All `vibecut*` tests pass.
+4. All `vibecut*` tests pass, including live mutation, extractor evidence, speaker-identity integrity, policy override and built-in provider discovery fixtures.
 5. Smoke `timeline_range_remove` in both lift and ripple modes, including locked-track refusal and verified postconditions.
 6. Smoke repeated-take candidate → review → explicit selection → execution → one-step Undo/redo, including overlap refusal.
-7. `vibecut-halthinks_<version>_<arch>.deb` builds from the verified build tree.
-8. Install/uninstall package smoke on a clean Debian-compatible host.
-9. Hands-on editor smoke for plan → approve → edit → verify/diff → Undo across major edit families.
-10. Whisper/render/cancel smoke.
-11. Review/Auto/Turbo and `.vibecutpolicy.json` smoke.
-12. Only then merge to `vibecut`; an upstream VibeCut PR remains optional and subject to upstream maintainer interest.
+7. Smoke stale-plan refusal after a real intervening project edit and verify unchanged canonical state.
+8. Smoke local pyannote setup/status/start/cancel/persist flow, including missing-token and stale-source behavior.
+9. Smoke user-governed speaker entity creation/assignment/unassignment and verify Turbo cannot waive confirmation.
+10. Smoke local Tesseract `media_ocr_refresh`, cancellation, language/model availability errors and persisted geometry/confidence provenance.
+11. `vibecut-halthinks_<version>_<arch>.deb` builds from the verified build tree with explicit FFmpeg/Python/venv/Tesseract runtime dependencies.
+12. Install/uninstall package smoke on a clean Debian-compatible host.
+13. Hands-on editor smoke for plan → approve → edit → verify/diff → Undo across major edit families.
+14. Whisper/render/cancel smoke.
+15. Review/Auto/Turbo and `.vibecutpolicy.json` smoke, including the non-waivable hard-confirmation invariant.
+16. Only then merge to `vibecut`; an upstream VibeCut PR remains optional and subject to upstream maintainer interest.
 
 ## Phase 3 — persistent media evidence and deterministic analysis — LANDED IN SOURCE
 
@@ -94,8 +99,10 @@ The integration branch has broad source implementation, but **source-complete is
 - Whisper transcript segments persisted with exact timeline snapshot provenance.
 - Pairwise MPEG-7 video similarity evidence.
 - Provider-neutral ML extractor registry and constrained evidence-persistence contract.
+- Built-in provider registration occurs before first provider discovery/start; discovery no longer depends on a prior status/setup call.
+- Capability-specific evidence admission now constrains diarization and OCR before provider output can enter the persistent ledger.
 
-## Phase 4 — editorial intelligence foundation — LIVE MUTATION EVAL IN SOURCE + REPEATED-TAKE EXECUTION LANDED
+## Phase 4 — editorial intelligence foundation — MUTATION EVAL + DIARIZATION + OCR FOUNDATIONS LANDED IN SOURCE
 
 ### Repeated takes
 - Transcript/subtitle repeated-take candidate grouping.
@@ -103,7 +110,8 @@ The integration branch has broad source implementation, but **source-complete is
 - Explicit human-choice selection planning.
 - **Landed in source:** final repeated-take selection execution; it no longer stops at candidate/review/selection planning.
 - **Landed in source:** reusable governed `timeline_range_remove` primitive underneath destructive timeline-range work.
-- **Still gated:** compile/runtime smoke plus live overlap/repeated-take Undo-fidelity coverage before release-quality claims.
+- **Landed in source:** model-bound repeated-take mutation core used by production execution and headless fixtures without duplicating weaker test-only editing logic.
+- **Still gated:** authoritative compile/runtime smoke before release-quality claims.
 
 ### Golden mutation evaluation
 - **Landed in source:** deterministic `VibeCutEvaluator::evaluateMutation` contract with normalized verified-success, Undo-fidelity and Redo-fidelity scores.
@@ -115,23 +123,49 @@ The integration branch has broad source implementation, but **source-complete is
 - **Landed in source:** executable headless Kdenlive ripple range-removal fixture measuring requested postcondition, exact Undo fidelity and exact Redo fidelity.
 - **Landed in source:** executable locked-track refusal fixture proving canonical state is unchanged when destructive work is denied.
 - **Landed in source:** executable plan-runtime rollback fixture that performs a real timeline mutation, deliberately fails afterward, and requires the native checkpoint macro to restore exact canonical pre-edit state.
-- **Still gated:** authoritative compile/test execution on a Kdenlive development host; these source tests have not been claimed passing in an environment without that stack.
+- **Landed in source:** executable stale-plan refusal fixture bound to a real intervening project edit and canonical unchanged-state verification.
+- **Landed in source:** executable repeated-take overlap refusal bound to unchanged canonical live state.
+- **Landed in source:** executable successful repeated-take selection fixture requiring exactly one added Undo-stack command, one Undo restoring exact canonical pre-state and one Redo restoring exact committed post-state.
+- **Still gated:** authoritative compile/test execution on a Kdenlive development host; source tests are not claimed passing until that gate runs.
+
+### Speaker diarization — SOURCE FOUNDATION LANDED
+- **Landed in source:** provider-neutral `diarization` capability with strict `speaker_segment` evidence admission and authoritative requested frame bounds.
+- **Landed in source:** diarizers have clustering authority only; evidence carrying human identity/name/entity fields is rejected before persistence.
+- **Landed in source:** built-in `local_pyannote` provider using the open `pyannote/speaker-diarization-community-1` path through a VibeCut-owned isolated environment.
+- **Landed in source:** bounded source excerpts, CPU/CUDA/auto routing, optional min/max speaker bounds, exclusive diarization, JobManager cancellation and result-schema validation.
+- **Landed in source:** `speaker_diarization_status`, always-confirm/cancellable `speaker_diarization_setup`, and first-class `speaker_diarization_start` so callers need a real bin id rather than a provider/source path.
+- **Landed in source:** Hugging Face credentials are sourced from process environment or KWallet and are never accepted/echoed by chat-facing tool schemas; pyannote telemetry is disabled by the local adapter.
+- **Still gated:** real package installation, model acquisition/terms/token flow, CPU/GPU runtime, cancellation and evidence smoke on the Kdenlive development host.
+
+### User-governed speaker naming — SOURCE FOUNDATION LANDED
+- **Landed in source:** separate bounded `.vibecutspeakers.json` entity/association ledger; diarization evidence cannot write it.
+- **Landed in source:** associations bind human-readable entities to the full source id + source fingerprint + extractor id + extractor version + anonymous cluster id, preventing stale source/model results from silently inheriting identity.
+- **Landed in source:** speaker entity upsert and cluster assign/unassign are hard-confirm external side effects; Turbo/project `auto_allow` cannot waive that confirmation.
+- **Landed in source:** association sidecars fail closed when stored `cluster_key` hashes do not match their component fields, and resolution independently rechecks all key components before returning a human identity.
+- **Landed in source:** tamper regression covers source-fingerprint modification with a stale stored hash.
+- **Still gated:** compile/runtime interaction smoke and UX review for naming multiple recurring speakers across clips/projects.
+
+### OCR / on-screen text — SOURCE FOUNDATION LANDED
+- **Landed in source:** strict `ocr` evidence contract permitting only one-frame `ocr_text` observations with non-empty text, normalized confidence, authoritative `sample_frame`, bounded pixel rectangle, image dimensions, language and engine provenance.
+- **Landed in source:** built-in `local_tesseract` provider and first-class `media_ocr_refresh` tool; callers supply a bin id and bounded sampling parameters, never arbitrary source/FFmpeg/Tesseract paths.
+- **Landed in source:** VibeCut helper performs one bounded FFmpeg decode/sampling pass and Tesseract TSV recognition, aggregates word evidence into line text/geometry, and returns JSON to the provider rather than writing evidence itself.
+- **Landed in source:** adapter records actual Tesseract engine version in extractor provenance, enforces output-size/result-schema limits and uses JobManager cancellation.
+- **Landed in source:** Debian packaging explicitly depends on FFmpeg, Python 3/venv and Tesseract because executable runtime dependencies are invisible to `dpkg-shlibdeps`.
+- **Still gated:** compile/runtime OCR smoke, exact frame-sampling verification on CFR/VFR media, Tesseract language-pack behavior, cancellation/process-tree smoke and quantitative OCR accuracy fixtures.
 
 ### Remaining work — dependency sequence
 
-#### A. Golden mutation evaluation — LIVE CORE LANDED, FAILURE-PATH COVERAGE NEXT
-- Add executable stale-plan refusal bound to unchanged canonical live state.
-- Add executable repeated-take overlap refusal bound to unchanged canonical live state.
-- Add executable repeated-take successful execution with one-step Undo/Redo fidelity, not only primitive range removal.
+#### A. Golden mutation evaluation — LIVE SOURCE BASELINE COMPLETE; KEEP CROSS-CUTTING
 - Extend mutation-state schema/version when a new edit family needs state currently outside v1 rather than weakening the fidelity threshold.
-- Keep the evaluation layer cross-cutting as each new destructive or synthesizing capability lands.
+- Add golden fixtures for effects, transitions, titles, relink/proxy, render and later synthesis mutations.
+- Keep exact requested-postcondition + Undo/Redo measurement active as each new destructive/synthesizing feature lands.
 
-#### B. Richer evidence extraction
-- Speaker diarization.
-- User-governed speaker naming/identity association.
-- OCR/on-screen text.
+#### B. Richer evidence extraction — ACTIVE
+- Harden/verify speaker diarization and user-governed naming on real media.
+- Harden/verify OCR and add temporal text persistence/deduplication so repeated sampled observations can become evidence-backed on-screen-text spans without pretending an unobserved frame was OCR'd.
 - Richer noise/room-tone characterization and speech/music/audio-event analysis.
 - Visual subject/object/action evidence with exact source/timeline ranges and provenance.
+- Camera-motion/shot-scale/composition evidence where it materially improves editing decisions.
 
 #### C. Semantic retrieval and duplicate understanding
 - Transcript/text embeddings.
@@ -166,10 +200,12 @@ The repository preserves three documentation layers:
 2. original VibeCut — the AI-scriptable Kdenlive adaptation this fork descends from;
 3. Kdenlive — the original editor and upstream foundation.
 
-The halthinks distribution layer is separate from inherited Kdenlive packaging. `packaging/vibecut/build-deb.sh` creates `vibecut-halthinks`, installed under `/opt/vibecut-halthinks`, so it can coexist with a normal Kdenlive install.
+The halthinks distribution layer is separate from inherited Kdenlive packaging. `packaging/vibecut/build-deb.sh` creates `vibecut-halthinks`, installed under `/opt/vibecut-halthinks`, so it can coexist with a normal Kdenlive install. Executable runtime dependencies needed by VibeCut-owned intelligence paths are explicit package dependencies rather than assumed to appear through ELF dependency discovery.
 
 The README lineage must remain intact when the branch merges; capability/status edits belong in the halthinks section above the preserved original VibeCut and Kdenlive layers.
 
 ## Current engineering rule
 
-Do not broaden capability by guessing private Kdenlive internals. Prefer native public model/request paths, accumulated undo/redo APIs and live postcondition verification. If an upstream seam is ambiguous, keep it explicitly open rather than claiming unsafe support. A feature that can only be proposed is not “finished” when the product requirement is governed execution; a consequential edit is complete only when its execution, verification and Undo story are real. Quantitative mutation evaluation is now part of that definition: requested postconditions and reversible editor state must be measured, not inferred from tool return values. Live/headless fixtures must exercise the same canonical mutation-state schema; do not create a weaker test-only representation.
+Do not broaden capability by guessing private Kdenlive internals. Prefer native public model/request paths, accumulated undo/redo APIs and live postcondition verification. If an upstream seam is ambiguous, keep it explicitly open rather than claiming unsafe support. A feature that can only be proposed is not “finished” when the product requirement is governed execution; a consequential edit is complete only when its execution, verification and Undo story are real. Quantitative mutation evaluation is part of that definition: requested postconditions and reversible editor state must be measured, not inferred from tool return values. Live/headless fixtures must exercise the same canonical mutation-state schema; do not create a weaker test-only representation.
+
+Derived evidence has **observation authority only for what the extractor actually observed within its authoritative source/range contract**. A diarization cluster is not a person identity; an OCR sample does not imply that text existed on unsampled frames. Promotion from anonymous/inferred machine evidence to user-governed human identity or broader temporal claims requires an explicit governed path and independent supporting evidence.
