@@ -147,63 +147,7 @@ QJsonObject executeSelection(VibeCutToolSurface *surface, const QJsonObject &inp
     planInput.remove(QStringLiteral("remove_mode"));
     const QJsonObject plan = buildSelectionPlan(surface, planInput);
     if (!plan.value(QStringLiteral("ok")).toBool(false)) return plan;
-
-    std::vector<RemovalRange> ranges;
-    for (const QJsonValue &groupValue : plan.value(QStringLiteral("groups")).toArray()) {
-        const QJsonObject group = groupValue.toObject();
-        const int groupIndex = group.value(QStringLiteral("group_index")).toInt(-1);
-        for (const QJsonValue &rejectValue : group.value(QStringLiteral("reject")).toArray()) {
-            const QJsonObject reject = rejectValue.toObject();
-            ranges.push_back(RemovalRange{reject.value(QStringLiteral("timeline_start_frame")).toInt(-1),
-                                          reject.value(QStringLiteral("timeline_end_frame")).toInt(-1),
-                                          groupIndex,
-                                          reject.value(QStringLiteral("subtitle_id")).toInt(-1)});
-        }
-    }
-    if (ranges.empty()) return err(QStringLiteral("The explicit repeated-take selection does not reject any take; nothing to execute."));
-
-    std::sort(ranges.begin(), ranges.end(), [](const RemovalRange &a, const RemovalRange &b) {
-        if (a.start != b.start) return a.start < b.start;
-        return a.end < b.end;
-    });
-    for (size_t i = 1; i < ranges.size(); ++i) {
-        if (ranges[i].start < ranges[i - 1].end) {
-            return err(QStringLiteral("Rejected repeated-take ranges overlap ([%1,%2) and [%3,%4)); refusing ambiguous mutation.")
-                           .arg(ranges[i - 1].start).arg(ranges[i - 1].end).arg(ranges[i].start).arg(ranges[i].end));
-        }
-    }
-
-    // Execute from right to left so ripple extraction cannot invalidate the
-    // absolute coordinates of earlier rejected takes.
-    std::sort(ranges.begin(), ranges.end(), [](const RemovalRange &a, const RemovalRange &b) { return a.start > b.start; });
-
-    Fun undo = []() { return true; };
-    Fun redo = []() { return true; };
-    QJsonArray operations;
-    for (const RemovalRange &range : ranges) {
-        QJsonObject verification;
-        QString failure;
-        if (!appendVibeCutTimelineRangeRemove(timeline, range.start, range.end, mode == QLatin1String("lift"), {}, undo, redo, &verification, &failure)) {
-            undo();
-            return err(QStringLiteral("Repeated-take execution rolled back after range [%1,%2) failed: %3")
-                           .arg(range.start).arg(range.end).arg(failure));
-        }
-        verification.insert(QStringLiteral("group_index"), range.groupIndex);
-        verification.insert(QStringLiteral("subtitle_id"), range.subtitleId);
-        verification.insert(QStringLiteral("start_frame"), range.start);
-        verification.insert(QStringLiteral("end_frame"), range.end);
-        operations.append(verification);
-    }
-
-    pCore->pushUndo(undo, redo, i18n("Apply VibeCut repeated-take selection"));
-    return QJsonObject{{QStringLiteral("ok"), true},
-                       {QStringLiteral("verified"), true},
-                       {QStringLiteral("remove_mode"), mode},
-                       {QStringLiteral("removed_take_count"), static_cast<int>(ranges.size())},
-                       {QStringLiteral("operations"), operations},
-                       {QStringLiteral("selection_plan"), plan},
-                       {QStringLiteral("undo_atomic"), true},
-                       {QStringLiteral("note"), QStringLiteral("The explicit keep choices were revalidated immediately before mutation. Rejected ranges were applied right-to-left through Kdenlive's native accumulated zone extraction and committed as one Undo step.")}};
+    return executeVibeCutResolvedTakeSelection(timeline, plan, mode);
 }
 
 QJsonObject selectionInputSchema(bool execution)
@@ -232,6 +176,87 @@ QJsonObject selectionInputSchema(bool execution)
                        {QStringLiteral("additionalProperties"), false}};
 }
 } // namespace
+
+QJsonObject executeVibeCutResolvedTakeSelection(const std::shared_ptr<TimelineItemModel> &timeline,
+                                                const QJsonObject &selectionPlan,
+                                                const QString &removeMode)
+{
+    if (!timeline) return err(QStringLiteral("No authoritative timeline model was provided for repeated-take execution."));
+    if (removeMode != QLatin1String("lift") && removeMode != QLatin1String("ripple")) {
+        return err(QStringLiteral("remove_mode must be 'lift' or 'ripple'."));
+    }
+    if (!selectionPlan.value(QStringLiteral("ok")).toBool(false)) {
+        return err(QStringLiteral("Resolved repeated-take selection plan is not marked ok; refusing mutation."));
+    }
+
+    std::vector<RemovalRange> ranges;
+    for (const QJsonValue &groupValue : selectionPlan.value(QStringLiteral("groups")).toArray()) {
+        const QJsonObject group = groupValue.toObject();
+        const int groupIndex = group.value(QStringLiteral("group_index")).toInt(-1);
+        for (const QJsonValue &rejectValue : group.value(QStringLiteral("reject")).toArray()) {
+            const QJsonObject reject = rejectValue.toObject();
+            const RemovalRange range{reject.value(QStringLiteral("timeline_start_frame")).toInt(-1),
+                                     reject.value(QStringLiteral("timeline_end_frame")).toInt(-1),
+                                     groupIndex,
+                                     reject.value(QStringLiteral("subtitle_id")).toInt(-1)};
+            if (range.start < 0 || range.end <= range.start) {
+                return err(QStringLiteral("Resolved repeated-take selection contains invalid rejected range [%1,%2).")
+                               .arg(range.start).arg(range.end));
+            }
+            ranges.push_back(range);
+        }
+    }
+    if (ranges.empty()) return err(QStringLiteral("The explicit repeated-take selection does not reject any take; nothing to execute."));
+
+    std::sort(ranges.begin(), ranges.end(), [](const RemovalRange &a, const RemovalRange &b) {
+        if (a.start != b.start) return a.start < b.start;
+        return a.end < b.end;
+    });
+    for (size_t i = 1; i < ranges.size(); ++i) {
+        if (ranges[i].start < ranges[i - 1].end) {
+            return err(QStringLiteral("Rejected repeated-take ranges overlap ([%1,%2) and [%3,%4)); refusing ambiguous mutation.")
+                           .arg(ranges[i - 1].start).arg(ranges[i - 1].end).arg(ranges[i].start).arg(ranges[i].end));
+        }
+    }
+
+    // Execute from right to left so ripple extraction cannot invalidate the
+    // absolute coordinates of earlier rejected takes.
+    std::sort(ranges.begin(), ranges.end(), [](const RemovalRange &a, const RemovalRange &b) { return a.start > b.start; });
+
+    Fun undo = []() { return true; };
+    Fun redo = []() { return true; };
+    QJsonArray operations;
+    for (const RemovalRange &range : ranges) {
+        QJsonObject verification;
+        QString failure;
+        if (!appendVibeCutTimelineRangeRemove(timeline, range.start, range.end, removeMode == QLatin1String("lift"), {}, undo, redo, &verification, &failure)) {
+            const bool rollbackOk = undo();
+            return err(QStringLiteral("Repeated-take execution rolled back after range [%1,%2) failed: %3%4")
+                           .arg(range.start).arg(range.end).arg(failure)
+                           .arg(rollbackOk ? QString() : QStringLiteral("; accumulated rollback also reported failure")));
+        }
+        verification.insert(QStringLiteral("group_index"), range.groupIndex);
+        verification.insert(QStringLiteral("subtitle_id"), range.subtitleId);
+        verification.insert(QStringLiteral("start_frame"), range.start);
+        verification.insert(QStringLiteral("end_frame"), range.end);
+        operations.append(verification);
+    }
+
+    if (!pCore) {
+        const bool rollbackOk = undo();
+        return err(rollbackOk ? QStringLiteral("VibeCut core is unavailable; repeated-take mutation was rolled back before commit.")
+                              : QStringLiteral("VibeCut core is unavailable and accumulated rollback also reported failure."));
+    }
+    pCore->pushUndo(undo, redo, i18n("Apply VibeCut repeated-take selection"));
+    return QJsonObject{{QStringLiteral("ok"), true},
+                       {QStringLiteral("verified"), true},
+                       {QStringLiteral("remove_mode"), removeMode},
+                       {QStringLiteral("removed_take_count"), static_cast<int>(ranges.size())},
+                       {QStringLiteral("operations"), operations},
+                       {QStringLiteral("selection_plan"), selectionPlan},
+                       {QStringLiteral("undo_atomic"), true},
+                       {QStringLiteral("note"), QStringLiteral("The explicit keep choices were resolved before mutation. Production execution revalidates them immediately beforehand. Rejected ranges were applied right-to-left through Kdenlive's native accumulated zone extraction and committed as one Undo step.")}};
+}
 
 bool registerVibeCutTakeSelectionTools(VibeCutToolSurface &surface, QString *error)
 {
