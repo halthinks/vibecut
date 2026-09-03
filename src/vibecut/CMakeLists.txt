@@ -37,6 +37,7 @@ set(kdenlive_SRCS
   vibecut/vibecuthooks.cpp
   vibecut/vibecutjobmanager.cpp
   vibecut/vibecutjobtools.cpp
+  vibecut/vibecutlocalactionprovider.cpp
   vibecut/vibecutlocalaudioeventprovider.cpp
   vibecut/vibecutlocaldiarizationprovider.cpp
   vibecut/vibecutlocalobjectprovider.cpp
