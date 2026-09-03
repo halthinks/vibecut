@@ -17,6 +17,49 @@ bool withinRequestedRange(const VibeCutMediaEvidenceRecord &record, int startFra
     if (record.startFrame < 0 || record.endFrame < 0) return false;
     return record.startFrame >= startFrame && record.endFrame <= endFrame && record.endFrame >= record.startFrame;
 }
+
+bool validateOcrRecord(const VibeCutMediaEvidenceRecord &record, QString *error)
+{
+    if (record.kind != QLatin1String("ocr_text")) {
+        return fail(error, QStringLiteral("OCR providers may persist only 'ocr_text' evidence records."));
+    }
+    if (record.startFrame < 0 || record.endFrame != record.startFrame + 1) {
+        return fail(error, QStringLiteral("OCR text observations must identify exactly one sampled source frame as [frame, frame+1)."));
+    }
+    const QString text = record.text.trimmed();
+    if (text.isEmpty() || text.size() > 4096) {
+        return fail(error, QStringLiteral("OCR text must contain 1 to 4096 non-whitespace characters."));
+    }
+    if (record.confidence < 0.0 || record.confidence > 1.0) {
+        return fail(error, QStringLiteral("OCR text requires normalized confidence between 0 and 1."));
+    }
+    const int sampleFrame = record.metadata.value(QStringLiteral("sample_frame")).toInt(-1);
+    if (sampleFrame != record.startFrame) {
+        return fail(error, QStringLiteral("OCR metadata.sample_frame must equal the evidence start_frame."));
+    }
+    const int imageWidth = record.metadata.value(QStringLiteral("image_width")).toInt(-1);
+    const int imageHeight = record.metadata.value(QStringLiteral("image_height")).toInt(-1);
+    if (imageWidth <= 0 || imageHeight <= 0) {
+        return fail(error, QStringLiteral("OCR metadata requires positive image_width and image_height."));
+    }
+    const QJsonObject box = record.metadata.value(QStringLiteral("bbox_pixels")).toObject();
+    const int x = box.value(QStringLiteral("x")).toInt(-1);
+    const int y = box.value(QStringLiteral("y")).toInt(-1);
+    const int width = box.value(QStringLiteral("width")).toInt(-1);
+    const int height = box.value(QStringLiteral("height")).toInt(-1);
+    if (x < 0 || y < 0 || width <= 0 || height <= 0 || x + width > imageWidth || y + height > imageHeight) {
+        return fail(error, QStringLiteral("OCR bbox_pixels must be a positive rectangle fully contained by the sampled image."));
+    }
+    const QString language = record.metadata.value(QStringLiteral("language")).toString().trimmed();
+    if (language.isEmpty() || language.size() > 128) {
+        return fail(error, QStringLiteral("OCR metadata.language must contain 1 to 128 characters."));
+    }
+    const QString engine = record.metadata.value(QStringLiteral("engine")).toString().trimmed();
+    if (engine.isEmpty() || engine.size() > 128) {
+        return fail(error, QStringLiteral("OCR metadata.engine must contain 1 to 128 characters."));
+    }
+    return true;
+}
 }
 
 bool validateVibeCutExtractorEvidenceContract(const QString &capability,
@@ -38,6 +81,10 @@ bool validateVibeCutExtractorEvidenceContract(const QString &capability,
                                    .arg(record.startFrame).arg(record.endFrame).arg(requestedStartFrame).arg(requestedEndFrame));
         }
 
+        if (normalizedCapability == QLatin1String("ocr")) {
+            if (!validateOcrRecord(record, error)) return false;
+            continue;
+        }
         if (normalizedCapability != QLatin1String("diarization")) continue;
 
         if (record.kind != QLatin1String("speaker_segment")) {
