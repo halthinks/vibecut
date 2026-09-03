@@ -105,24 +105,26 @@ def main() -> int:
 
     if args.model != MODEL_ID:
         raise SystemExit(f"built-in AST helper is pinned to {MODEL_ID}")
-    if args.fps <= 0.0:
-        raise SystemExit("fps must be positive")
+    if not math.isfinite(args.fps) or args.fps <= 0.0:
+        raise SystemExit("fps must be positive and finite")
     if args.start_frame < 0 or args.end_frame <= args.start_frame:
         raise SystemExit("frame bounds must satisfy 0 <= start_frame < end_frame")
-    if not (1.0 <= args.window_seconds <= 10.0):
-        raise SystemExit("window_seconds must be 1..10")
-    if not (0.25 <= args.hop_seconds <= 60.0):
-        raise SystemExit("hop_seconds must be 0.25..60")
+    if not math.isfinite(args.window_seconds) or not (1.0 <= args.window_seconds <= 10.0):
+        raise SystemExit("window_seconds must be finite and in 1..10")
+    if not math.isfinite(args.hop_seconds) or not (0.25 <= args.hop_seconds <= 10.0):
+        raise SystemExit("hop_seconds must be finite and in 0.25..10")
+    if args.hop_seconds > args.window_seconds:
+        raise SystemExit("hop_seconds may not exceed window_seconds; VibeCut does not create unobserved gaps between classifier windows")
     if not (1 <= args.max_windows <= 500):
         raise SystemExit("max_windows must be 1..500")
     if not (1 <= args.top_k <= 20):
         raise SystemExit("top_k must be 1..20")
-    if not (0.0 <= args.min_score <= 1.0):
-        raise SystemExit("min_score must be between 0 and 1")
+    if not math.isfinite(args.min_score) or not (0.0 <= args.min_score <= 1.0):
+        raise SystemExit("min_score must be finite and between 0 and 1")
 
     duration_seconds = (args.end_frame - args.start_frame) / args.fps
-    if duration_seconds <= 0.0 or duration_seconds > MAX_DECODE_SECONDS:
-        raise SystemExit(f"requested excerpt must be >0 and <= {MAX_DECODE_SECONDS:g} seconds")
+    if not math.isfinite(duration_seconds) or duration_seconds <= 0.0 or duration_seconds > MAX_DECODE_SECONDS:
+        raise SystemExit(f"requested excerpt must be finite, >0 and <= {MAX_DECODE_SECONDS:g} seconds")
 
     window_count = 1 if duration_seconds <= args.window_seconds else 1 + math.ceil((duration_seconds - args.window_seconds) / args.hop_seconds)
     if window_count > args.max_windows:
@@ -157,9 +159,6 @@ def main() -> int:
     offset = 0
     index = 0
     while offset < audio.size and index < window_count:
-        remaining = int(audio.size - offset)
-        if index > 0 and remaining <= 0:
-            break
         chunk = audio[offset : min(audio.size, offset + window_samples)]
         if chunk.size == 0:
             break
@@ -168,13 +167,13 @@ def main() -> int:
         input_values = inputs["input_values"].to(device)
         with torch.inference_mode():
             logits = model(input_values=input_values).logits[0]
-            probabilities = torch.softmax(logits.float(), dim=-1)
-        count = min(args.top_k, int(probabilities.numel()))
-        values, indices = torch.topk(probabilities, k=count)
+            scores = torch.softmax(logits.float(), dim=-1)
+        count = min(args.top_k, int(scores.numel()))
+        values, indices = torch.topk(scores, k=count)
         predictions = []
         for rank, (score_tensor, label_tensor) in enumerate(zip(values.tolist(), indices.tolist()), start=1):
             score = float(score_tensor)
-            if score < args.min_score:
+            if not math.isfinite(score) or score < args.min_score:
                 continue
             label_id = int(label_tensor)
             label = str(model.config.id2label.get(label_id, str(label_id)))
@@ -182,6 +181,8 @@ def main() -> int:
 
         relative_start = offset / SAMPLE_RATE
         relative_end = min(duration_seconds, relative_start + actual_seconds)
+        if not (0.0 <= relative_start < relative_end <= duration_seconds + 1e-6):
+            raise RuntimeError("internal window construction escaped the authoritative excerpt")
         windows.append(
             {
                 "index": index,
@@ -196,6 +197,9 @@ def main() -> int:
         offset += hop_samples
         if offset >= audio.size:
             break
+
+    if not windows or len(windows) > window_count:
+        raise RuntimeError("bounded audio-event analysis produced an invalid window count")
 
     result = {
         "schema_version": 1,
