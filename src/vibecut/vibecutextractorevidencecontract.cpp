@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL */
 #include "vibecutextractorevidencecontract.h"
 
+#include <QJsonArray>
 #include <QJsonValue>
 #include <QStringList>
 #include <QtGlobal>
@@ -161,6 +162,65 @@ bool validateObjectDetectionRecord(const VibeCutMediaEvidenceRecord &record, QSt
     }
     return true;
 }
+
+bool validateActionRecord(const VibeCutMediaEvidenceRecord &record, QString *error)
+{
+    if (record.kind != QLatin1String("action_prediction")) {
+        return fail(error, QStringLiteral("Action providers may persist only 'action_prediction' evidence records."));
+    }
+    if (record.startFrame < 0 || record.endFrame <= record.startFrame) {
+        return fail(error, QStringLiteral("Action predictions require an exact non-empty source-frame window."));
+    }
+    if (record.confidence < 0.0 || record.confidence > 1.0) {
+        return fail(error, QStringLiteral("Action predictions require a normalized model score between 0 and 1."));
+    }
+    const QString label = record.metadata.value(QStringLiteral("label")).toString().trimmed();
+    const QString prompt = record.metadata.value(QStringLiteral("prompt")).toString().trimmed();
+    if (label.isEmpty() || label.size() > 256 || prompt.isEmpty() || prompt.size() > 512) {
+        return fail(error, QStringLiteral("Action metadata requires bounded non-empty label and prompt fields."));
+    }
+    const QJsonValue labelIdValue = record.metadata.value(QStringLiteral("label_id"));
+    const int labelId = labelIdValue.toInt(-1);
+    if (!labelIdValue.isDouble() || labelId < 0 || static_cast<double>(labelId) != labelIdValue.toDouble()) {
+        return fail(error, QStringLiteral("Action metadata.label_id must be a non-negative integer."));
+    }
+    const QJsonValue rankValue = record.metadata.value(QStringLiteral("rank"));
+    const int rank = rankValue.toInt(-1);
+    if (!rankValue.isDouble() || rank < 1 || rank > 100 || static_cast<double>(rank) != rankValue.toDouble()) {
+        return fail(error, QStringLiteral("Action metadata.rank must be an integer from 1 to 100."));
+    }
+    if (record.metadata.value(QStringLiteral("window_start_frame")).toInt(-1) != record.startFrame ||
+        record.metadata.value(QStringLiteral("window_end_frame")).toInt(-1) != record.endFrame) {
+        return fail(error, QStringLiteral("Action metadata window bounds must exactly match the evidence frame range."));
+    }
+    const QJsonArray observedFrames = record.metadata.value(QStringLiteral("observed_frames")).toArray();
+    if (observedFrames.size() != 8) {
+        return fail(error, QStringLiteral("Action predictions must retain exactly 8 observed source frames for the pinned X-CLIP model."));
+    }
+    int previous = -1;
+    for (const QJsonValue &value : observedFrames) {
+        if (!value.isDouble()) return fail(error, QStringLiteral("Action observed_frames must contain integer frame indices."));
+        const int frame = value.toInt(-1);
+        if (frame < record.startFrame || frame >= record.endFrame || frame <= previous || static_cast<double>(frame) != value.toDouble()) {
+            return fail(error, QStringLiteral("Action observed_frames must be strictly increasing integer frames inside the prediction window."));
+        }
+        previous = frame;
+    }
+    const QString model = record.metadata.value(QStringLiteral("model")).toString().trimmed();
+    const QString modelRevision = record.metadata.value(QStringLiteral("model_revision")).toString().trimmed();
+    const QString taxonomy = record.metadata.value(QStringLiteral("taxonomy")).toString().trimmed();
+    if (model.isEmpty() || model.size() > 256 || modelRevision.isEmpty() || modelRevision.size() > 128 ||
+        taxonomy.isEmpty() || taxonomy.size() > 128) {
+        return fail(error, QStringLiteral("Action metadata requires bounded model, model_revision and taxonomy provenance."));
+    }
+    if (record.metadata.value(QStringLiteral("authority")).toString() != QLatin1String("model_prediction")) {
+        return fail(error, QStringLiteral("Action evidence must declare authority='model_prediction'."));
+    }
+    if (record.text.trimmed().isEmpty() || record.text.size() > 1024) {
+        return fail(error, QStringLiteral("Action prediction text must contain 1 to 1024 characters."));
+    }
+    return true;
+}
 }
 
 bool validateVibeCutExtractorEvidenceContract(const QString &capability,
@@ -194,6 +254,10 @@ bool validateVibeCutExtractorEvidenceContract(const QString &capability,
             if (!validateObjectDetectionRecord(record, error)) return false;
             continue;
         }
+        if (normalizedCapability == QLatin1String("actions")) {
+            if (!validateActionRecord(record, error)) return false;
+            continue;
+        }
         if (normalizedCapability != QLatin1String("diarization")) continue;
 
         if (record.kind != QLatin1String("speaker_segment")) {
@@ -219,9 +283,6 @@ bool validateVibeCutExtractorEvidenceContract(const QString &capability,
             }
         }
 
-        // A diarizer has clustering authority, not human-identity authority.
-        // Names/entities are stored only through the user-governed speaker
-        // association layer, never promoted from extractor output.
         const QStringList forbiddenIdentityKeys{
             QStringLiteral("speaker_name"),
             QStringLiteral("display_name"),
