@@ -136,14 +136,21 @@ QJsonObject startR128(VibeCutTools *tools, const QJsonObject &input)
         return err(QStringLiteral("Audio profile frame bounds must satisfy 0 <= start_frame < end_frame <= %1.").arg(durationFrames));
     }
 
-    // ebur128 metadata is emitted at 10 Hz. Quantize requested evidence
-    // sampling to integer 100 ms steps so the downsampling selector is exact.
     const int requestedIntervalMs = qBound(100, input.value(QStringLiteral("sample_interval_ms")).toInt(500), 10000);
-    const int metadataStride = qBound(1, qRound(requestedIntervalMs / 100.0), 100);
-    const int sampleIntervalMs = metadataStride * 100;
+    const int requestedStride = qBound(1, qRound(requestedIntervalMs / 100.0), 100);
     const int maxSamples = qBound(1, input.value(QStringLiteral("max_samples")).toInt(10000), 50000);
     const double startSeconds = static_cast<double>(startFrame) / fps;
     const double endSeconds = static_cast<double>(endFrame) / fps;
+
+    // ebur128 emits metadata at 10 Hz. Coarsen the requested interval before
+    // the process starts when necessary so max_samples is a real execution and
+    // output bound, not a post-hoc rejection after an oversized analysis.
+    const qint64 estimatedMetadataFrames = qMax<qint64>(1, static_cast<qint64>(qCeil((endSeconds - startSeconds) * 10.0)));
+    const qint64 strideForLimit = qMax<qint64>(1, (estimatedMetadataFrames + maxSamples - 1) / maxSamples);
+    const qint64 stride64 = qMax<qint64>(requestedStride, strideForLimit);
+    if (stride64 > 1000000) return err(QStringLiteral("Requested audio range is too large for bounded R128 sampling."));
+    const int metadataStride = static_cast<int>(stride64);
+    const int sampleIntervalMs = metadataStride * 100;
 
     VibeCutJobManager *jobs = tools->jobManager();
     if (!jobs) return err(QStringLiteral("VibeCut JobManager is unavailable."));
@@ -193,7 +200,7 @@ QJsonObject startR128(VibeCutTools *tools, const QJsonObject &input)
 
         const QList<R128Sample> samples = parseR128Metadata(QString::fromUtf8(stdoutData));
         if (samples.size() > maxSamples) {
-            jobs->markFailed(jobId, QStringLiteral("EBU R128 produced %1 samples, exceeding requested max_samples=%2.").arg(samples.size()).arg(maxSamples));
+            jobs->markFailed(jobId, QStringLiteral("EBU R128 violated the bounded sample estimate (%1 > %2); refusing persistence.").arg(samples.size()).arg(maxSamples));
             process->deleteLater();
             return;
         }
@@ -202,10 +209,6 @@ QJsonObject startR128(VibeCutTools *tools, const QJsonObject &input)
         int index = 0;
         const int emissionFrames = qMax(1, static_cast<int>(qCeil(fps * 0.1)));
         for (const R128Sample &sample : samples) {
-            // The first ~300 ms do not contain a complete 400 ms momentary
-            // loudness window. Keep the measurement truthful by omitting that
-            // warm-up output instead of treating the EBU floor sentinel as an
-            // observed quiet signal.
             if (sample.ptsSeconds < 0.299) continue;
             const int absoluteFrame = qBound(startFrame,
                                              startFrame + static_cast<int>(qRound64(sample.ptsSeconds * fps)),
@@ -227,18 +230,21 @@ QJsonObject startR128(VibeCutTools *tools, const QJsonObject &input)
             record.confidence = 1.0;
             record.producedUtc = QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs);
             QJsonObject metadata{{QStringLiteral("sample_pts_seconds"), sample.ptsSeconds},
+                                 {QStringLiteral("absolute_sample_seconds"), static_cast<double>(startFrame) / fps + sample.ptsSeconds},
                                  {QStringLiteral("sample_interval_ms"), sampleIntervalMs},
+                                 {QStringLiteral("project_fps"), fps},
                                  {QStringLiteral("momentary_lufs"), sample.momentaryLufs},
                                  {QStringLiteral("momentary_window_ms"), 400},
                                  {QStringLiteral("short_term_window_ms"), 3000},
-                                 {QStringLiteral("integrated_lufs"), sample.integratedLufs},
-                                 {QStringLiteral("loudness_range_lu"), sample.loudnessRangeLu},
-                                 {QStringLiteral("short_term_warmup"), sample.ptsSeconds < 2.9}};
+                                 {QStringLiteral("short_term_warmup"), sample.ptsSeconds < 2.9},
+                                 {QStringLiteral("measurement_authority"), QStringLiteral("ebu_r128_observation")}};
             if (sample.hasShortTerm) metadata.insert(QStringLiteral("short_term_lufs"), sample.shortTermLufs);
+            if (sample.hasIntegrated) metadata.insert(QStringLiteral("cumulative_integrated_lufs"), sample.integratedLufs);
+            if (sample.hasLra) metadata.insert(QStringLiteral("cumulative_loudness_range_lu"), sample.loudnessRangeLu);
             if (sample.hasTruePeak) {
-                metadata.insert(QStringLiteral("true_peak_linear"), sample.truePeakLinear);
+                metadata.insert(QStringLiteral("cumulative_true_peak_linear"), sample.truePeakLinear);
                 if (sample.truePeakLinear > 0.0) {
-                    metadata.insert(QStringLiteral("true_peak_dbfs"), 20.0 * std::log10(sample.truePeakLinear));
+                    metadata.insert(QStringLiteral("cumulative_true_peak_dbfs"), 20.0 * std::log10(sample.truePeakLinear));
                 }
             }
             record.metadata = metadata;
@@ -268,8 +274,9 @@ QJsonObject startR128(VibeCutTools *tools, const QJsonObject &input)
                        {QStringLiteral("extractor_id"), QString::fromLatin1(ExtractorId)},
                        {QStringLiteral("extractor_version"), QString::fromLatin1(ExtractorVersion)},
                        {QStringLiteral("start_frame"), startFrame}, {QStringLiteral("end_frame"), endFrame},
-                       {QStringLiteral("sample_interval_ms"), sampleIntervalMs}, {QStringLiteral("max_samples"), maxSamples},
-                       {QStringLiteral("asynchronous"), true}};
+                       {QStringLiteral("requested_sample_interval_ms"), requestedIntervalMs},
+                       {QStringLiteral("effective_sample_interval_ms"), sampleIntervalMs},
+                       {QStringLiteral("max_samples"), maxSamples}, {QStringLiteral("asynchronous"), true}};
 }
 } // namespace
 
@@ -295,7 +302,7 @@ bool registerVibeCutR128ExtractorTools(VibeCutToolSurface &surface, QString *err
     policy.asynchronous = true;
     policy.mutatesProject = false;
     return surface.registerTool(QJsonObject{{QStringLiteral("name"), policy.name},
-                                            {QStringLiteral("description"), QStringLiteral("Measure bounded EBU R128 audio loudness observations for one file-backed source using Kdenlive's configured FFmpeg. Persists timestamped momentary/short-term/integrated loudness and true-peak provenance as measurement evidence; it does not label speech, music, noise or room tone. Sampling is bounded and cancellable.")},
+                                            {QStringLiteral("description"), QStringLiteral("Measure bounded EBU R128 audio loudness observations for one file-backed source using Kdenlive's configured FFmpeg. Persists timestamped momentary/short-term loudness plus cumulative integrated/LRA/true-peak provenance; it does not label speech, music, noise or room tone. Sampling is quantized to FFmpeg's 100 ms metadata cadence and may be automatically coarsened to respect max_samples before execution.")},
                                             {QStringLiteral("input_schema"), input}},
                                 policy, [tools](const QJsonObject &request) { return startR128(tools, request); }, error);
 }
