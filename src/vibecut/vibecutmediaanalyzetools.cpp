@@ -60,6 +60,10 @@ QJsonObject analyze(VibeCutToolSurface *surface, const QJsonObject &input)
     if (clip->hasAudio()) {
         invokeIfNeeded(QStringLiteral("silence_detect"), QStringLiteral("media_silence_refresh"), QJsonObject{{QStringLiteral("bin_id"), binId}});
         invokeIfNeeded(QStringLiteral("loudness_detect"), QStringLiteral("media_loudness_refresh"), QJsonObject{{QStringLiteral("bin_id"), binId}});
+        invokeIfNeeded(QStringLiteral("audio_r128"), QStringLiteral("media_audio_profile_refresh"),
+                       QJsonObject{{QStringLiteral("bin_id"), binId},
+                                   {QStringLiteral("sample_interval_ms"), 500},
+                                   {QStringLiteral("max_samples"), 10000}});
     }
     if (clip->hasVideo()) {
         invokeIfNeeded(QStringLiteral("shot_boundary"), QStringLiteral("media_shots_refresh"), QJsonObject{{QStringLiteral("bin_id"), binId}});
@@ -91,16 +95,16 @@ bool registerVibeCutMediaAnalyzeTools(VibeCutToolSurface &surface, QString *erro
                             {QStringLiteral("properties"), QJsonObject{
                                 {QStringLiteral("bin_id"), QJsonObject{{QStringLiteral("type"), QStringLiteral("string")}}},
                                 {QStringLiteral("only_stale"), QJsonObject{{QStringLiteral("type"), QStringLiteral("boolean")},
-                                                                           {QStringLiteral("description"), QStringLiteral("Default true. Skip extractor results whose source fingerprint and extractor version are already current.")}}}}},
+                                                                           {QStringLiteral("description"), QStringLiteral("Default true. Skip deterministic extractor results whose source fingerprint and extractor version are already current.")}}}}},
                             {QStringLiteral("required"), QJsonArray{QStringLiteral("bin_id")}},
                             {QStringLiteral("additionalProperties"), false}};
     const QJsonObject schema{{QStringLiteral("name"), QStringLiteral("media_analyze_refresh")},
-                             {QStringLiteral("description"), QStringLiteral("Run VibeCut's deterministic basic media-intelligence suite for one file-backed bin asset. By default launches only missing/stale extractors: source metadata always applicable; silence/loudness for audio; shot/black/freeze/blur for video. Child jobs use the shared JobManager and no project mutation occurs.")},
+                             {QStringLiteral("description"), QStringLiteral("Run VibeCut's deterministic basic media-intelligence suite for one file-backed bin asset. By default launches only missing/stale extractors: source metadata always applicable; silence, source-wide loudness and bounded EBU R128 audio profile for audio; shot/black/freeze/blur for video. Child jobs use the shared JobManager and no project mutation occurs.")},
                              {QStringLiteral("input_schema"), input}};
     VibeCutToolPolicy policy;
     policy.name = QStringLiteral("media_analyze_refresh");
     policy.risk = VibeCutToolRisk::ExternalSideEffect;
     policy.asynchronous = true;
     policy.mutatesProject = false;
-    return surface.registerTool(schema, policy, [&surface](const QJsonObject &input) { return analyze(&surface, input); }, error);
+    return surface.registerTool(schema, policy, [&surface](const QJsonObject &request) { return analyze(&surface, request); }, error);
 }
