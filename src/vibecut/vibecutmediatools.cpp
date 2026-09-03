@@ -4,6 +4,7 @@
 */
 #include "vibecutmediatools.h"
 
+#include "vibecutcrossmodaltools.h"
 #include "vibecutmediaindex.h"
 #include "vibecutsemantictools.h"
 #include "vibecuttoolsurface.h"
@@ -40,11 +41,12 @@ bool registerVibeCutMediaTools(VibeCutToolSurface &surface, QString *error)
                                   {QStringLiteral("required"), QJsonArray{QStringLiteral("query")}},
                                   {QStringLiteral("additionalProperties"), false}};
     const QJsonObject schema{{QStringLiteral("name"), QStringLiteral("media_search")},
-                             {QStringLiteral("description"), QStringLiteral("Deterministically search the active project's canonical media knowledge index across transcript/subtitle text, clip names and textual extractor evidence. Returns ranked, time-ranged evidence. Read-only. Use semantic_search_text for conceptual transcript/OCR similarity after semantic_text_refresh; this lexical path remains available independently of ML embeddings.")},
+                             {QStringLiteral("description"), QStringLiteral("Deterministically search the active project's canonical media knowledge index across transcript/subtitle text, clip names and textual extractor evidence. Returns ranked, time-ranged evidence. Read-only. Use semantic_search_text for conceptual transcript/OCR similarity and semantic_search_visual for text-to-image retrieval after their respective refreshes; this lexical path remains independently available.")},
                              {QStringLiteral("input_schema"), inputSchema}};
     VibeCutToolPolicy policy;
     policy.name = QStringLiteral("media_search");
     policy.risk = VibeCutToolRisk::ReadOnly;
     if (!surface.registerTool(schema, policy, mediaSearch, error)) return false;
-    return registerVibeCutSemanticTools(surface, error);
+    if (!registerVibeCutSemanticTools(surface, error)) return false;
+    return registerVibeCutCrossModalTools(surface, error);
 }
