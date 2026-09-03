@@ -95,7 +95,7 @@ The integration branch has broad source implementation, but **source-complete is
 - Pairwise MPEG-7 video similarity evidence.
 - Provider-neutral ML extractor registry and constrained evidence-persistence contract.
 
-## Phase 4 — editorial intelligence foundation — REPEATED-TAKE EXECUTION LANDED IN SOURCE
+## Phase 4 — editorial intelligence foundation — GOLDEN MUTATION EVAL BASELINE + REPEATED-TAKE EXECUTION LANDED IN SOURCE
 
 ### Repeated takes
 - Transcript/subtitle repeated-take candidate grouping.
@@ -105,13 +105,21 @@ The integration branch has broad source implementation, but **source-complete is
 - **Landed in source:** reusable governed `timeline_range_remove` primitive underneath destructive timeline-range work.
 - **Still gated:** compile, runtime smoke and quantitative Undo-fidelity fixtures before release-quality claims.
 
+### Golden mutation evaluation
+- **Landed in source:** deterministic `VibeCutEvaluator::evaluateMutation` contract with normalized verified-success, Undo-fidelity and Redo-fidelity scores.
+- **Landed in source:** exact canonical-state comparison for Undo/Redo and requested-postcondition comparison that ignores unrelated live state.
+- **Landed in source:** explicit `Applied`, `Refused` and `RolledBack` mutation outcomes; refusal/rollback only pass when canonical state preservation is verified.
+- **Landed in source:** deterministic golden contract fixtures for successful ripple range removal, stale-plan refusal, repeated-take overlap refusal, locked-track refusal and rollback after partial failure.
+- **Still gated:** bind those fixture IDs to executable tiny Kdenlive projects and live tool invocations; the JSON contract corpus does not replace compile/runtime/hands-on verification.
+
 ### Remaining work — dependency sequence
 
-#### A. Golden mutation evaluation starts first and remains cross-cutting
-- Golden editing fixtures/projects.
-- Quantitative verified-success metric: requested postcondition vs observed live project state.
-- Quantitative Undo-fidelity metric: canonical pre-edit state vs state restored after Undo.
-- Redo-fidelity, stale-plan, rollback and overlap/locked-track refusal fixtures.
+#### A. Golden mutation evaluation — BASELINE LANDED, LIVE FIXTURES NEXT
+- Bind golden editing fixture IDs to executable tiny Kdenlive projects.
+- Capture canonical live state before edit, after edit, after one Undo and after Redo.
+- Feed live observations through the same verified-success / Undo-fidelity / Redo-fidelity thresholds now implemented in `VibeCutEvaluator`.
+- Add executable stale-plan, rollback, overlap and locked-track refusal fixtures so refusal semantics are measured against the editor, not only the evaluator contract.
+- Keep this evaluation layer cross-cutting as each new destructive or synthesizing capability lands.
 
 #### B. Richer evidence extraction
 - Speaker diarization.
@@ -159,4 +167,4 @@ The README lineage must remain intact when the branch merges; capability/status 
 
 ## Current engineering rule
 
-Do not broaden capability by guessing private Kdenlive internals. Prefer native public model/request paths, accumulated undo/redo APIs and live postcondition verification. If an upstream seam is ambiguous, keep it explicitly open rather than claiming unsafe support. A feature that can only be proposed is not “finished” when the product requirement is governed execution; a consequential edit is complete only when its execution, verification and Undo story are real.
+Do not broaden capability by guessing private Kdenlive internals. Prefer native public model/request paths, accumulated undo/redo APIs and live postcondition verification. If an upstream seam is ambiguous, keep it explicitly open rather than claiming unsafe support. A feature that can only be proposed is not “finished” when the product requirement is governed execution; a consequential edit is complete only when its execution, verification and Undo story are real. Quantitative mutation evaluation is now part of that definition: requested postconditions and reversible editor state must be measured, not inferred from tool return values.
