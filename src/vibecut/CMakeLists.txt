@@ -39,6 +39,7 @@ set(kdenlive_SRCS
   vibecut/vibecutjobtools.cpp
   vibecut/vibecutlocalaudioeventprovider.cpp
   vibecut/vibecutlocaldiarizationprovider.cpp
+  vibecut/vibecutlocalobjectprovider.cpp
   vibecut/vibecutlocalocrprovider.cpp
   vibecut/vibecutloudnessextractortools.cpp
   vibecut/vibecutmarkertools.cpp
@@ -93,5 +94,7 @@ set(kdenlive_SRCS
   vibecut/vibecuttracktools.cpp
   vibecut/vibecuttransitionparamtools.cpp
   vibecut/vibecuttransitiontools.cpp
+  vibecut/vibecutvisionruntime.cpp
+  vibecut/vibecutvisionsetuptools.cpp
   vibecut/vibecutdock.cpp
   PARENT_SCOPE)
