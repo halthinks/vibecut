@@ -80,8 +80,6 @@ bool overlapsSilence(const LoudnessObservation &observation, const QList<Silence
     for (const SilenceRange &silence : silences) {
         if (silence.sourceId != observation.sourceId || silence.sourceFingerprint != observation.sourceFingerprint) continue;
         if (observation.startFrame < silence.endFrame && observation.endFrame > silence.startFrame) return true;
-        // silencedetect may emit a zero-length boundary at the exact sample;
-        // treat that as silence evidence too rather than quietly accepting it.
         if (silence.startFrame == silence.endFrame &&
             observation.startFrame <= silence.startFrame && observation.endFrame > silence.startFrame) return true;
     }
@@ -238,7 +236,6 @@ QJsonArray buildVibeCutRoomToneCandidates(const QJsonArray &records,
         }
         if (maxSeen - minSeen > maxSpreadLu) {
             const LoudnessObservation keep = current.observations.takeLast();
-            current.observations.removeLast();
             flush();
             current.sourceId = keep.sourceId;
             current.sourceFingerprint = keep.sourceFingerprint;
