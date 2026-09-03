@@ -2,6 +2,7 @@
 # SPDX-FileCopyrightText: 2026 vibecut contributors
 
 INSTALL(FILES
+    action_xclip.py
     audio_events_ast.py
     diarize_pyannote.py
     objects_detr.py
