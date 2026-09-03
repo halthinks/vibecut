@@ -9,6 +9,7 @@
 #include "vibecutlocaldiarizationprovider.h"
 #include "vibecutlocalocrprovider.h"
 #include "vibecutmediaevidence.h"
+#include "vibecutocrtemporal.h"
 #include "vibecutspeakeridentitytools.h"
 #include "vibecuttools.h"
 #include "vibecuttoolsurface.h"
@@ -175,6 +176,7 @@ bool registerVibeCutExtractorProviderTools(VibeCutToolSurface &surface, QString 
                                           {QStringLiteral("input_schema"), ocrInput}},
                               ocrPolicy, [tools](const QJsonObject &input) { return startLocalOcr(tools, input); }, error)) return false;
 
+    if (!registerVibeCutOcrTemporalTools(surface, error)) return false;
     if (!registerVibeCutDiarizationSetupTools(surface, error)) return false;
     return registerVibeCutSpeakerIdentityTools(surface, error);
 }
