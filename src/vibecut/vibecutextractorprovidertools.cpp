@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL */
 #include "vibecutextractorprovidertools.h"
 
+#include "vibecutactionsummary.h"
 #include "vibecutaudioeventsetuptools.h"
 #include "vibecudaudioeventsummary.h"
 #include "vibecutdiarizationsetuptools.h"
@@ -165,7 +166,7 @@ bool registerFirstClassProvider(VibeCutToolSurface &surface,
                                                                            {QStringLiteral("request"), input}});
                                 }, error);
 }
-}
+} // namespace
 
 bool registerVibeCutExtractorProviderTools(VibeCutToolSurface &surface, QString *error)
 {
@@ -256,6 +257,7 @@ bool registerVibeCutExtractorProviderTools(VibeCutToolSurface &surface, QString 
     if (!registerVibeCutAudioEventSummaryTools(surface, error)) return false;
     if (!registerVibeCutObjectTrackTools(surface, error)) return false;
     if (!registerVibeCutSubjectCandidateTools(surface, error)) return false;
+    if (!registerVibeCutActionSummaryTools(surface, error)) return false;
     if (!registerVibeCutDiarizationSetupTools(surface, error)) return false;
     if (!registerVibeCutAudioEventSetupTools(surface, error)) return false;
     if (!registerVibeCutVisionSetupTools(surface, error)) return false;
