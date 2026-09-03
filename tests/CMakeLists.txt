@@ -60,6 +60,7 @@ set(KdenliveTest_SOURCES
     vibecutmodelprovidertest.cpp
     vibecutplangatetest.cpp
     vibecutplanruntimetest.cpp
+    vibecutpolicyoverridestest.cpp
     vibecutprojectmemorytest.cpp
     vibecutprojectrevisiontest.cpp
     vibecutprojectrulestest.cpp
