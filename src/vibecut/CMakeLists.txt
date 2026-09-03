@@ -24,6 +24,7 @@ set(kdenlive_SRCS
   vibecut/vibecutdeadartools.cpp
   vibecut/vibecutdeadlinkedtools.cpp
   vibecut/vibecutdiarizationsetuptools.cpp
+  vibecut/vibecutduplicatefusion.cpp
   vibecut/vibecutedittools.cpp
   vibecut/vibecuteffectgrouptools.cpp
   vibecut/vibecuteffectkeyframetools.cpp
