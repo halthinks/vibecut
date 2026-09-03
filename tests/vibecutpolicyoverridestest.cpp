@@ -2,6 +2,8 @@
 #include "catch.hpp"
 #include "vibecut/vibecutpolicyoverrides.h"
 
+#include <QJsonArray>
+
 TEST_CASE("project auto-allow cannot waive code-defined hard confirmation", "[vibecut][policy][overrides]")
 {
     VibeCutToolPolicy hard;
