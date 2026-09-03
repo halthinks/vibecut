@@ -32,4 +32,16 @@ struct VibeCutProjectSnapshot {
     QJsonObject toJson() const;
     VibeCutProjectDiff diffTo(const VibeCutProjectSnapshot &after) const;
     static VibeCutProjectSnapshot capture(quint64 revision);
+
+    /**
+     * Capture a deterministic, revision-independent mutation state suitable for
+     * verified-success and Undo/Redo fidelity evaluation.
+     *
+     * Schema v1 includes timeline topology/order, track state/effects, clip
+     * identity/source span/timing/speed/effects, compositions and parameters,
+     * groups, subtitles and master effects. The project revision is deliberately
+     * excluded because Undo/Redo may legitimately advance revision counters while
+     * restoring the same editable project state.
+     */
+    static QJsonObject captureMutationStateV1();
 };
