@@ -95,7 +95,7 @@ The integration branch has broad source implementation, but **source-complete is
 - Pairwise MPEG-7 video similarity evidence.
 - Provider-neutral ML extractor registry and constrained evidence-persistence contract.
 
-## Phase 4 — editorial intelligence foundation — GOLDEN MUTATION EVAL BASELINE + REPEATED-TAKE EXECUTION LANDED IN SOURCE
+## Phase 4 — editorial intelligence foundation — LIVE MUTATION EVAL IN SOURCE + REPEATED-TAKE EXECUTION LANDED
 
 ### Repeated takes
 - Transcript/subtitle repeated-take candidate grouping.
@@ -103,23 +103,28 @@ The integration branch has broad source implementation, but **source-complete is
 - Explicit human-choice selection planning.
 - **Landed in source:** final repeated-take selection execution; it no longer stops at candidate/review/selection planning.
 - **Landed in source:** reusable governed `timeline_range_remove` primitive underneath destructive timeline-range work.
-- **Still gated:** compile, runtime smoke and quantitative Undo-fidelity fixtures before release-quality claims.
+- **Still gated:** compile/runtime smoke plus live overlap/repeated-take Undo-fidelity coverage before release-quality claims.
 
 ### Golden mutation evaluation
 - **Landed in source:** deterministic `VibeCutEvaluator::evaluateMutation` contract with normalized verified-success, Undo-fidelity and Redo-fidelity scores.
 - **Landed in source:** exact canonical-state comparison for Undo/Redo and requested-postcondition comparison that ignores unrelated live state.
 - **Landed in source:** explicit `Applied`, `Refused` and `RolledBack` mutation outcomes; refusal/rollback only pass when canonical state preservation is verified.
-- **Landed in source:** deterministic golden contract fixtures for successful ripple range removal, stale-plan refusal, repeated-take overlap refusal, locked-track refusal and rollback after partial failure.
-- **Still gated:** bind those fixture IDs to executable tiny Kdenlive projects and live tool invocations; the JSON contract corpus does not replace compile/runtime/hands-on verification.
+- **Landed in source:** deterministic golden contract corpus for successful ripple range removal, stale-plan refusal, repeated-take overlap refusal, locked-track refusal and rollback after partial failure.
+- **Landed in source:** `vibecut_mutation_state_v1`, a revision-independent live-state schema covering timeline topology/order, track state/effects, clip source/timing/effects, composition parameters, groups, subtitles and master effects.
+- **Landed in source:** model-bound mutation-state capture so the same canonical schema is used by headless Kdenlive tests and the running editor.
+- **Landed in source:** executable headless Kdenlive ripple range-removal fixture measuring requested postcondition, exact Undo fidelity and exact Redo fidelity.
+- **Landed in source:** executable locked-track refusal fixture proving canonical state is unchanged when destructive work is denied.
+- **Landed in source:** executable plan-runtime rollback fixture that performs a real timeline mutation, deliberately fails afterward, and requires the native checkpoint macro to restore exact canonical pre-edit state.
+- **Still gated:** authoritative compile/test execution on a Kdenlive development host; these source tests have not been claimed passing in an environment without that stack.
 
 ### Remaining work — dependency sequence
 
-#### A. Golden mutation evaluation — BASELINE LANDED, LIVE FIXTURES NEXT
-- Bind golden editing fixture IDs to executable tiny Kdenlive projects.
-- Capture canonical live state before edit, after edit, after one Undo and after Redo.
-- Feed live observations through the same verified-success / Undo-fidelity / Redo-fidelity thresholds now implemented in `VibeCutEvaluator`.
-- Add executable stale-plan, rollback, overlap and locked-track refusal fixtures so refusal semantics are measured against the editor, not only the evaluator contract.
-- Keep this evaluation layer cross-cutting as each new destructive or synthesizing capability lands.
+#### A. Golden mutation evaluation — LIVE CORE LANDED, FAILURE-PATH COVERAGE NEXT
+- Add executable stale-plan refusal bound to unchanged canonical live state.
+- Add executable repeated-take overlap refusal bound to unchanged canonical live state.
+- Add executable repeated-take successful execution with one-step Undo/Redo fidelity, not only primitive range removal.
+- Extend mutation-state schema/version when a new edit family needs state currently outside v1 rather than weakening the fidelity threshold.
+- Keep the evaluation layer cross-cutting as each new destructive or synthesizing capability lands.
 
 #### B. Richer evidence extraction
 - Speaker diarization.
@@ -167,4 +172,4 @@ The README lineage must remain intact when the branch merges; capability/status 
 
 ## Current engineering rule
 
-Do not broaden capability by guessing private Kdenlive internals. Prefer native public model/request paths, accumulated undo/redo APIs and live postcondition verification. If an upstream seam is ambiguous, keep it explicitly open rather than claiming unsafe support. A feature that can only be proposed is not “finished” when the product requirement is governed execution; a consequential edit is complete only when its execution, verification and Undo story are real. Quantitative mutation evaluation is now part of that definition: requested postconditions and reversible editor state must be measured, not inferred from tool return values.
+Do not broaden capability by guessing private Kdenlive internals. Prefer native public model/request paths, accumulated undo/redo APIs and live postcondition verification. If an upstream seam is ambiguous, keep it explicitly open rather than claiming unsafe support. A feature that can only be proposed is not “finished” when the product requirement is governed execution; a consequential edit is complete only when its execution, verification and Undo story are real. Quantitative mutation evaluation is now part of that definition: requested postconditions and reversible editor state must be measured, not inferred from tool return values. Live/headless fixtures must exercise the same canonical mutation-state schema; do not create a weaker test-only representation.
