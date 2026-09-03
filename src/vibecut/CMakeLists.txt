@@ -20,6 +20,7 @@ set(kdenlive_SRCS
   vibecut/vibecutcompositiontracktools.cpp
   vibecut/vibecutcontracts.cpp
   vibecut/vibecutconversationcontext.cpp
+  vibecut/vibecutcrossmodaltools.cpp
   vibecut/vibecutdeadartools.cpp
   vibecut/vibecutdeadlinkedtools.cpp
   vibecut/vibecutdiarizationsetuptools.cpp
