@@ -13,6 +13,26 @@ VibeCutMediaEvidenceRecord speakerSegment(const QString &cluster, int start, int
     record.metadata = QJsonObject{{QStringLiteral("speaker_cluster_id"), cluster}};
     return record;
 }
+
+VibeCutMediaEvidenceRecord ocrText(const QString &text, int frame)
+{
+    VibeCutMediaEvidenceRecord record;
+    record.kind = QStringLiteral("ocr_text");
+    record.startFrame = frame;
+    record.endFrame = frame + 1;
+    record.text = text;
+    record.confidence = 0.93;
+    record.metadata = QJsonObject{
+        {QStringLiteral("sample_frame"), frame},
+        {QStringLiteral("image_width"), 1920},
+        {QStringLiteral("image_height"), 1080},
+        {QStringLiteral("bbox_pixels"), QJsonObject{{QStringLiteral("x"), 100}, {QStringLiteral("y"), 200},
+                                                     {QStringLiteral("width"), 600}, {QStringLiteral("height"), 80}}},
+        {QStringLiteral("language"), QStringLiteral("eng")},
+        {QStringLiteral("engine"), QStringLiteral("tesseract-5")},
+    };
+    return record;
+}
 }
 
 TEST_CASE("diarization evidence contract accepts source-bounded anonymous speaker clusters", "[vibecut][extractor-provider][diarization]")
@@ -59,15 +79,39 @@ TEST_CASE("diarization evidence contract rejects malformed or out-of-scope speak
     CHECK(error.contains(QStringLiteral("outside"), Qt::CaseInsensitive));
 }
 
-TEST_CASE("non-diarization providers retain generic evidence flexibility within authoritative bounds", "[vibecut][extractor-provider]")
+TEST_CASE("OCR evidence contract accepts exact-frame text with bounded geometry and provenance", "[vibecut][extractor-provider][ocr]")
 {
-    VibeCutMediaEvidenceRecord ocr;
-    ocr.kind = QStringLiteral("ocr_text");
-    ocr.startFrame = 20;
-    ocr.endFrame = 21;
-    ocr.text = QStringLiteral("SALE");
-
     QString error;
-    CHECK(validateVibeCutExtractorEvidenceContract(QStringLiteral("ocr"), 0, 100, {ocr}, &error));
+    const VibeCutMediaEvidenceRecord record = ocrText(QStringLiteral("SALE"), 20);
+    CHECK(validateVibeCutExtractorEvidenceContract(QStringLiteral("ocr"), 0, 100, {record}, &error));
     CHECK(error.isEmpty());
+}
+
+TEST_CASE("OCR evidence contract rejects loose ranges missing confidence and invalid geometry", "[vibecut][extractor-provider][ocr]")
+{
+    QString error;
+
+    VibeCutMediaEvidenceRecord loose = ocrText(QStringLiteral("SALE"), 20);
+    loose.endFrame = 25;
+    CHECK_FALSE(validateVibeCutExtractorEvidenceContract(QStringLiteral("ocr"), 0, 100, {loose}, &error));
+    CHECK(error.contains(QStringLiteral("one sampled"), Qt::CaseInsensitive));
+
+    error.clear();
+    VibeCutMediaEvidenceRecord unknownConfidence = ocrText(QStringLiteral("SALE"), 20);
+    unknownConfidence.confidence = -1.0;
+    CHECK_FALSE(validateVibeCutExtractorEvidenceContract(QStringLiteral("ocr"), 0, 100, {unknownConfidence}, &error));
+    CHECK(error.contains(QStringLiteral("confidence"), Qt::CaseInsensitive));
+
+    error.clear();
+    VibeCutMediaEvidenceRecord outsideBox = ocrText(QStringLiteral("SALE"), 20);
+    outsideBox.metadata.insert(QStringLiteral("bbox_pixels"),
+                               QJsonObject{{QStringLiteral("x"), 1800}, {QStringLiteral("y"), 1000},
+                                           {QStringLiteral("width"), 300}, {QStringLiteral("height"), 200}});
+    CHECK_FALSE(validateVibeCutExtractorEvidenceContract(QStringLiteral("ocr"), 0, 100, {outsideBox}, &error));
+    CHECK(error.contains(QStringLiteral("bbox_pixels")));
+
+    error.clear();
+    VibeCutMediaEvidenceRecord outsideRange = ocrText(QStringLiteral("SALE"), 100);
+    CHECK_FALSE(validateVibeCutExtractorEvidenceContract(QStringLiteral("ocr"), 0, 100, {outsideRange}, &error));
+    CHECK(error.contains(QStringLiteral("outside"), Qt::CaseInsensitive));
 }
