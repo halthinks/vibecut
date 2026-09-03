@@ -7,6 +7,7 @@
 #include "vibecutextractorrequest.h"
 #include "vibecutjobmanager.h"
 #include "vibecutlocaldiarizationprovider.h"
+#include "vibecutlocalocrprovider.h"
 #include "vibecutmediaevidence.h"
 #include "vibecutspeakeridentitytools.h"
 #include "vibecuttools.h"
@@ -101,11 +102,22 @@ QJsonObject startProvider(VibeCutTools *tools, const QJsonObject &input)
     result.insert(QStringLiteral("source_fingerprint"), normalizedRequest.value(QStringLiteral("source_fingerprint")));
     return result;
 }
+
+QJsonObject startLocalOcr(VibeCutTools *tools, const QJsonObject &input)
+{
+    return startProvider(tools,
+                         QJsonObject{{QStringLiteral("provider_id"), QStringLiteral("local_tesseract")},
+                                     {QStringLiteral("capability"), QStringLiteral("ocr")},
+                                     {QStringLiteral("request"), input}});
+}
 } // namespace
 
 bool registerVibeCutExtractorProviderTools(VibeCutToolSurface &surface, QString *error)
 {
+    // Built-ins must be visible before the very first provider-list/start call;
+    // discovery may not depend on a user having called a setup/status tool.
     ensureVibeCutBuiltinExtractorProvidersRegistered();
+    ensureVibeCutLocalOcrProviderRegistered();
 
     const QJsonObject listInput{{QStringLiteral("type"), QStringLiteral("object")},
                                 {QStringLiteral("properties"), QJsonObject{{QStringLiteral("capability"), QJsonObject{{QStringLiteral("type"), QStringLiteral("string")}}}}},
@@ -140,6 +152,28 @@ bool registerVibeCutExtractorProviderTools(VibeCutToolSurface &surface, QString 
                                           {QStringLiteral("description"), QStringLiteral("Start one explicitly registered model-backed media extractor capability through normalized authoritative source metadata, the shared VibeCut JobManager, capability-specific evidence contracts and the validated evidence sink. The provider never receives a caller-invented source path or generic evidence-write escape hatch.")},
                                           {QStringLiteral("input_schema"), startInput}},
                               startPolicy, [tools](const QJsonObject &input) { return startProvider(tools, input); }, error)) return false;
+
+    const QJsonObject ocrInput{{QStringLiteral("type"), QStringLiteral("object")},
+                               {QStringLiteral("properties"), QJsonObject{
+                                   {QStringLiteral("bin_id"), QJsonObject{{QStringLiteral("type"), QStringLiteral("string")}}},
+                                   {QStringLiteral("start_frame"), QJsonObject{{QStringLiteral("type"), QStringLiteral("integer")}, {QStringLiteral("minimum"), 0}}},
+                                   {QStringLiteral("end_frame"), QJsonObject{{QStringLiteral("type"), QStringLiteral("integer")}, {QStringLiteral("minimum"), 0}}},
+                                   {QStringLiteral("sample_interval_frames"), QJsonObject{{QStringLiteral("type"), QStringLiteral("integer")}, {QStringLiteral("minimum"), 1}, {QStringLiteral("maximum"), 1000000}}},
+                                   {QStringLiteral("max_samples"), QJsonObject{{QStringLiteral("type"), QStringLiteral("integer")}, {QStringLiteral("minimum"), 1}, {QStringLiteral("maximum"), 2000}}},
+                                   {QStringLiteral("language"), QJsonObject{{QStringLiteral("type"), QStringLiteral("string")}, {QStringLiteral("maxLength"), 128}}},
+                                   {QStringLiteral("psm"), QJsonObject{{QStringLiteral("type"), QStringLiteral("integer")}, {QStringLiteral("minimum"), 3}, {QStringLiteral("maximum"), 13}}},
+                                   {QStringLiteral("min_confidence"), QJsonObject{{QStringLiteral("type"), QStringLiteral("number")}, {QStringLiteral("minimum"), 0.0}, {QStringLiteral("maximum"), 1.0}}}}},
+                               {QStringLiteral("required"), QJsonArray{QStringLiteral("bin_id")}},
+                               {QStringLiteral("additionalProperties"), false}};
+    VibeCutToolPolicy ocrPolicy;
+    ocrPolicy.name = QStringLiteral("media_ocr_refresh");
+    ocrPolicy.risk = VibeCutToolRisk::ExternalSideEffect;
+    ocrPolicy.asynchronous = true;
+    ocrPolicy.mutatesProject = false;
+    if (!surface.registerTool(QJsonObject{{QStringLiteral("name"), ocrPolicy.name},
+                                          {QStringLiteral("description"), QStringLiteral("Run the built-in local Tesseract OCR provider over authoritative bounded frames from one file-backed video bin asset. Persists one-frame ocr_text evidence with normalized confidence, pixel bounding boxes, language and engine provenance through the validated media-evidence sink. Sampling is bounded and cancellable through JobManager.")},
+                                          {QStringLiteral("input_schema"), ocrInput}},
+                              ocrPolicy, [tools](const QJsonObject &input) { return startLocalOcr(tools, input); }, error)) return false;
 
     if (!registerVibeCutDiarizationSetupTools(surface, error)) return false;
     return registerVibeCutSpeakerIdentityTools(surface, error);
