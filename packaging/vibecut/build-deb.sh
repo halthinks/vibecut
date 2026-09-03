@@ -81,9 +81,21 @@ if command -v dpkg-shlibdeps >/dev/null 2>&1 && command -v file >/dev/null 2>&1;
     if [[ $SHLIB_STATUS -eq 0 ]]; then
       DEPENDS="${SHLIB_OUTPUT#shlibs:Depends=}"
     else
-      echo "warning: dpkg-shlibdeps could not derive runtime dependencies; package will omit an automatic Depends field" >&2
+      echo "warning: dpkg-shlibdeps could not derive runtime dependencies; package will retain explicit VibeCut runtime dependencies only" >&2
     fi
   fi
+fi
+
+# VibeCut invokes these executables at runtime rather than linking them, so
+# dpkg-shlibdeps cannot discover them. Keep them explicit in the package:
+# - ffmpeg: media analysis/OCR frame extraction and existing transcription paths
+# - python3 + python3-venv: VibeCut helper scripts and isolated pyannote setup
+# - tesseract-ocr: built-in local on-screen-text OCR (Debian pulls English/OSD data)
+EXPLICIT_RUNTIME_DEPENDS="ffmpeg, python3, python3-venv, tesseract-ocr"
+if [[ -n "$DEPENDS" ]]; then
+  DEPENDS="$DEPENDS, $EXPLICIT_RUNTIME_DEPENDS"
+else
+  DEPENDS="$EXPLICIT_RUNTIME_DEPENDS"
 fi
 
 {
@@ -93,7 +105,7 @@ fi
   echo "Priority: optional"
   echo "Architecture: $ARCH"
   echo "Maintainer: halthinks/VibeCut contributors"
-  [[ -z "$DEPENDS" ]] || echo "Depends: $DEPENDS"
+  echo "Depends: $DEPENDS"
   echo "Homepage: https://github.com/halthinks/vibecut"
   echo "Description: halthinks capability-expanded VibeCut fork"
   echo " VibeCut is a governed agentic nonlinear video editor built on the original"
