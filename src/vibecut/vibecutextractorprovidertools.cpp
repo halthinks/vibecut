@@ -16,6 +16,7 @@
 #include "vibecutobjecttracks.h"
 #include "vibecutocrtemporal.h"
 #include "vibecutspeakeridentitytools.h"
+#include "vibecutsubjectcandidates.h"
 #include "vibecuttools.h"
 #include "vibecuttoolsurface.h"
 #include "vibecutvisionsetuptools.h"
@@ -248,6 +249,7 @@ bool registerVibeCutExtractorProviderTools(VibeCutToolSurface &surface, QString 
     if (!registerVibeCutOcrTemporalTools(surface, error)) return false;
     if (!registerVibeCutAudioEventSummaryTools(surface, error)) return false;
     if (!registerVibeCutObjectTrackTools(surface, error)) return false;
+    if (!registerVibeCutSubjectCandidateTools(surface, error)) return false;
     if (!registerVibeCutDiarizationSetupTools(surface, error)) return false;
     if (!registerVibeCutAudioEventSetupTools(surface, error)) return false;
     if (!registerVibeCutVisionSetupTools(surface, error)) return false;
