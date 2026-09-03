@@ -9,7 +9,6 @@
 #include <QHash>
 #include <QJsonArray>
 #include <QJsonObject>
-#include <QSet>
 
 #include <algorithm>
 #include <cmath>
@@ -49,9 +48,132 @@ QString stateName(VibeCutJobState state)
 double lexicalUnit(int score)
 {
     if (score <= 0) return 0.0;
-    // Bounded monotonic transform; preserves the lexical index's exact/token
-    // ordering without pretending its integer score is a probability.
     return qBound(0.0, static_cast<double>(score) / (static_cast<double>(score) + 250.0), 1.0);
+}
+
+void finalizeHybridChild(VibeCutJobManager *jobs,
+                         VibeCutToolSurface *surface,
+                         const QString &parentId,
+                         const QString &childId,
+                         quint64 baseRevision,
+                         const QString &query,
+                         int limit,
+                         double minScore,
+                         const QList<VibeCutMediaSearchHit> &lexicalHits,
+                         const QHash<QString, VibeCutMediaDocument> &documents)
+{
+    if (!jobs || !surface) return;
+    VibeCutJob parent;
+    if (!jobs->job(parentId, parent) || parent.terminal()) return;
+    if (parent.state == VibeCutJobState::CancelRequested) {
+        jobs->requestCancel(childId);
+        jobs->markCancelled(parentId, QStringLiteral("Hybrid search cancelled."));
+        return;
+    }
+
+    VibeCutJob child;
+    if (!jobs->job(childId, child) || !child.terminal()) return;
+    if (surface->projectRevision() != baseRevision) {
+        jobs->markFailed(parentId, QStringLiteral("Project revision changed while hybrid search was running; refusing stale ranking."));
+        return;
+    }
+    if (child.state != VibeCutJobState::Succeeded) {
+        jobs->markFailed(parentId, QStringLiteral("MiniLM semantic child search failed: %1").arg(child.message));
+        return;
+    }
+
+    QHash<QString, RankedHit> byId;
+    for (const VibeCutMediaSearchHit &hit : lexicalHits) {
+        RankedHit item;
+        item.id = hit.document.id;
+        item.kind = hit.document.kind;
+        item.text = hit.document.text;
+        item.startFrame = hit.document.startFrame;
+        item.endFrame = hit.document.endFrame;
+        item.lexical = lexicalUnit(hit.score);
+        item.hasLexical = true;
+        item.metadata = hit.document.metadata;
+        byId.insert(item.id, item);
+    }
+
+    int staleSemanticSkipped = 0;
+    const QJsonArray semanticHits = child.result.value(QStringLiteral("hits")).toArray();
+    for (const QJsonValue &value : semanticHits) {
+        if (!value.isObject()) continue;
+        const QJsonObject object = value.toObject();
+        if (!object.value(QStringLiteral("anchor_current")).toBool(false)) {
+            ++staleSemanticSkipped;
+            continue;
+        }
+        const QString id = object.value(QStringLiteral("anchor_id")).toString();
+        if (id.isEmpty() || !documents.contains(id)) continue;
+        const double similarity = object.value(QStringLiteral("similarity")).toDouble(-1.0);
+        if (!std::isfinite(similarity)) continue;
+        RankedHit item = byId.value(id);
+        const VibeCutMediaDocument document = documents.value(id);
+        item.id = id;
+        item.kind = document.kind;
+        item.text = document.text;
+        item.startFrame = document.startFrame;
+        item.endFrame = document.endFrame;
+        item.semantic = qBound(0.0, similarity, 1.0);
+        item.hasSemantic = true;
+        if (item.metadata.isEmpty()) item.metadata = document.metadata;
+        byId.insert(id, item);
+    }
+
+    QList<QJsonObject> ranked;
+    for (auto it = byId.constBegin(); it != byId.constEnd(); ++it) {
+        const RankedHit &item = it.value();
+        const double semanticWeight = item.hasSemantic ? 0.55 : 0.0;
+        const double lexicalWeight = item.hasLexical ? 0.45 : 0.0;
+        const double weight = semanticWeight + lexicalWeight;
+        if (weight <= 0.0) continue;
+        const double score = qBound(0.0,
+                                    (semanticWeight * item.semantic + lexicalWeight * item.lexical) / weight,
+                                    1.0);
+        if (score < minScore) continue;
+        ranked.append(QJsonObject{{QStringLiteral("anchor_id"), item.id},
+                                  {QStringLiteral("kind"), item.kind},
+                                  {QStringLiteral("text"), item.text.left(2048)},
+                                  {QStringLiteral("start_frame"), item.startFrame},
+                                  {QStringLiteral("end_frame"), item.endFrame},
+                                  {QStringLiteral("hybrid_score"), score},
+                                  {QStringLiteral("lexical_available"), item.hasLexical},
+                                  {QStringLiteral("lexical_component"), item.lexical},
+                                  {QStringLiteral("semantic_available"), item.hasSemantic},
+                                  {QStringLiteral("semantic_component"), item.semantic},
+                                  {QStringLiteral("metadata"), item.metadata}});
+    }
+    std::sort(ranked.begin(), ranked.end(), [](const QJsonObject &a, const QJsonObject &b) {
+        const double aScore = a.value(QStringLiteral("hybrid_score")).toDouble();
+        const double bScore = b.value(QStringLiteral("hybrid_score")).toDouble();
+        if (aScore != bScore) return aScore > bScore;
+        const int aStart = a.value(QStringLiteral("start_frame")).toInt(-1);
+        const int bStart = b.value(QStringLiteral("start_frame")).toInt(-1);
+        if (aStart != bStart) return aStart < bStart;
+        return a.value(QStringLiteral("anchor_id")).toString() < b.value(QStringLiteral("anchor_id")).toString();
+    });
+    while (ranked.size() > limit) ranked.removeLast();
+    QJsonArray hits;
+    for (const QJsonObject &object : ranked) hits.append(object);
+
+    const QJsonObject result{{QStringLiteral("kind"), QStringLiteral("semantic_hybrid_search")},
+                             {QStringLiteral("query"), query},
+                             {QStringLiteral("authority"), QStringLiteral("derived_ranking")},
+                             {QStringLiteral("score_semantics"), QStringLiteral("weighted_current_lexical_and_minilm_similarity_not_probability")},
+                             {QStringLiteral("semantic_weight_when_available"), 0.55},
+                             {QStringLiteral("lexical_weight_when_available"), 0.45},
+                             {QStringLiteral("stale_semantic_hits_skipped"), staleSemanticSkipped},
+                             {QStringLiteral("base_revision"), static_cast<qint64>(baseRevision)},
+                             {QStringLiteral("hit_count"), hits.size()},
+                             {QStringLiteral("hits"), hits}};
+    QString resultError;
+    if (!jobs->setResult(parentId, result, &resultError)) {
+        jobs->markFailed(parentId, QStringLiteral("Hybrid ranking completed but its structured result was rejected: %1").arg(resultError));
+        return;
+    }
+    jobs->markSucceeded(parentId, QStringLiteral("Hybrid current-only search produced %1 ranked hit(s).").arg(hits.size()));
 }
 
 QJsonObject startHybrid(VibeCutTools *tools, VibeCutToolSurface *surface, const QJsonObject &input)
@@ -91,119 +213,8 @@ QJsonObject startHybrid(VibeCutTools *tools, VibeCutToolSurface *surface, const 
                      [jobs, surface, parentId, childId, baseRevision, query, limit, minScore, lexicalHits, documents]
                      (const QString &changedId) {
         if (changedId != childId) return;
-        VibeCutJob parent;
-        if (!jobs->job(parentId, parent) || parent.terminal()) return;
-        if (parent.state == VibeCutJobState::CancelRequested) {
-            jobs->requestCancel(childId);
-            jobs->markCancelled(parentId, QStringLiteral("Hybrid search cancelled."));
-            return;
-        }
-
-        VibeCutJob child;
-        if (!jobs->job(childId, child) || !child.terminal()) return;
-        if (surface->projectRevision() != baseRevision) {
-            jobs->markFailed(parentId, QStringLiteral("Project revision changed while hybrid search was running; refusing stale ranking."));
-            return;
-        }
-        if (child.state != VibeCutJobState::Succeeded) {
-            jobs->markFailed(parentId, QStringLiteral("MiniLM semantic child search failed: %1").arg(child.message));
-            return;
-        }
-
-        QHash<QString, RankedHit> byId;
-        for (const VibeCutMediaSearchHit &hit : lexicalHits) {
-            RankedHit item;
-            item.id = hit.document.id;
-            item.kind = hit.document.kind;
-            item.text = hit.document.text;
-            item.startFrame = hit.document.startFrame;
-            item.endFrame = hit.document.endFrame;
-            item.lexical = lexicalUnit(hit.score);
-            item.hasLexical = true;
-            item.metadata = hit.document.metadata;
-            byId.insert(item.id, item);
-        }
-
-        int staleSemanticSkipped = 0;
-        const QJsonArray semanticHits = child.result.value(QStringLiteral("hits")).toArray();
-        for (const QJsonValue &value : semanticHits) {
-            if (!value.isObject()) continue;
-            const QJsonObject object = value.toObject();
-            if (!object.value(QStringLiteral("anchor_current")).toBool(false)) {
-                ++staleSemanticSkipped;
-                continue;
-            }
-            const QString id = object.value(QStringLiteral("anchor_id")).toString();
-            if (id.isEmpty() || !documents.contains(id)) continue;
-            const double similarity = object.value(QStringLiteral("similarity")).toDouble(-1.0);
-            if (!std::isfinite(similarity)) continue;
-            RankedHit item = byId.value(id);
-            const VibeCutMediaDocument document = documents.value(id);
-            item.id = id;
-            item.kind = document.kind;
-            item.text = document.text;
-            item.startFrame = document.startFrame;
-            item.endFrame = document.endFrame;
-            item.semantic = qBound(0.0, similarity, 1.0);
-            item.hasSemantic = true;
-            if (item.metadata.isEmpty()) item.metadata = document.metadata;
-            byId.insert(id, item);
-        }
-
-        QList<QJsonObject> ranked;
-        for (auto it = byId.constBegin(); it != byId.constEnd(); ++it) {
-            const RankedHit &item = it.value();
-            const double semanticWeight = item.hasSemantic ? 0.55 : 0.0;
-            const double lexicalWeight = item.hasLexical ? 0.45 : 0.0;
-            const double weight = semanticWeight + lexicalWeight;
-            if (weight <= 0.0) continue;
-            const double score = qBound(0.0,
-                                        (semanticWeight * item.semantic + lexicalWeight * item.lexical) / weight,
-                                        1.0);
-            if (score < minScore) continue;
-            ranked.append(QJsonObject{{QStringLiteral("anchor_id"), item.id},
-                                      {QStringLiteral("kind"), item.kind},
-                                      {QStringLiteral("text"), item.text.left(2048)},
-                                      {QStringLiteral("start_frame"), item.startFrame},
-                                      {QStringLiteral("end_frame"), item.endFrame},
-                                      {QStringLiteral("hybrid_score"), score},
-                                      {QStringLiteral("lexical_available"), item.hasLexical},
-                                      {QStringLiteral("lexical_component"), item.lexical},
-                                      {QStringLiteral("semantic_available"), item.hasSemantic},
-                                      {QStringLiteral("semantic_component"), item.semantic},
-                                      {QStringLiteral("metadata"), item.metadata}});
-        }
-        std::sort(ranked.begin(), ranked.end(), [](const QJsonObject &a, const QJsonObject &b) {
-            const double aScore = a.value(QStringLiteral("hybrid_score")).toDouble();
-            const double bScore = b.value(QStringLiteral("hybrid_score")).toDouble();
-            if (aScore != bScore) return aScore > bScore;
-            const int aStart = a.value(QStringLiteral("start_frame")).toInt(-1);
-            const int bStart = b.value(QStringLiteral("start_frame")).toInt(-1);
-            if (aStart != bStart) return aStart < bStart;
-            return a.value(QStringLiteral("anchor_id")).toString() < b.value(QStringLiteral("anchor_id")).toString();
-        });
-        while (ranked.size() > limit) ranked.removeLast();
-        QJsonArray hits;
-        for (const QJsonObject &object : ranked) hits.append(object);
-
-        const QJsonObject result{{QStringLiteral("kind"), QStringLiteral("semantic_hybrid_search")},
-                                 {QStringLiteral("query"), query},
-                                 {QStringLiteral("authority"), QStringLiteral("derived_ranking")},
-                                 {QStringLiteral("score_semantics"), QStringLiteral("weighted_current_lexical_and_minilm_similarity_not_probability")},
-                                 {QStringLiteral("semantic_weight_when_available"), 0.55},
-                                 {QStringLiteral("lexical_weight_when_available"), 0.45},
-                                 {QStringLiteral("stale_semantic_hits_skipped"), staleSemanticSkipped},
-                                 {QStringLiteral("base_revision"), static_cast<qint64>(baseRevision)},
-                                 {QStringLiteral("hit_count"), hits.size()},
-                                 {QStringLiteral("hits"), hits}};
-        QString resultError;
-        if (!jobs->setResult(parentId, result, &resultError)) {
-            jobs->markFailed(parentId, QStringLiteral("Hybrid ranking completed but its structured result was rejected: %1").arg(resultError));
-            return;
-        }
-        jobs->markSucceeded(parentId, QStringLiteral("Hybrid current-only search produced %1 ranked hit(s).").arg(hits.size()));
+        finalizeHybridChild(jobs, surface, parentId, childId, baseRevision, query, limit, minScore, lexicalHits, documents);
     });
-
     QObject::connect(jobs, &VibeCutJobManager::jobChanged, jobs,
                      [jobs, parentId, childId](const QString &changedId) {
         if (changedId != parentId) return;
@@ -211,6 +222,11 @@ QJsonObject startHybrid(VibeCutTools *tools, VibeCutToolSurface *surface, const 
         if (!jobs->job(parentId, parent) || parent.state != VibeCutJobState::CancelRequested) return;
         jobs->requestCancel(childId);
     });
+
+    // A child can fail or complete extremely quickly (for example a missing
+    // local runtime). Process its current state immediately as well as through
+    // jobChanged so the parent can never be stranded by a connect-after-finish race.
+    finalizeHybridChild(jobs, surface, parentId, childId, baseRevision, query, limit, minScore, lexicalHits, documents);
 
     return QJsonObject{{QStringLiteral("ok"), true},
                        {QStringLiteral("started"), true},
