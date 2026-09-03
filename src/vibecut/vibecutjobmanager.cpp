@@ -5,6 +5,7 @@
 
 #include "vibecutjobmanager.h"
 
+#include <QJsonDocument>
 #include <QUuid>
 
 bool VibeCutJob::terminal() const
@@ -45,6 +46,28 @@ bool VibeCutJobManager::setProgress(const QString &id, int progress, const QStri
     if (!message.isNull()) {
         it->message = message;
     }
+    Q_EMIT jobChanged(id);
+    return true;
+}
+
+bool VibeCutJobManager::setResult(const QString &id, const QJsonObject &result, QString *error)
+{
+    if (error) error->clear();
+    auto it = m_jobs.find(id);
+    if (it == m_jobs.end()) {
+        if (error) *error = QStringLiteral("Unknown VibeCut job: %1").arg(id);
+        return false;
+    }
+    if (it->terminal()) {
+        if (error) *error = QStringLiteral("Cannot change the result of terminal job %1.").arg(id);
+        return false;
+    }
+    const QByteArray serialized = QJsonDocument(result).toJson(QJsonDocument::Compact);
+    if (serialized.size() > MaxResultBytes) {
+        if (error) *error = QStringLiteral("Job result exceeds the %1 byte limit.").arg(MaxResultBytes);
+        return false;
+    }
+    it->result = result;
     Q_EMIT jobChanged(id);
     return true;
 }
@@ -110,6 +133,9 @@ bool VibeCutJobManager::updateState(const QString &id, VibeCutJobState state, co
     }
     if (state == VibeCutJobState::Succeeded) {
         it->progress = 100;
+    } else if (state == VibeCutJobState::Failed || state == VibeCutJobState::Cancelled) {
+        // Never expose a partial/stale payload as the result of a failed job.
+        it->result = QJsonObject();
     }
     Q_EMIT jobChanged(id);
     return true;
