@@ -42,6 +42,7 @@ set(KdenliveTest_SOURCES
     vibecutcapabilitysurfacetest.cpp
     vibecutcontractstest.cpp
     vibecutconversationcontexttest.cpp
+    vibecutduplicatefusiontest.cpp
     vibecutedittoolstest.cpp
     vibecuteffecttoolstest.cpp
     vibecutembeddingrefreshtest.cpp
