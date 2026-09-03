@@ -5,6 +5,8 @@
 #include "vibecut/vibecuttoolsurface.h"
 
 #include <QFile>
+#include <QJsonArray>
+#include <QJsonDocument>
 #include <QTemporaryDir>
 
 TEST_CASE("speaker identity associations are exact to source fingerprint extractor version and cluster", "[vibecut][speaker-identity][diarization]")
@@ -55,6 +57,58 @@ TEST_CASE("speaker identity associations are exact to source fingerprint extract
     const QJsonObject after = VibeCutSpeakerIdentityStore::loadForProjectUrl(projectUrl, &error);
     REQUIRE(error.isEmpty());
     CHECK(VibeCutSpeakerIdentityStore::resolve(after, cluster).isEmpty());
+}
+
+TEST_CASE("speaker identity sidecar fails closed when cluster key integrity is tampered", "[vibecut][speaker-identity][integrity]")
+{
+    QTemporaryDir dir;
+    REQUIRE(dir.isValid());
+    const QString projectPath = dir.filePath(QStringLiteral("tampered.kdenlive"));
+    QFile project(projectPath);
+    REQUIRE(project.open(QIODevice::WriteOnly));
+    project.close();
+    const QUrl projectUrl = QUrl::fromLocalFile(projectPath);
+
+    QString entityId;
+    QString error;
+    REQUIRE(VibeCutSpeakerIdentityStore::upsertEntityForProjectUrl(projectUrl, QString(), QStringLiteral("Alice"), &entityId, &error));
+
+    VibeCutSpeakerClusterKey cluster;
+    cluster.sourceId = QStringLiteral("bin:9");
+    cluster.sourceFingerprint = QStringLiteral("fingerprint-original");
+    cluster.extractorId = QStringLiteral("local_pyannote");
+    cluster.extractorVersion = QStringLiteral("community-1/4.0.7");
+    cluster.speakerClusterId = QStringLiteral("SPEAKER_00");
+    REQUIRE(VibeCutSpeakerIdentityStore::assignClusterForProjectUrl(projectUrl, cluster, entityId, &error));
+
+    const QString sidecarPath = dir.filePath(VibeCutSpeakerIdentityStore::fileName());
+    QFile sidecar(sidecarPath);
+    REQUIRE(sidecar.open(QIODevice::ReadOnly));
+    QJsonDocument document = QJsonDocument::fromJson(sidecar.readAll());
+    sidecar.close();
+    REQUIRE(document.isObject());
+
+    QJsonObject root = document.object();
+    QJsonArray associations = root.value(QStringLiteral("associations")).toArray();
+    REQUIRE(associations.size() == 1);
+    QJsonObject association = associations.at(0).toObject();
+    association.insert(QStringLiteral("source_fingerprint"), QStringLiteral("fingerprint-tampered"));
+    // Deliberately leave cluster_key untouched: a hand-edited sidecar must not
+    // be able to reuse a user-approved identity on different evidence.
+    associations[0] = association;
+    root.insert(QStringLiteral("associations"), associations);
+
+    REQUIRE(sidecar.open(QIODevice::WriteOnly | QIODevice::Truncate));
+    REQUIRE(sidecar.write(QJsonDocument(root).toJson(QJsonDocument::Indented)) > 0);
+    sidecar.close();
+
+    error.clear();
+    CHECK(VibeCutSpeakerIdentityStore::loadForProjectUrl(projectUrl, &error).isEmpty());
+    CHECK(error.contains(QStringLiteral("cluster_key"), Qt::CaseInsensitive));
+
+    // resolve() is independently fail-closed even when handed an in-memory
+    // object that bypassed the loader.
+    CHECK(VibeCutSpeakerIdentityStore::resolve(root, cluster).isEmpty());
 }
 
 TEST_CASE("speaker naming and cluster assignment always require explicit confirmation", "[vibecut][speaker-identity][policy]")
