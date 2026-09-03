@@ -51,10 +51,12 @@ set(KdenliveTest_SOURCES
     vibecutrepeatedtakemutationtest.cpp
     vibecutextractorevidencecontracttest.cpp
     vibecutextractorprovidertest.cpp
+    vibecutlocalactionprovidertest.cpp
     vibecutlocalaudioeventprovidertest.cpp
     vibecutlocaldiarizationprovidertest.cpp
     vibecutlocalobjectprovidertest.cpp
     vibecutlocalocrprovidertest.cpp
+    vibecutactionsummarytest.cpp
     vibecudaudioeventsummarytest.cpp
     vibecutobjecttracktest.cpp
     vibecutsubjectcandidatetest.cpp
