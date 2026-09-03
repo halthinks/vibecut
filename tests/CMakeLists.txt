@@ -54,6 +54,8 @@ set(KdenliveTest_SOURCES
     vibecutlocaldiarizationprovidertest.cpp
     vibecutlocalocrprovidertest.cpp
     vibecutocrtemporaltest.cpp
+    vibecutr128tooltest.cpp
+    vibecutroomtonetest.cpp
     vibecuthookstest.cpp
     vibecutjobmanagertest.cpp
     vibecutmarkertoolstest.cpp
