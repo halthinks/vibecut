@@ -10,12 +10,14 @@
 #include "vibecutjobmanager.h"
 #include "vibecutlocalaudioeventprovider.h"
 #include "vibecutlocaldiarizationprovider.h"
+#include "vibecutlocalobjectprovider.h"
 #include "vibecutlocalocrprovider.h"
 #include "vibecutmediaevidence.h"
 #include "vibecutocrtemporal.h"
 #include "vibecutspeakeridentitytools.h"
 #include "vibecuttools.h"
 #include "vibecuttoolsurface.h"
+#include "vibecutvisionsetuptools.h"
 
 #include <QJsonArray>
 
@@ -122,6 +124,14 @@ QJsonObject startLocalAudioEvents(VibeCutTools *tools, const QJsonObject &input)
                                      {QStringLiteral("capability"), QStringLiteral("audio_events")},
                                      {QStringLiteral("request"), input}});
 }
+
+QJsonObject startLocalObjects(VibeCutTools *tools, const QJsonObject &input)
+{
+    return startProvider(tools,
+                         QJsonObject{{QStringLiteral("provider_id"), QStringLiteral("local_detr_coco")},
+                                     {QStringLiteral("capability"), QStringLiteral("objects")},
+                                     {QStringLiteral("request"), input}});
+}
 } // namespace
 
 bool registerVibeCutExtractorProviderTools(VibeCutToolSurface &surface, QString *error)
@@ -131,6 +141,7 @@ bool registerVibeCutExtractorProviderTools(VibeCutToolSurface &surface, QString 
     ensureVibeCutBuiltinExtractorProvidersRegistered();
     ensureVibeCutLocalOcrProviderRegistered();
     ensureVibeCutLocalAudioEventProviderRegistered();
+    ensureVibeCutLocalObjectProviderRegistered();
 
     const QJsonObject listInput{{QStringLiteral("type"), QStringLiteral("object")},
                                 {QStringLiteral("properties"), QJsonObject{{QStringLiteral("capability"), QJsonObject{{QStringLiteral("type"), QStringLiteral("string")}}}}},
@@ -139,7 +150,7 @@ bool registerVibeCutExtractorProviderTools(VibeCutToolSurface &surface, QString 
     listPolicy.name = QStringLiteral("extractor_providers_list");
     listPolicy.risk = VibeCutToolRisk::ReadOnly;
     if (!surface.registerTool(QJsonObject{{QStringLiteral("name"), listPolicy.name},
-                                          {QStringLiteral("description"), QStringLiteral("List built-in and externally registered media-extractor providers and their declared capabilities/configuration state, optionally filtered by capability such as ocr, diarization, audio_events, embeddings, objects, or faces.")},
+                                          {QStringLiteral("description"), QStringLiteral("List built-in and externally registered media-extractor providers and their declared capabilities/configuration state, optionally filtered by capability such as ocr, diarization, audio_events, objects, embeddings, actions, or faces.")},
                                           {QStringLiteral("input_schema"), listInput}},
                               listPolicy, listProviders, error)) return false;
 
@@ -212,9 +223,33 @@ bool registerVibeCutExtractorProviderTools(VibeCutToolSurface &surface, QString 
                                           {QStringLiteral("input_schema"), audioEventInput}},
                               audioEventPolicy, [tools](const QJsonObject &input) { return startLocalAudioEvents(tools, input); }, error)) return false;
 
+    const QJsonObject objectInput{{QStringLiteral("type"), QStringLiteral("object")},
+                                  {QStringLiteral("properties"), QJsonObject{
+                                      {QStringLiteral("bin_id"), QJsonObject{{QStringLiteral("type"), QStringLiteral("string")}}},
+                                      {QStringLiteral("start_frame"), QJsonObject{{QStringLiteral("type"), QStringLiteral("integer")}, {QStringLiteral("minimum"), 0}}},
+                                      {QStringLiteral("end_frame"), QJsonObject{{QStringLiteral("type"), QStringLiteral("integer")}, {QStringLiteral("minimum"), 0}}},
+                                      {QStringLiteral("sample_interval_frames"), QJsonObject{{QStringLiteral("type"), QStringLiteral("integer")}, {QStringLiteral("minimum"), 1}, {QStringLiteral("maximum"), 1000000}}},
+                                      {QStringLiteral("max_samples"), QJsonObject{{QStringLiteral("type"), QStringLiteral("integer")}, {QStringLiteral("minimum"), 1}, {QStringLiteral("maximum"), 1000}}},
+                                      {QStringLiteral("max_detections_per_frame"), QJsonObject{{QStringLiteral("type"), QStringLiteral("integer")}, {QStringLiteral("minimum"), 1}, {QStringLiteral("maximum"), 100}}},
+                                      {QStringLiteral("min_score"), QJsonObject{{QStringLiteral("type"), QStringLiteral("number")}, {QStringLiteral("minimum"), 0.0}, {QStringLiteral("maximum"), 1.0}}},
+                                      {QStringLiteral("device"), QJsonObject{{QStringLiteral("type"), QStringLiteral("string")},
+                                                                             {QStringLiteral("enum"), QJsonArray{QStringLiteral("auto"), QStringLiteral("cpu"), QStringLiteral("cuda")}}}}}},
+                                  {QStringLiteral("required"), QJsonArray{QStringLiteral("bin_id")}},
+                                  {QStringLiteral("additionalProperties"), false}};
+    VibeCutToolPolicy objectPolicy;
+    objectPolicy.name = QStringLiteral("media_objects_refresh");
+    objectPolicy.risk = VibeCutToolRisk::ExternalSideEffect;
+    objectPolicy.asynchronous = true;
+    objectPolicy.mutatesProject = false;
+    if (!surface.registerTool(QJsonObject{{QStringLiteral("name"), objectPolicy.name},
+                                          {QStringLiteral("description"), QStringLiteral("Run the built-in pinned DETR COCO object detector over an exact bounded arithmetic sample sequence from one file-backed video bin asset. Persists one-frame object_detection_prediction evidence with score, label/model/taxonomy provenance and bounded pixel geometry. Predictions are not identity or continuous-observation claims; work is bounded and cancellable through JobManager.")},
+                                          {QStringLiteral("input_schema"), objectInput}},
+                              objectPolicy, [tools](const QJsonObject &input) { return startLocalObjects(tools, input); }, error)) return false;
+
     if (!registerVibeCutOcrTemporalTools(surface, error)) return false;
     if (!registerVibeCutAudioEventSummaryTools(surface, error)) return false;
     if (!registerVibeCutDiarizationSetupTools(surface, error)) return false;
     if (!registerVibeCutAudioEventSetupTools(surface, error)) return false;
+    if (!registerVibeCutVisionSetupTools(surface, error)) return false;
     return registerVibeCutSpeakerIdentityTools(surface, error);
 }
