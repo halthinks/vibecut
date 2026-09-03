@@ -3,6 +3,7 @@
 
 #include <QJsonValue>
 #include <QStringList>
+#include <QtGlobal>
 
 namespace {
 bool fail(QString *error, const QString &message)
@@ -47,7 +48,9 @@ bool validateOcrRecord(const VibeCutMediaEvidenceRecord &record, QString *error)
     const int y = box.value(QStringLiteral("y")).toInt(-1);
     const int width = box.value(QStringLiteral("width")).toInt(-1);
     const int height = box.value(QStringLiteral("height")).toInt(-1);
-    if (x < 0 || y < 0 || width <= 0 || height <= 0 || x + width > imageWidth || y + height > imageHeight) {
+    if (x < 0 || y < 0 || width <= 0 || height <= 0 ||
+        static_cast<qint64>(x) + static_cast<qint64>(width) > imageWidth ||
+        static_cast<qint64>(y) + static_cast<qint64>(height) > imageHeight) {
         return fail(error, QStringLiteral("OCR bbox_pixels must be a positive rectangle fully contained by the sampled image."));
     }
     const QString language = record.metadata.value(QStringLiteral("language")).toString().trimmed();
