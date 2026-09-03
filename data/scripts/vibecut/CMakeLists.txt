@@ -8,6 +8,7 @@ INSTALL(FILES
     objects_detr.py
     ocr_tesseract.py
     semantic_minilm.py
+    semantic_siglip.py
     requirements-audio-events.txt
     requirements-diarization.txt
     requirements-semantic.txt
