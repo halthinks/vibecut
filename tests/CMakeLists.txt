@@ -47,6 +47,8 @@ set(KdenliveTest_SOURCES
     vibecutevaltest.cpp
     vibecutmutationlivetest.cpp
     vibecutmutationrollbacktest.cpp
+    vibecutmutationstalelivetest.cpp
+    vibecutrepeatedtakemutationtest.cpp
     vibecutextractorprovidertest.cpp
     vibecuthookstest.cpp
     vibecutjobmanagertest.cpp
