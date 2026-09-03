@@ -72,7 +72,7 @@ TEST_CASE("invalid duplicate signals are excluded rather than clamped into evide
     CHECK(result.value(QStringLiteral("fusion_score")).toDouble() == Approx(0.8));
 }
 
-TEST_CASE("duplicate fusion is a read-only normal tool-surface capability", "[vibecut][duplicates][surface]")
+TEST_CASE("duplicate fusion and bounded project discovery are read-only normal tool-surface capabilities", "[vibecut][duplicates][surface]")
 {
     VibeCutTools base;
     VibeCutToolSurface surface(&base);
@@ -92,4 +92,20 @@ TEST_CASE("duplicate fusion is a read-only normal tool-surface capability", "[vi
     CHECK_FALSE(properties.contains(QStringLiteral("weights")));
     CHECK_FALSE(properties.contains(QStringLiteral("vector")));
     CHECK_FALSE(properties.contains(QStringLiteral("probability_threshold")));
+
+    REQUIRE(policies.contains(QStringLiteral("media_duplicate_candidates")));
+    const VibeCutToolPolicy discovery = policies.value(QStringLiteral("media_duplicate_candidates"));
+    CHECK(discovery.risk == VibeCutToolRisk::ReadOnly);
+    CHECK_FALSE(discovery.asynchronous);
+    CHECK_FALSE(discovery.mutatesProject);
+    const QJsonObject discoverySchema = schemaByName(surface, QStringLiteral("media_duplicate_candidates"));
+    REQUIRE_FALSE(discoverySchema.isEmpty());
+    const QJsonObject discoveryProps = discoverySchema.value(QStringLiteral("input_schema")).toObject()
+                                              .value(QStringLiteral("properties")).toObject();
+    CHECK(discoveryProps.contains(QStringLiteral("bin_ids")));
+    CHECK(discoveryProps.contains(QStringLiteral("max_assets")));
+    CHECK(discoveryProps.contains(QStringLiteral("max_pairs")));
+    CHECK(discoveryProps.contains(QStringLiteral("min_signals")));
+    CHECK(discoveryProps.contains(QStringLiteral("min_score")));
+    CHECK_FALSE(discoveryProps.contains(QStringLiteral("run_missing_extractors")));
 }
