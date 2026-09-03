@@ -1,11 +1,13 @@
 /* SPDX-License-Identifier: GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL */
 #include "vibecutextractorprovidertools.h"
 
+#include "vibecutaudioeventsetuptools.h"
 #include "vibecutdiarizationsetuptools.h"
 #include "vibecutextractorevidencecontract.h"
 #include "vibecutextractorprovider.h"
 #include "vibecutextractorrequest.h"
 #include "vibecutjobmanager.h"
+#include "vibecutlocalaudioeventprovider.h"
 #include "vibecutlocaldiarizationprovider.h"
 #include "vibecutlocalocrprovider.h"
 #include "vibecutmediaevidence.h"
@@ -111,6 +113,14 @@ QJsonObject startLocalOcr(VibeCutTools *tools, const QJsonObject &input)
                                      {QStringLiteral("capability"), QStringLiteral("ocr")},
                                      {QStringLiteral("request"), input}});
 }
+
+QJsonObject startLocalAudioEvents(VibeCutTools *tools, const QJsonObject &input)
+{
+    return startProvider(tools,
+                         QJsonObject{{QStringLiteral("provider_id"), QStringLiteral("local_ast_audioset")},
+                                     {QStringLiteral("capability"), QStringLiteral("audio_events")},
+                                     {QStringLiteral("request"), input}});
+}
 } // namespace
 
 bool registerVibeCutExtractorProviderTools(VibeCutToolSurface &surface, QString *error)
@@ -119,6 +129,7 @@ bool registerVibeCutExtractorProviderTools(VibeCutToolSurface &surface, QString 
     // discovery may not depend on a user having called a setup/status tool.
     ensureVibeCutBuiltinExtractorProvidersRegistered();
     ensureVibeCutLocalOcrProviderRegistered();
+    ensureVibeCutLocalAudioEventProviderRegistered();
 
     const QJsonObject listInput{{QStringLiteral("type"), QStringLiteral("object")},
                                 {QStringLiteral("properties"), QJsonObject{{QStringLiteral("capability"), QJsonObject{{QStringLiteral("type"), QStringLiteral("string")}}}}},
@@ -127,7 +138,7 @@ bool registerVibeCutExtractorProviderTools(VibeCutToolSurface &surface, QString 
     listPolicy.name = QStringLiteral("extractor_providers_list");
     listPolicy.risk = VibeCutToolRisk::ReadOnly;
     if (!surface.registerTool(QJsonObject{{QStringLiteral("name"), listPolicy.name},
-                                          {QStringLiteral("description"), QStringLiteral("List built-in and externally registered media-extractor providers and their declared capabilities/configuration state, optionally filtered by capability such as ocr, diarization, embeddings, objects, faces, or audio_events.")},
+                                          {QStringLiteral("description"), QStringLiteral("List built-in and externally registered media-extractor providers and their declared capabilities/configuration state, optionally filtered by capability such as ocr, diarization, audio_events, embeddings, objects, or faces.")},
                                           {QStringLiteral("input_schema"), listInput}},
                               listPolicy, listProviders, error)) return false;
 
@@ -176,7 +187,32 @@ bool registerVibeCutExtractorProviderTools(VibeCutToolSurface &surface, QString 
                                           {QStringLiteral("input_schema"), ocrInput}},
                               ocrPolicy, [tools](const QJsonObject &input) { return startLocalOcr(tools, input); }, error)) return false;
 
+    const QJsonObject audioEventInput{{QStringLiteral("type"), QStringLiteral("object")},
+                                      {QStringLiteral("properties"), QJsonObject{
+                                          {QStringLiteral("bin_id"), QJsonObject{{QStringLiteral("type"), QStringLiteral("string")}}},
+                                          {QStringLiteral("start_frame"), QJsonObject{{QStringLiteral("type"), QStringLiteral("integer")}, {QStringLiteral("minimum"), 0}}},
+                                          {QStringLiteral("end_frame"), QJsonObject{{QStringLiteral("type"), QStringLiteral("integer")}, {QStringLiteral("minimum"), 0}}},
+                                          {QStringLiteral("window_seconds"), QJsonObject{{QStringLiteral("type"), QStringLiteral("number")}, {QStringLiteral("minimum"), 1.0}, {QStringLiteral("maximum"), 10.0}}},
+                                          {QStringLiteral("hop_seconds"), QJsonObject{{QStringLiteral("type"), QStringLiteral("number")}, {QStringLiteral("minimum"), 0.25}, {QStringLiteral("maximum"), 60.0}}},
+                                          {QStringLiteral("max_windows"), QJsonObject{{QStringLiteral("type"), QStringLiteral("integer")}, {QStringLiteral("minimum"), 1}, {QStringLiteral("maximum"), 500}}},
+                                          {QStringLiteral("top_k"), QJsonObject{{QStringLiteral("type"), QStringLiteral("integer")}, {QStringLiteral("minimum"), 1}, {QStringLiteral("maximum"), 20}}},
+                                          {QStringLiteral("min_score"), QJsonObject{{QStringLiteral("type"), QStringLiteral("number")}, {QStringLiteral("minimum"), 0.0}, {QStringLiteral("maximum"), 1.0}}},
+                                          {QStringLiteral("device"), QJsonObject{{QStringLiteral("type"), QStringLiteral("string")},
+                                                                                 {QStringLiteral("enum"), QJsonArray{QStringLiteral("auto"), QStringLiteral("cpu"), QStringLiteral("cuda")}}}}}},
+                                      {QStringLiteral("required"), QJsonArray{QStringLiteral("bin_id")}},
+                                      {QStringLiteral("additionalProperties"), false}};
+    VibeCutToolPolicy audioEventPolicy;
+    audioEventPolicy.name = QStringLiteral("media_audio_events_refresh");
+    audioEventPolicy.risk = VibeCutToolRisk::ExternalSideEffect;
+    audioEventPolicy.asynchronous = true;
+    audioEventPolicy.mutatesProject = false;
+    if (!surface.registerTool(QJsonObject{{QStringLiteral("name"), audioEventPolicy.name},
+                                          {QStringLiteral("description"), QStringLiteral("Run the built-in local MIT AST AudioSet classifier over a bounded source excerpt. Persists ranked audio_event_prediction records with exact source-frame windows, model/taxonomy provenance and normalized scores. Predictions are not promoted to observed facts. Work is bounded and cancellable through JobManager.")},
+                                          {QStringLiteral("input_schema"), audioEventInput}},
+                              audioEventPolicy, [tools](const QJsonObject &input) { return startLocalAudioEvents(tools, input); }, error)) return false;
+
     if (!registerVibeCutOcrTemporalTools(surface, error)) return false;
     if (!registerVibeCutDiarizationSetupTools(surface, error)) return false;
+    if (!registerVibeCutAudioEventSetupTools(surface, error)) return false;
     return registerVibeCutSpeakerIdentityTools(surface, error);
 }
