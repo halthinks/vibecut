@@ -6,6 +6,7 @@
 #include "vibecutextractorrequest.h"
 #include "vibecutjobmanager.h"
 #include "vibecutmediaevidence.h"
+#include "vibecutspeakeridentitytools.h"
 #include "vibecuttools.h"
 #include "vibecuttoolsurface.h"
 
@@ -131,8 +132,10 @@ bool registerVibeCutExtractorProviderTools(VibeCutToolSurface &surface, QString 
     startPolicy.risk = VibeCutToolRisk::ExternalSideEffect;
     startPolicy.asynchronous = true;
     startPolicy.mutatesProject = false;
-    return surface.registerTool(QJsonObject{{QStringLiteral("name"), startPolicy.name},
-                                            {QStringLiteral("description"), QStringLiteral("Start one explicitly registered model-backed media extractor capability through normalized authoritative source metadata, the shared VibeCut JobManager, capability-specific evidence contracts and the validated evidence sink. The provider never receives a caller-invented source path or generic evidence-write escape hatch.")},
-                                            {QStringLiteral("input_schema"), startInput}},
-                                startPolicy, [tools](const QJsonObject &input) { return startProvider(tools, input); }, error);
+    if (!surface.registerTool(QJsonObject{{QStringLiteral("name"), startPolicy.name},
+                                          {QStringLiteral("description"), QStringLiteral("Start one explicitly registered model-backed media extractor capability through normalized authoritative source metadata, the shared VibeCut JobManager, capability-specific evidence contracts and the validated evidence sink. The provider never receives a caller-invented source path or generic evidence-write escape hatch.")},
+                                          {QStringLiteral("input_schema"), startInput}},
+                              startPolicy, [tools](const QJsonObject &input) { return startProvider(tools, input); }, error)) return false;
+
+    return registerVibeCutSpeakerIdentityTools(surface, error);
 }
