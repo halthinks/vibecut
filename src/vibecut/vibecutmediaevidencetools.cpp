@@ -10,6 +10,8 @@
 #include "vibecutloudnessextractortools.h"
 #include "vibecutmediaanalyzetools.h"
 #include "vibecutmediaevidence.h"
+#include "vibecutr128extractortools.h"
+#include "vibecutroomtone.h"
 #include "vibecutshotextractortools.h"
 #include "vibecutsilenceextractortools.h"
 #include "vibecutsourceextractortools.h"
@@ -39,6 +41,7 @@ QHash<QString, QString> expectedExtractorVersions()
     return QHash<QString, QString>{{QStringLiteral("source_metadata"), QStringLiteral("1.0.0")},
                                    {QStringLiteral("silence_detect"), QStringLiteral("1.0.0")},
                                    {QStringLiteral("loudness_detect"), QStringLiteral("1.0.0")},
+                                   {QStringLiteral("audio_r128"), QStringLiteral("1.0.0")},
                                    {QStringLiteral("shot_boundary"), QStringLiteral("1.0.0")},
                                    {QStringLiteral("black_detect"), QStringLiteral("1.0.0")},
                                    {QStringLiteral("freeze_detect"), QStringLiteral("1.0.0")},
@@ -146,7 +149,8 @@ QJsonObject freshness(const QJsonObject &input)
     int missingCount = 0;
     for (const QString &extractor : expected) {
         const bool applicable = extractor == QLatin1String("source_metadata") ||
-                                ((extractor == QLatin1String("silence_detect") || extractor == QLatin1String("loudness_detect")) && clip->hasAudio()) ||
+                                ((extractor == QLatin1String("silence_detect") || extractor == QLatin1String("loudness_detect") ||
+                                  extractor == QLatin1String("audio_r128")) && clip->hasAudio()) ||
                                 ((extractor == QLatin1String("shot_boundary") || extractor == QLatin1String("black_detect") ||
                                   extractor == QLatin1String("freeze_detect") || extractor == QLatin1String("blur_detect")) && clip->hasVideo());
         if (!applicable) continue;
@@ -233,6 +237,8 @@ bool registerVibeCutMediaEvidenceTools(VibeCutToolSurface &surface, QString *err
     if (!registerVibeCutSourceExtractorTools(surface, error)) return false;
     if (!registerVibeCutSilenceExtractorTools(surface, error)) return false;
     if (!registerVibeCutLoudnessExtractorTools(surface, error)) return false;
+    if (!registerVibeCutR128ExtractorTools(surface, error)) return false;
+    if (!registerVibeCutRoomToneTools(surface, error)) return false;
     if (!registerVibeCutShotExtractorTools(surface, error)) return false;
     if (!registerVibeCutBlackExtractorTools(surface, error)) return false;
     if (!registerVibeCutFreezeExtractorTools(surface, error)) return false;
