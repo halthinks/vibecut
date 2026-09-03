@@ -94,8 +94,7 @@ QJsonObject startHybrid(VibeCutTools *tools, VibeCutToolSurface *surface, const 
         VibeCutJob parent;
         if (!jobs->job(parentId, parent) || parent.terminal()) return;
         if (parent.state == VibeCutJobState::CancelRequested) {
-            QString cancelError;
-            jobs->requestCancel(childId, &cancelError);
+            jobs->requestCancel(childId);
             jobs->markCancelled(parentId, QStringLiteral("Hybrid search cancelled."));
             return;
         }
@@ -210,8 +209,7 @@ QJsonObject startHybrid(VibeCutTools *tools, VibeCutToolSurface *surface, const 
         if (changedId != parentId) return;
         VibeCutJob parent;
         if (!jobs->job(parentId, parent) || parent.state != VibeCutJobState::CancelRequested) return;
-        QString error;
-        jobs->requestCancel(childId, &error);
+        jobs->requestCancel(childId);
     });
 
     return QJsonObject{{QStringLiteral("ok"), true},
