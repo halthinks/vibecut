@@ -13,6 +13,7 @@
 #include "vibecutlocalobjectprovider.h"
 #include "vibecutlocalocrprovider.h"
 #include "vibecutmediaevidence.h"
+#include "vibecutobjecttracks.h"
 #include "vibecutocrtemporal.h"
 #include "vibecutspeakeridentitytools.h"
 #include "vibecuttools.h"
@@ -136,8 +137,6 @@ QJsonObject startLocalObjects(VibeCutTools *tools, const QJsonObject &input)
 
 bool registerVibeCutExtractorProviderTools(VibeCutToolSurface &surface, QString *error)
 {
-    // Built-ins must be visible before the very first provider-list/start call;
-    // discovery may not depend on a user having called a setup/status tool.
     ensureVibeCutBuiltinExtractorProvidersRegistered();
     ensureVibeCutLocalOcrProviderRegistered();
     ensureVibeCutLocalAudioEventProviderRegistered();
@@ -248,6 +247,7 @@ bool registerVibeCutExtractorProviderTools(VibeCutToolSurface &surface, QString 
 
     if (!registerVibeCutOcrTemporalTools(surface, error)) return false;
     if (!registerVibeCutAudioEventSummaryTools(surface, error)) return false;
+    if (!registerVibeCutObjectTrackTools(surface, error)) return false;
     if (!registerVibeCutDiarizationSetupTools(surface, error)) return false;
     if (!registerVibeCutAudioEventSetupTools(surface, error)) return false;
     if (!registerVibeCutVisionSetupTools(surface, error)) return false;
