@@ -78,6 +78,32 @@ VibeCutMediaEvidenceRecord objectDetection(const QString &label, int labelId, in
     };
     return record;
 }
+
+VibeCutMediaEvidenceRecord actionPrediction(const QString &label, int labelId, int rank, int start, int end, double score)
+{
+    VibeCutMediaEvidenceRecord record;
+    record.kind = QStringLiteral("action_prediction");
+    record.startFrame = start;
+    record.endFrame = end;
+    record.text = QStringLiteral("X-CLIP action prediction: %1").arg(label);
+    record.confidence = score;
+    QJsonArray frames;
+    for (int i = 0; i < 8; ++i) frames.append(start + i * qMax(1, (end - start - 1) / 7));
+    record.metadata = QJsonObject{
+        {QStringLiteral("label"), label},
+        {QStringLiteral("prompt"), QStringLiteral("a video of %1").arg(label)},
+        {QStringLiteral("label_id"), labelId},
+        {QStringLiteral("rank"), rank},
+        {QStringLiteral("window_start_frame"), start},
+        {QStringLiteral("window_end_frame"), end},
+        {QStringLiteral("observed_frames"), frames},
+        {QStringLiteral("model"), QStringLiteral("microsoft/xclip-base-patch32")},
+        {QStringLiteral("model_revision"), QStringLiteral("47627d79085e55e641829bd120ac64a3cc3c2238")},
+        {QStringLiteral("taxonomy"), QStringLiteral("VibeCutActionSet-v1")},
+        {QStringLiteral("authority"), QStringLiteral("model_prediction")},
+    };
+    return record;
+}
 }
 
 TEST_CASE("diarization evidence contract accepts source-bounded anonymous speaker clusters", "[vibecut][extractor-provider][diarization]")
@@ -211,5 +237,40 @@ TEST_CASE("object-detection contract rejects fact promotion loose frames bad box
     VibeCutMediaEvidenceRecord noRevision = objectDetection(QStringLiteral("person"), 1, 20, 0.92);
     noRevision.metadata.remove(QStringLiteral("model_revision"));
     CHECK_FALSE(validateVibeCutExtractorEvidenceContract(QStringLiteral("objects"), 0, 100, {noRevision}, &error));
+    CHECK(error.contains(QStringLiteral("model_revision")));
+}
+
+TEST_CASE("action contract accepts ranked X-CLIP predictions with exact eight-frame provenance", "[vibecut][extractor-provider][actions]")
+{
+    QString error;
+    CHECK(validateVibeCutExtractorEvidenceContract(QStringLiteral("actions"), 0, 500,
+                                                    {actionPrediction(QStringLiteral("walking"), 2, 1, 100, 181, 0.72)}, &error));
+    CHECK(error.isEmpty());
+}
+
+TEST_CASE("action contract rejects fact promotion malformed observed frames and missing model provenance", "[vibecut][extractor-provider][actions]")
+{
+    QString error;
+    VibeCutMediaEvidenceRecord fact = actionPrediction(QStringLiteral("walking"), 2, 1, 100, 181, 0.72);
+    fact.metadata.insert(QStringLiteral("authority"), QStringLiteral("observation"));
+    CHECK_FALSE(validateVibeCutExtractorEvidenceContract(QStringLiteral("actions"), 0, 500, {fact}, &error));
+    CHECK(error.contains(QStringLiteral("model_prediction")));
+
+    error.clear();
+    VibeCutMediaEvidenceRecord badFrames = actionPrediction(QStringLiteral("walking"), 2, 1, 100, 181, 0.72);
+    badFrames.metadata.insert(QStringLiteral("observed_frames"), QJsonArray{100, 110, 120, 130, 140, 150, 160});
+    CHECK_FALSE(validateVibeCutExtractorEvidenceContract(QStringLiteral("actions"), 0, 500, {badFrames}, &error));
+    CHECK(error.contains(QStringLiteral("8 observed"), Qt::CaseInsensitive));
+
+    error.clear();
+    VibeCutMediaEvidenceRecord outsideFrame = actionPrediction(QStringLiteral("walking"), 2, 1, 100, 181, 0.72);
+    outsideFrame.metadata.insert(QStringLiteral("observed_frames"), QJsonArray{100, 111, 122, 133, 144, 155, 166, 181});
+    CHECK_FALSE(validateVibeCutExtractorEvidenceContract(QStringLiteral("actions"), 0, 500, {outsideFrame}, &error));
+    CHECK(error.contains(QStringLiteral("inside"), Qt::CaseInsensitive));
+
+    error.clear();
+    VibeCutMediaEvidenceRecord noRevision = actionPrediction(QStringLiteral("walking"), 2, 1, 100, 181, 0.72);
+    noRevision.metadata.remove(QStringLiteral("model_revision"));
+    CHECK_FALSE(validateVibeCutExtractorEvidenceContract(QStringLiteral("actions"), 0, 500, {noRevision}, &error));
     CHECK(error.contains(QStringLiteral("model_revision")));
 }
