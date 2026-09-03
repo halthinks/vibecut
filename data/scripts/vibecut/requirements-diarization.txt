@@ -1,0 +1,4 @@
+# SPDX-License-Identifier: CC0-1.0
+# VibeCut local speaker-diarization runtime. Keep this pinned until the adapter
+# and golden provider fixtures are intentionally validated against a new release.
+pyannote.audio==4.0.7
