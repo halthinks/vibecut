@@ -33,6 +33,27 @@ VibeCutMediaEvidenceRecord ocrText(const QString &text, int frame)
     };
     return record;
 }
+
+VibeCutMediaEvidenceRecord audioEvent(const QString &label, int labelId, int rank, int start, int end, double score)
+{
+    VibeCutMediaEvidenceRecord record;
+    record.kind = QStringLiteral("audio_event_prediction");
+    record.startFrame = start;
+    record.endFrame = end;
+    record.text = QStringLiteral("AudioSet prediction: %1").arg(label);
+    record.confidence = score;
+    record.metadata = QJsonObject{
+        {QStringLiteral("label"), label},
+        {QStringLiteral("label_id"), labelId},
+        {QStringLiteral("rank"), rank},
+        {QStringLiteral("window_start_frame"), start},
+        {QStringLiteral("window_end_frame"), end},
+        {QStringLiteral("model"), QStringLiteral("MIT/ast-finetuned-audioset-10-10-0.4593")},
+        {QStringLiteral("taxonomy"), QStringLiteral("AudioSet")},
+        {QStringLiteral("authority"), QStringLiteral("model_prediction")},
+    };
+    return record;
+}
 }
 
 TEST_CASE("diarization evidence contract accepts source-bounded anonymous speaker clusters", "[vibecut][extractor-provider][diarization]")
@@ -114,4 +135,42 @@ TEST_CASE("OCR evidence contract rejects loose ranges missing confidence and inv
     VibeCutMediaEvidenceRecord outsideRange = ocrText(QStringLiteral("SALE"), 100);
     CHECK_FALSE(validateVibeCutExtractorEvidenceContract(QStringLiteral("ocr"), 0, 100, {outsideRange}, &error));
     CHECK(error.contains(QStringLiteral("outside"), Qt::CaseInsensitive));
+}
+
+TEST_CASE("audio-event evidence contract accepts ranked model predictions with exact window provenance", "[vibecut][extractor-provider][audio-events]")
+{
+    QString error;
+    QList<VibeCutMediaEvidenceRecord> records{
+        audioEvent(QStringLiteral("Speech"), 0, 1, 100, 350, 0.81),
+        audioEvent(QStringLiteral("Background music"), 267, 2, 100, 350, 0.12),
+    };
+    CHECK(validateVibeCutExtractorEvidenceContract(QStringLiteral("audio_events"), 0, 500, records, &error));
+    CHECK(error.isEmpty());
+}
+
+TEST_CASE("audio-event evidence contract rejects fact promotion malformed ranks and mismatched windows", "[vibecut][extractor-provider][audio-events]")
+{
+    QString error;
+
+    VibeCutMediaEvidenceRecord fact = audioEvent(QStringLiteral("Speech"), 0, 1, 100, 350, 0.81);
+    fact.metadata.insert(QStringLiteral("authority"), QStringLiteral("observation"));
+    CHECK_FALSE(validateVibeCutExtractorEvidenceContract(QStringLiteral("audio_events"), 0, 500, {fact}, &error));
+    CHECK(error.contains(QStringLiteral("model_prediction")));
+
+    error.clear();
+    VibeCutMediaEvidenceRecord badRank = audioEvent(QStringLiteral("Speech"), 0, 0, 100, 350, 0.81);
+    CHECK_FALSE(validateVibeCutExtractorEvidenceContract(QStringLiteral("audio_events"), 0, 500, {badRank}, &error));
+    CHECK(error.contains(QStringLiteral("rank")));
+
+    error.clear();
+    VibeCutMediaEvidenceRecord wrongWindow = audioEvent(QStringLiteral("Speech"), 0, 1, 100, 350, 0.81);
+    wrongWindow.metadata.insert(QStringLiteral("window_end_frame"), 351);
+    CHECK_FALSE(validateVibeCutExtractorEvidenceContract(QStringLiteral("audio_events"), 0, 500, {wrongWindow}, &error));
+    CHECK(error.contains(QStringLiteral("window"), Qt::CaseInsensitive));
+
+    error.clear();
+    VibeCutMediaEvidenceRecord wrongKind = audioEvent(QStringLiteral("Speech"), 0, 1, 100, 350, 0.81);
+    wrongKind.kind = QStringLiteral("speech");
+    CHECK_FALSE(validateVibeCutExtractorEvidenceContract(QStringLiteral("audio_events"), 0, 500, {wrongKind}, &error));
+    CHECK(error.contains(QStringLiteral("audio_event_prediction")));
 }
