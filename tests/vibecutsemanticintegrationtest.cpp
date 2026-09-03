@@ -30,6 +30,8 @@ TEST_CASE("semantic and cross-modal tools are exposed on the normal VibeCut tool
         QStringLiteral("semantic_visual_refresh"),
         QStringLiteral("semantic_search_visual"),
         QStringLiteral("semantic_crossmodal_result"),
+        QStringLiteral("media_search_hybrid"),
+        QStringLiteral("media_search_hybrid_result"),
     };
     for (const QString &name : expected) {
         INFO(name.toStdString());
@@ -61,6 +63,11 @@ TEST_CASE("semantic and cross-modal tools are exposed on the normal VibeCut tool
     REQUIRE(policies.contains(QStringLiteral("semantic_search_visual")));
     CHECK(policies.value(QStringLiteral("semantic_search_visual")).risk == VibeCutToolRisk::ReadOnly);
     CHECK(policies.value(QStringLiteral("semantic_search_visual")).asynchronous);
+
+    REQUIRE(policies.contains(QStringLiteral("media_search_hybrid")));
+    CHECK(policies.value(QStringLiteral("media_search_hybrid")).risk == VibeCutToolRisk::ReadOnly);
+    CHECK(policies.value(QStringLiteral("media_search_hybrid")).asynchronous);
+    CHECK_FALSE(policies.value(QStringLiteral("media_search_hybrid")).mutatesProject);
 }
 
 TEST_CASE("semantic first-class schemas expose bounded intent rather than model or path injection", "[vibecut][semantic][schema]")
@@ -99,4 +106,15 @@ TEST_CASE("semantic first-class schemas expose bounded intent rather than model 
     CHECK(searchProps.contains(QStringLiteral("min_similarity")));
     CHECK_FALSE(searchProps.contains(QStringLiteral("vector")));
     CHECK_FALSE(searchProps.contains(QStringLiteral("model")));
+
+    const QJsonObject hybrid = schemaByName(surface, QStringLiteral("media_search_hybrid"));
+    REQUIRE_FALSE(hybrid.isEmpty());
+    const QJsonObject hybridProps = hybrid.value(QStringLiteral("input_schema")).toObject()
+                                        .value(QStringLiteral("properties")).toObject();
+    CHECK(hybridProps.contains(QStringLiteral("query")));
+    CHECK(hybridProps.contains(QStringLiteral("limit")));
+    CHECK(hybridProps.contains(QStringLiteral("min_score")));
+    CHECK_FALSE(hybridProps.contains(QStringLiteral("weights")));
+    CHECK_FALSE(hybridProps.contains(QStringLiteral("vector")));
+    CHECK_FALSE(hybridProps.contains(QStringLiteral("model")));
 }
