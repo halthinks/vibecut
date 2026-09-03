@@ -46,6 +46,36 @@ bool saveForProjectUrl(const QUrl &projectUrl, const QJsonObject &root, QString 
     return true;
 }
 
+VibeCutSpeakerClusterKey clusterKeyFromAssociation(const QJsonObject &association)
+{
+    VibeCutSpeakerClusterKey key;
+    key.sourceId = association.value(QStringLiteral("source_id")).toString().trimmed();
+    key.sourceFingerprint = association.value(QStringLiteral("source_fingerprint")).toString().trimmed();
+    key.extractorId = association.value(QStringLiteral("extractor_id")).toString().trimmed();
+    key.extractorVersion = association.value(QStringLiteral("extractor_version")).toString().trimmed();
+    key.speakerClusterId = association.value(QStringLiteral("speaker_cluster_id")).toString().trimmed();
+    return key;
+}
+
+bool associationKeyIntegrityValid(const QJsonObject &association, const VibeCutSpeakerClusterKey &key)
+{
+    if (!key.valid()) return false;
+    const QString stored = association.value(QStringLiteral("cluster_key")).toString().trimmed();
+    return !stored.isEmpty() && stored == key.stableKey();
+}
+
+bool associationMatchesCluster(const QJsonObject &association, const VibeCutSpeakerClusterKey &cluster)
+{
+    if (!cluster.valid()) return false;
+    const VibeCutSpeakerClusterKey storedKey = clusterKeyFromAssociation(association);
+    return associationKeyIntegrityValid(association, storedKey) &&
+           storedKey.sourceId == cluster.sourceId.trimmed() &&
+           storedKey.sourceFingerprint == cluster.sourceFingerprint.trimmed() &&
+           storedKey.extractorId == cluster.extractorId.trimmed() &&
+           storedKey.extractorVersion == cluster.extractorVersion.trimmed() &&
+           storedKey.speakerClusterId == cluster.speakerClusterId.trimmed();
+}
+
 bool validateRoot(const QJsonObject &root, QString *error)
 {
     if (root.value(QStringLiteral("version")).toInt(-1) != VibeCutSpeakerIdentityStore::SchemaVersion) {
@@ -82,15 +112,14 @@ bool validateRoot(const QJsonObject &root, QString *error)
             return false;
         }
         const QJsonObject association = value.toObject();
-        VibeCutSpeakerClusterKey key;
-        key.sourceId = association.value(QStringLiteral("source_id")).toString().trimmed();
-        key.sourceFingerprint = association.value(QStringLiteral("source_fingerprint")).toString().trimmed();
-        key.extractorId = association.value(QStringLiteral("extractor_id")).toString().trimmed();
-        key.extractorVersion = association.value(QStringLiteral("extractor_version")).toString().trimmed();
-        key.speakerClusterId = association.value(QStringLiteral("speaker_cluster_id")).toString().trimmed();
+        const VibeCutSpeakerClusterKey key = clusterKeyFromAssociation(association);
         const QString entityId = association.value(QStringLiteral("entity_id")).toString().trimmed();
         const QString stable = key.stableKey();
-        if (!key.valid() || entityId.isEmpty() || !entityIds.contains(entityId) || associationKeys.contains(stable)) {
+        if (!associationKeyIntegrityValid(association, key)) {
+            if (error) *error = QStringLiteral("Speaker association cluster_key does not match its source/extractor/cluster fields.");
+            return false;
+        }
+        if (entityId.isEmpty() || !entityIds.contains(entityId) || associationKeys.contains(stable)) {
             if (error) *error = QStringLiteral("Speaker associations require a unique valid cluster key and an existing entity id.");
             return false;
         }
@@ -272,11 +301,10 @@ bool VibeCutSpeakerIdentityStore::assignClusterForProjectUrl(const QUrl &project
     }
 
     QJsonArray associations = root.value(QStringLiteral("associations")).toArray();
-    const QString stable = cluster.stableKey();
     QJsonArray next;
     for (const QJsonValue &value : associations) {
         const QJsonObject association = value.toObject();
-        if (association.value(QStringLiteral("cluster_key")).toString() == stable) continue;
+        if (associationMatchesCluster(association, cluster)) continue;
         next.append(association);
     }
     if (next.size() >= MaxAssociations) {
@@ -314,13 +342,12 @@ bool VibeCutSpeakerIdentityStore::unassignClusterForProjectUrl(const QUrl &proje
         if (error) *error = loadError;
         return false;
     }
-    const QString stable = cluster.stableKey();
     const QJsonArray associations = root.value(QStringLiteral("associations")).toArray();
     QJsonArray next;
     bool removed = false;
     for (const QJsonValue &value : associations) {
         const QJsonObject association = value.toObject();
-        if (association.value(QStringLiteral("cluster_key")).toString() == stable) {
+        if (associationMatchesCluster(association, cluster)) {
             removed = true;
             continue;
         }
@@ -343,19 +370,20 @@ bool VibeCutSpeakerIdentityStore::unassignClusterCurrent(const VibeCutSpeakerClu
 QJsonObject VibeCutSpeakerIdentityStore::resolve(const QJsonObject &root, const VibeCutSpeakerClusterKey &cluster)
 {
     if (!cluster.valid()) return QJsonObject();
-    const QString stable = cluster.stableKey();
     QString entityId;
     for (const QJsonValue &value : root.value(QStringLiteral("associations")).toArray()) {
         const QJsonObject association = value.toObject();
-        if (association.value(QStringLiteral("cluster_key")).toString() == stable) {
-            entityId = association.value(QStringLiteral("entity_id")).toString();
-            break;
-        }
+        if (!associationMatchesCluster(association, cluster)) continue;
+        entityId = association.value(QStringLiteral("entity_id")).toString().trimmed();
+        break;
     }
     if (entityId.isEmpty()) return QJsonObject();
     for (const QJsonValue &value : root.value(QStringLiteral("entities")).toArray()) {
         const QJsonObject entity = value.toObject();
-        if (entity.value(QStringLiteral("id")).toString() == entityId) return entity;
+        if (entity.value(QStringLiteral("id")).toString().trimmed() == entityId &&
+            !entity.value(QStringLiteral("display_name")).toString().trimmed().isEmpty()) {
+            return entity;
+        }
     }
     return QJsonObject();
 }
