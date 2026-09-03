@@ -16,11 +16,11 @@ Release-quality mutation fixtures default to a threshold of `1.0` for all three 
 
 ## Canonical live mutation state
 
-`VibeCutProjectSnapshot::captureMutationStateV1()` is the live-state capture seam used by executable mutation fixtures. It deliberately excludes the project revision counter: Undo or Redo may advance bookkeeping revisions while restoring the same editable project state, so revision equality is not an Undo-fidelity requirement.
+`VibeCutProjectSnapshot::captureMutationStateV1()` is the active-editor capture seam and `VibeCutProjectSnapshot::mutationStateV1(model)` is the model-bound form used by headless Kdenlive fixtures. Both use the same canonical implementation. The state deliberately excludes the project revision counter: Undo or Redo may advance bookkeeping revisions while restoring the same editable project state, so revision equality is not an Undo-fidelity requirement.
 
 Schema `vibecut_mutation_state_v1` captures, in deterministic timeline order:
 
-- timeline duration and group data;
+- timeline duration, aggregate item counts and group data;
 - master effect stack state;
 - track identity/order/name/type, lock/active/hidden/mute state, same-track mix count and track effect stack;
 - clip identity, bin identity/name, timeline position/duration, source in/out, speed and serialized effect stack;
@@ -39,9 +39,9 @@ The evaluator has three explicit outcomes:
 
 This prevents a refusal or rollback from being counted as successful merely because an error string was returned.
 
-## Initial deterministic fixture corpus
+## Deterministic contract corpus
 
-`tests/dataset/vibecut/golden_mutation_cases.json` establishes contract fixtures for:
+`tests/dataset/vibecut/golden_mutation_cases.json` establishes evaluator-contract fixtures for:
 
 - successful ripple `timeline_range_remove` with exact Undo/Redo round-trip;
 - stale-plan refusal with no mutation;
@@ -49,17 +49,30 @@ This prevents a refusal or rollback from being counted as successful merely beca
 - locked-track refusal with no mutation;
 - transaction rollback after partial failure with restored canonical state.
 
-The fixtures are consumed by `tests/vibecutevaltest.cpp` and test the scoring/refusal contract itself.
+The fixtures are consumed by `tests/vibecutevaltest.cpp` and validate the scoring/refusal contract itself.
 
-## Live fixture binding
+## Executable live/headless fixture baseline
 
-The JSON fixtures are the deterministic contract baseline, not a substitute for hands-on editor verification. Executable Kdenlive fixture runs should bind the same fixture IDs and thresholds to live VibeCut operations using this sequence:
+The same contract is now bound to real Kdenlive model operations in source:
 
-1. Load the tiny golden project and call `captureMutationStateV1()` for `preEditState`.
-2. Execute or deliberately refuse the governed mutation.
-3. Capture `postEditState` and evaluate the requested postcondition.
-4. For an applied mutation, execute exactly one Undo, capture `undoState`, then Redo and capture `redoState`.
-5. Feed all four observations into `VibeCutEvaluator::evaluateMutation`.
-6. Keep the raw states and score object as reproducible test evidence when a fixture fails.
+- `tests/vibecutmutationlivetest.cpp`
+  - executes native accumulated ripple range removal on a real headless `TimelineItemModel`;
+  - measures requested postcondition plus exact pre → Undo and post → Redo state fidelity;
+  - proves locked-track refusal leaves canonical state unchanged.
+- `tests/vibecutmutationrollbacktest.cpp`
+  - executes a real timeline move inside `VibeCutPlanRuntime`, deliberately reports failure after mutation, and requires the checkpoint macro rollback to restore exact pre-edit state.
+- `tests/vibecutmutationstalelivetest.cpp`
+  - proposes a revision-bound mutating plan, performs an independent real editor mutation, then requires approval to refuse the now-stale plan before its handler is invoked and without another Undo-stack or project-state change.
+- `tests/vibecutrepeatedtakemutationtest.cpp`
+  - binds overlap refusal to unchanged canonical state;
+  - executes the same model-bound destructive core used by production repeated-take selection;
+  - requires a successful multi-range batch to add exactly one Undo-stack command;
+  - requires one real `DocUndoStack::undo()` to restore the exact canonical pre-state and one real `redo()` to restore the exact committed post-state.
 
-The release gate remains unchanged: compile/link, `vibecut*` tests, package smoke and hands-on editor smoke must pass before the branch can be described as release-ready.
+Production `repeated_take_selection_execute` still performs fresh review and explicit keep-choice revalidation immediately before it enters the model-bound destructive core. Extracting that core for headless testing does not bypass or weaken the production governance path.
+
+## Verification status
+
+The source fixture baseline is implemented, but it is not equivalent to a passing release gate. These tests must still be compiled and executed on a host with the required Kdenlive/Qt/MLT development stack through repository-local verification. Raw failures should retain the canonical states and score output so state mismatches are diagnosable rather than converted into a boolean-only failure.
+
+The release gate remains unchanged: compile/link, all `vibecut*` tests, package smoke and hands-on editor smoke must pass before the branch can be described as release-ready.
