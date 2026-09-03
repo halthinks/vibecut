@@ -100,6 +100,9 @@ VibeCutMediaEvidenceRecord actionPrediction(const QString &label, int labelId, i
         {QStringLiteral("model"), QStringLiteral("microsoft/xclip-base-patch32")},
         {QStringLiteral("model_revision"), QStringLiteral("47627d79085e55e641829bd120ac64a3cc3c2238")},
         {QStringLiteral("taxonomy"), QStringLiteral("VibeCutActionSet-v1")},
+        {QStringLiteral("score_semantics"), QStringLiteral("softmax_over_fixed_action_set")},
+        {QStringLiteral("action_set_sha256"), QStringLiteral("005794f327b4bbf0cea1dd3801009f1c9c51066fec0bb129b7a01b0f8d5520fc")},
+        {QStringLiteral("candidate_count"), 47},
         {QStringLiteral("authority"), QStringLiteral("model_prediction")},
     };
     return record;
@@ -240,7 +243,7 @@ TEST_CASE("object-detection contract rejects fact promotion loose frames bad box
     CHECK(error.contains(QStringLiteral("model_revision")));
 }
 
-TEST_CASE("action contract accepts ranked X-CLIP predictions with exact eight-frame provenance", "[vibecut][extractor-provider][actions]")
+TEST_CASE("action contract accepts ranked X-CLIP predictions with exact eight-frame and calibration provenance", "[vibecut][extractor-provider][actions]")
 {
     QString error;
     CHECK(validateVibeCutExtractorEvidenceContract(QStringLiteral("actions"), 0, 500,
@@ -273,4 +276,26 @@ TEST_CASE("action contract rejects fact promotion malformed observed frames and 
     noRevision.metadata.remove(QStringLiteral("model_revision"));
     CHECK_FALSE(validateVibeCutExtractorEvidenceContract(QStringLiteral("actions"), 0, 500, {noRevision}, &error));
     CHECK(error.contains(QStringLiteral("model_revision")));
+}
+
+TEST_CASE("action contract requires fixed-set score semantics and candidate-set identity", "[vibecut][extractor-provider][actions][calibration]")
+{
+    QString error;
+    VibeCutMediaEvidenceRecord missingSemantics = actionPrediction(QStringLiteral("walking"), 2, 1, 100, 181, 0.72);
+    missingSemantics.metadata.remove(QStringLiteral("score_semantics"));
+    CHECK_FALSE(validateVibeCutExtractorEvidenceContract(QStringLiteral("actions"), 0, 500, {missingSemantics}, &error));
+    CHECK(error.contains(QStringLiteral("score_semantics")));
+
+    error.clear();
+    VibeCutMediaEvidenceRecord badHash = actionPrediction(QStringLiteral("walking"), 2, 1, 100, 181, 0.72);
+    badHash.metadata.insert(QStringLiteral("action_set_sha256"), QStringLiteral("NOT-A-SHA"));
+    CHECK_FALSE(validateVibeCutExtractorEvidenceContract(QStringLiteral("actions"), 0, 500, {badHash}, &error));
+    CHECK(error.contains(QStringLiteral("action_set_sha256")));
+
+    error.clear();
+    VibeCutMediaEvidenceRecord badCount = actionPrediction(QStringLiteral("walking"), 2, 1, 100, 181, 0.72);
+    badCount.metadata.insert(QStringLiteral("candidate_count"), 2);
+    badCount.metadata.insert(QStringLiteral("label_id"), 2);
+    CHECK_FALSE(validateVibeCutExtractorEvidenceContract(QStringLiteral("actions"), 0, 500, {badCount}, &error));
+    CHECK(error.contains(QStringLiteral("candidate set"), Qt::CaseInsensitive));
 }
