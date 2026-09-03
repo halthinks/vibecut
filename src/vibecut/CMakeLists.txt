@@ -28,6 +28,7 @@ set(kdenlive_SRCS
   vibecut/vibecuteffectkeyframetools.cpp
   vibecut/vibecuteffectstackcopytools.cpp
   vibecut/vibecuteffecttools.cpp
+  vibecut/vibecutembeddingrefresh.cpp
   vibecut/vibecutembeddingstore.cpp
   vibecut/vibecuteval.cpp
   vibecut/vibecutextractorevidencecontract.cpp
