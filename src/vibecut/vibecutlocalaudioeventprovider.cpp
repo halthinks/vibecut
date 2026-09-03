@@ -12,6 +12,7 @@
 #include <QJsonParseError>
 #include <QProcess>
 #include <QProcessEnvironment>
+#include <QSet>
 #include <QStandardPaths>
 #include <QtMath>
 
@@ -30,6 +31,60 @@ constexpr double MaxDecodeSeconds = 1800.0;
 QString pythonOverride()
 {
     return QString::fromLocal8Bit(qgetenv("VIBECUT_AUDIO_EVENTS_PYTHON")).trimmed();
+}
+
+bool readBoundedDouble(const QJsonObject &parameters,
+                       const QString &name,
+                       double defaultValue,
+                       double minimum,
+                       double maximum,
+                       double &result,
+                       QString *error)
+{
+    if (!parameters.contains(name)) {
+        result = defaultValue;
+        return true;
+    }
+    const QJsonValue value = parameters.value(name);
+    if (!value.isDouble()) {
+        if (error) *error = QStringLiteral("Audio-event parameter %1 must be numeric.").arg(name);
+        return false;
+    }
+    result = value.toDouble();
+    if (!std::isfinite(result) || result < minimum || result > maximum) {
+        if (error) *error = QStringLiteral("Audio-event parameter %1 must be between %2 and %3.")
+                               .arg(name).arg(minimum).arg(maximum);
+        return false;
+    }
+    return true;
+}
+
+bool readBoundedInt(const QJsonObject &parameters,
+                    const QString &name,
+                    int defaultValue,
+                    int minimum,
+                    int maximum,
+                    int &result,
+                    QString *error)
+{
+    if (!parameters.contains(name)) {
+        result = defaultValue;
+        return true;
+    }
+    const QJsonValue value = parameters.value(name);
+    if (!value.isDouble()) {
+        if (error) *error = QStringLiteral("Audio-event parameter %1 must be an integer.").arg(name);
+        return false;
+    }
+    const double raw = value.toDouble();
+    const int converted = value.toInt(minimum - 1);
+    if (!std::isfinite(raw) || static_cast<double>(converted) != raw || converted < minimum || converted > maximum) {
+        if (error) *error = QStringLiteral("Audio-event parameter %1 must be an integer from %2 to %3.")
+                               .arg(name).arg(minimum).arg(maximum);
+        return false;
+    }
+    result = converted;
+    return true;
 }
 
 class LocalAstAudioEventProvider : public VibeCutExtractorProvider
@@ -90,11 +145,22 @@ public:
             if (error) *error = QStringLiteral("The built-in local audio-event provider is pinned to %1.").arg(kModel);
             return QJsonObject();
         }
-        const double windowSeconds = qBound(1.0, parameters.value(QStringLiteral("window_seconds")).toDouble(10.0), 10.0);
-        const double hopSeconds = qBound(0.25, parameters.value(QStringLiteral("hop_seconds")).toDouble(5.0), 60.0);
-        const int maxWindows = qBound(1, parameters.value(QStringLiteral("max_windows")).toInt(120), 500);
-        const int topK = qBound(1, parameters.value(QStringLiteral("top_k")).toInt(8), 20);
-        const double minScore = qBound(0.0, parameters.value(QStringLiteral("min_score")).toDouble(0.05), 1.0);
+        double windowSeconds = 10.0;
+        double hopSeconds = 5.0;
+        double minScore = 0.05;
+        int maxWindows = 120;
+        int topK = 8;
+        if (!readBoundedDouble(parameters, QStringLiteral("window_seconds"), 10.0, 1.0, 10.0, windowSeconds, error) ||
+            !readBoundedDouble(parameters, QStringLiteral("hop_seconds"), 5.0, 0.25, 10.0, hopSeconds, error) ||
+            !readBoundedDouble(parameters, QStringLiteral("min_score"), 0.05, 0.0, 1.0, minScore, error) ||
+            !readBoundedInt(parameters, QStringLiteral("max_windows"), 120, 1, 500, maxWindows, error) ||
+            !readBoundedInt(parameters, QStringLiteral("top_k"), 8, 1, 20, topK, error)) {
+            return QJsonObject();
+        }
+        if (hopSeconds > windowSeconds) {
+            if (error) *error = QStringLiteral("Audio-event hop_seconds may not exceed window_seconds because the built-in track analysis must not introduce unobserved gaps between classifier windows.");
+            return QJsonObject();
+        }
         const QString device = parameters.value(QStringLiteral("device")).toString(QStringLiteral("auto")).trimmed().toLower();
         if (device != QLatin1String("auto") && device != QLatin1String("cpu") && device != QLatin1String("cuda")) {
             if (error) *error = QStringLiteral("Audio-event parameter device must be auto, cpu, or cuda.");
@@ -154,7 +220,8 @@ public:
         const auto persistEvidence = context.persistEvidence;
         QObject::connect(process, qOverload<int, QProcess::ExitStatus>(&QProcess::finished), process,
                          [process, jobs = context.jobs, jobId, persistEvidence, sourceId, sourceFingerprint, fps,
-                          startFrame, endFrame](int exitCode, QProcess::ExitStatus exitStatus) {
+                          startFrame, endFrame, durationSeconds, requiredWindows, topK, minScore]
+                         (int exitCode, QProcess::ExitStatus exitStatus) {
             VibeCutJob current;
             if (jobs->job(jobId, current) && current.state == VibeCutJobState::CancelRequested) {
                 jobs->markCancelled(jobId, QStringLiteral("Audio-event classification cancelled."));
@@ -183,12 +250,15 @@ public:
                 return;
             }
             const QJsonObject root = document.object();
+            const QString rootTransformers = root.value(QStringLiteral("transformers_version")).toString().trimmed();
+            const QString rootTorch = root.value(QStringLiteral("torch_version")).toString().trimmed();
             if (root.value(QStringLiteral("schema_version")).toInt(-1) != 1 ||
                 root.value(QStringLiteral("authority")).toString() != QLatin1String("model_prediction") ||
                 root.value(QStringLiteral("taxonomy")).toString() != QLatin1String("AudioSet") ||
                 root.value(QStringLiteral("model")).toString() != kModel ||
+                rootTransformers != kTransformersVersion || !rootTorch.startsWith(kTorchVersion) ||
                 !root.value(QStringLiteral("windows")).isArray()) {
-                jobs->markFailed(jobId, QStringLiteral("Local AST returned an unsupported or untrusted result schema."));
+                jobs->markFailed(jobId, QStringLiteral("Local AST returned an unsupported or provenance-mismatched result schema."));
                 process->deleteLater();
                 return;
             }
@@ -196,6 +266,12 @@ public:
             QList<VibeCutMediaEvidenceRecord> records;
             int recordIndex = 0;
             const QJsonArray windows = root.value(QStringLiteral("windows")).toArray();
+            if (windows.isEmpty() || windows.size() > requiredWindows || root.value(QStringLiteral("window_count")).toInt(-1) != windows.size()) {
+                jobs->markFailed(jobId, QStringLiteral("Local AST returned an invalid bounded window count."));
+                process->deleteLater();
+                return;
+            }
+            const double timestampTolerance = 1.0 / fps + 0.001;
             for (const QJsonValue &windowValue : windows) {
                 if (!windowValue.isObject()) {
                     jobs->markFailed(jobId, QStringLiteral("Local AST returned a non-object window."));
@@ -203,32 +279,59 @@ public:
                     return;
                 }
                 const QJsonObject window = windowValue.toObject();
+                const QJsonValue windowIndexValue = window.value(QStringLiteral("index"));
+                const double rawWindowIndex = windowIndexValue.toDouble(-1.0);
+                const int windowIndex = windowIndexValue.toInt(-1);
                 const double relativeStartSeconds = window.value(QStringLiteral("start_seconds")).toDouble(-1.0);
                 const double relativeEndSeconds = window.value(QStringLiteral("end_seconds")).toDouble(-1.0);
-                if (relativeStartSeconds < 0.0 || relativeEndSeconds <= relativeStartSeconds) {
-                    jobs->markFailed(jobId, QStringLiteral("Local AST returned invalid window timestamps."));
+                if (!windowIndexValue.isDouble() || windowIndex < 0 || static_cast<double>(windowIndex) != rawWindowIndex ||
+                    relativeStartSeconds < 0.0 || relativeEndSeconds <= relativeStartSeconds ||
+                    relativeStartSeconds >= durationSeconds + timestampTolerance ||
+                    relativeEndSeconds > durationSeconds + timestampTolerance) {
+                    jobs->markFailed(jobId, QStringLiteral("Local AST returned invalid or out-of-range window metadata."));
                     process->deleteLater();
                     return;
                 }
-                const int windowStartFrame = qBound(startFrame,
-                                                     startFrame + static_cast<int>(qRound64(relativeStartSeconds * fps)),
-                                                     endFrame - 1);
-                const int windowEndFrame = qBound(windowStartFrame + 1,
-                                                   startFrame + static_cast<int>(qRound64(relativeEndSeconds * fps)),
-                                                   endFrame);
+                const int calculatedStart = startFrame + static_cast<int>(qRound64(relativeStartSeconds * fps));
+                const int calculatedEnd = startFrame + static_cast<int>(qRound64(qMin(relativeEndSeconds, durationSeconds) * fps));
+                if (calculatedStart < startFrame || calculatedStart >= endFrame || calculatedEnd <= calculatedStart || calculatedEnd > endFrame) {
+                    jobs->markFailed(jobId, QStringLiteral("Local AST window timestamps did not map to a valid authoritative source-frame range."));
+                    process->deleteLater();
+                    return;
+                }
+                const int windowStartFrame = calculatedStart;
+                const int windowEndFrame = calculatedEnd;
                 const QJsonArray predictions = window.value(QStringLiteral("predictions")).toArray();
+                if (predictions.size() > topK) {
+                    jobs->markFailed(jobId, QStringLiteral("Local AST returned more ranked predictions than requested top_k."));
+                    process->deleteLater();
+                    return;
+                }
+                QSet<int> seenRanks;
                 for (const QJsonValue &predictionValue : predictions) {
-                    if (!predictionValue.isObject()) continue;
+                    if (!predictionValue.isObject()) {
+                        jobs->markFailed(jobId, QStringLiteral("Local AST returned a non-object prediction."));
+                        process->deleteLater();
+                        return;
+                    }
                     const QJsonObject prediction = predictionValue.toObject();
                     const QString label = prediction.value(QStringLiteral("label")).toString().trimmed();
-                    const int labelId = prediction.value(QStringLiteral("label_id")).toInt(-1);
-                    const int rank = prediction.value(QStringLiteral("rank")).toInt(-1);
+                    const QJsonValue labelIdValue = prediction.value(QStringLiteral("label_id"));
+                    const double rawLabelId = labelIdValue.toDouble(-1.0);
+                    const int labelId = labelIdValue.toInt(-1);
+                    const QJsonValue rankValue = prediction.value(QStringLiteral("rank"));
+                    const double rawRank = rankValue.toDouble(-1.0);
+                    const int rank = rankValue.toInt(-1);
                     const double score = prediction.value(QStringLiteral("score")).toDouble(-1.0);
-                    if (label.isEmpty() || labelId < 0 || rank < 1 || rank > 100 || score < 0.0 || score > 1.0) {
+                    if (label.isEmpty() || label.size() > 256 || !labelIdValue.isDouble() || labelId < 0 ||
+                        static_cast<double>(labelId) != rawLabelId || !rankValue.isDouble() || rank < 1 || rank > topK ||
+                        static_cast<double>(rank) != rawRank || seenRanks.contains(rank) || !std::isfinite(score) ||
+                        score < minScore - 0.000001 || score > 1.0) {
                         jobs->markFailed(jobId, QStringLiteral("Local AST returned an invalid ranked prediction."));
                         process->deleteLater();
                         return;
                     }
+                    seenRanks.insert(rank);
                     VibeCutMediaEvidenceRecord record;
                     record.id = QStringLiteral("audio-event:%1:%2:%3")
                                     .arg(sourceId.mid(sourceId.indexOf(QLatin1Char(':')) + 1))
@@ -246,13 +349,13 @@ public:
                         {QStringLiteral("rank"), rank},
                         {QStringLiteral("window_start_frame"), windowStartFrame},
                         {QStringLiteral("window_end_frame"), windowEndFrame},
-                        {QStringLiteral("window_index"), window.value(QStringLiteral("index")).toInt(-1)},
+                        {QStringLiteral("window_index"), windowIndex},
                         {QStringLiteral("model"), kModel},
                         {QStringLiteral("taxonomy"), QStringLiteral("AudioSet")},
                         {QStringLiteral("authority"), QStringLiteral("model_prediction")},
                         {QStringLiteral("device"), root.value(QStringLiteral("device")).toString()},
-                        {QStringLiteral("transformers_version"), root.value(QStringLiteral("transformers_version")).toString()},
-                        {QStringLiteral("torch_version"), root.value(QStringLiteral("torch_version")).toString()},
+                        {QStringLiteral("transformers_version"), rootTransformers},
+                        {QStringLiteral("torch_version"), rootTorch},
                         {QStringLiteral("window_seconds"), root.value(QStringLiteral("window_seconds")).toDouble()},
                         {QStringLiteral("hop_seconds"), root.value(QStringLiteral("hop_seconds")).toDouble()},
                     };
