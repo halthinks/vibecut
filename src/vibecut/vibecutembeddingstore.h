@@ -4,6 +4,7 @@
 #include <QJsonArray>
 #include <QJsonObject>
 #include <QString>
+#include <QStringList>
 #include <QUrl>
 #include <QVector>
 
@@ -66,13 +67,31 @@ public:
     static QJsonObject loadForProjectUrl(const QUrl &projectUrl, QString *error = nullptr);
     static QJsonObject loadCurrent(QString *error = nullptr);
 
-    /** Replace one producer/model slice for an exact anchor. A changed source
-     * fingerprint therefore produces a distinct current record rather than
-     * silently reusing a stale vector. */
+    /** Replace one exact anchor/source/model/producer slice. A changed source
+     * fingerprint therefore remains a distinct record until a full refresh
+     * replaces the producer/model slice. */
     static bool upsertForProjectUrl(const QUrl &projectUrl,
                                     const VibeCutEmbeddingRecord &record,
                                     QString *error = nullptr);
     static bool upsertCurrent(const VibeCutEmbeddingRecord &record, QString *error = nullptr);
+
+    /** Atomically replace all current records emitted by one producer for one
+     * exact embedding model revision. This is the authoritative refresh path:
+     * stale fingerprints/removed anchors from the old slice disappear in the
+     * same commit that installs the new current vectors. */
+    static bool replaceProducerModelForProjectUrl(const QUrl &projectUrl,
+                                                  const QString &producerId,
+                                                  const QString &producerVersion,
+                                                  const QString &model,
+                                                  const QString &modelRevision,
+                                                  const QList<VibeCutEmbeddingRecord> &records,
+                                                  QString *error = nullptr);
+    static bool replaceProducerModelCurrent(const QString &producerId,
+                                            const QString &producerVersion,
+                                            const QString &model,
+                                            const QString &modelRevision,
+                                            const QList<VibeCutEmbeddingRecord> &records,
+                                            QString *error = nullptr);
 
     static QList<VibeCutEmbeddingSearchHit> cosineSearch(const QJsonObject &root,
                                                          const QVector<double> &unitQuery,
