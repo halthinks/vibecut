@@ -2,6 +2,7 @@
 #include "vibecutextractorprovidertools.h"
 
 #include "vibecutaudioeventsetuptools.h"
+#include "vibecudaudioeventsummary.h"
 #include "vibecutdiarizationsetuptools.h"
 #include "vibecutextractorevidencecontract.h"
 #include "vibecutextractorprovider.h"
@@ -193,7 +194,7 @@ bool registerVibeCutExtractorProviderTools(VibeCutToolSurface &surface, QString 
                                           {QStringLiteral("start_frame"), QJsonObject{{QStringLiteral("type"), QStringLiteral("integer")}, {QStringLiteral("minimum"), 0}}},
                                           {QStringLiteral("end_frame"), QJsonObject{{QStringLiteral("type"), QStringLiteral("integer")}, {QStringLiteral("minimum"), 0}}},
                                           {QStringLiteral("window_seconds"), QJsonObject{{QStringLiteral("type"), QStringLiteral("number")}, {QStringLiteral("minimum"), 1.0}, {QStringLiteral("maximum"), 10.0}}},
-                                          {QStringLiteral("hop_seconds"), QJsonObject{{QStringLiteral("type"), QStringLiteral("number")}, {QStringLiteral("minimum"), 0.25}, {QStringLiteral("maximum"), 60.0}}},
+                                          {QStringLiteral("hop_seconds"), QJsonObject{{QStringLiteral("type"), QStringLiteral("number")}, {QStringLiteral("minimum"), 0.25}, {QStringLiteral("maximum"), 10.0}}},
                                           {QStringLiteral("max_windows"), QJsonObject{{QStringLiteral("type"), QStringLiteral("integer")}, {QStringLiteral("minimum"), 1}, {QStringLiteral("maximum"), 500}}},
                                           {QStringLiteral("top_k"), QJsonObject{{QStringLiteral("type"), QStringLiteral("integer")}, {QStringLiteral("minimum"), 1}, {QStringLiteral("maximum"), 20}}},
                                           {QStringLiteral("min_score"), QJsonObject{{QStringLiteral("type"), QStringLiteral("number")}, {QStringLiteral("minimum"), 0.0}, {QStringLiteral("maximum"), 1.0}}},
@@ -207,11 +208,12 @@ bool registerVibeCutExtractorProviderTools(VibeCutToolSurface &surface, QString 
     audioEventPolicy.asynchronous = true;
     audioEventPolicy.mutatesProject = false;
     if (!surface.registerTool(QJsonObject{{QStringLiteral("name"), audioEventPolicy.name},
-                                          {QStringLiteral("description"), QStringLiteral("Run the built-in local MIT AST AudioSet classifier over a bounded source excerpt. Persists ranked audio_event_prediction records with exact source-frame windows, model/taxonomy provenance and normalized scores. Predictions are not promoted to observed facts. Work is bounded and cancellable through JobManager.")},
+                                          {QStringLiteral("description"), QStringLiteral("Run the built-in local MIT AST AudioSet classifier over a bounded source excerpt. Persists ranked audio_event_prediction records with exact source-frame windows, model/taxonomy provenance and normalized scores. Predictions are not promoted to observed facts. Work is bounded and cancellable through JobManager; hop_seconds may not exceed window_seconds.")},
                                           {QStringLiteral("input_schema"), audioEventInput}},
                               audioEventPolicy, [tools](const QJsonObject &input) { return startLocalAudioEvents(tools, input); }, error)) return false;
 
     if (!registerVibeCutOcrTemporalTools(surface, error)) return false;
+    if (!registerVibeCutAudioEventSummaryTools(surface, error)) return false;
     if (!registerVibeCutDiarizationSetupTools(surface, error)) return false;
     if (!registerVibeCutAudioEventSetupTools(surface, error)) return false;
     return registerVibeCutSpeakerIdentityTools(surface, error);
