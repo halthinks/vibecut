@@ -1,0 +1,148 @@
+{
+  "schema_version": 1,
+  "description": "Deterministic VibeCut mutation-contract fixtures. These fixtures validate evaluator semantics before the same contract is bound to executable Kdenlive project fixtures.",
+  "fixtures": [
+    {
+      "id": "timeline_range_remove_ripple_success",
+      "expected": {
+        "outcome": "applied",
+        "post_state": {
+          "duration_frames": 75,
+          "tracks": [
+            {
+              "track_id": 0,
+              "locked": false,
+              "clips": [
+                {"clip_id": 101, "position": 0, "duration": 50},
+                {"clip_id": 103, "position": 50, "duration": 25}
+              ]
+            }
+          ]
+        },
+        "min_verified_success": 1.0,
+        "min_undo_fidelity": 1.0,
+        "min_redo_fidelity": 1.0,
+        "require_undo": true,
+        "require_redo": true
+      },
+      "observed": {
+        "outcome": "applied",
+        "pre_state": {
+          "duration_frames": 100,
+          "tracks": [
+            {
+              "track_id": 0,
+              "locked": false,
+              "clips": [
+                {"clip_id": 101, "position": 0, "duration": 50},
+                {"clip_id": 102, "position": 50, "duration": 25},
+                {"clip_id": 103, "position": 75, "duration": 25}
+              ]
+            }
+          ]
+        },
+        "post_state": {
+          "duration_frames": 75,
+          "tracks": [
+            {
+              "track_id": 0,
+              "locked": false,
+              "clips": [
+                {"clip_id": 101, "position": 0, "duration": 50},
+                {"clip_id": 103, "position": 50, "duration": 25}
+              ]
+            }
+          ]
+        },
+        "undo_state": {
+          "duration_frames": 100,
+          "tracks": [
+            {
+              "track_id": 0,
+              "locked": false,
+              "clips": [
+                {"clip_id": 101, "position": 0, "duration": 50},
+                {"clip_id": 102, "position": 50, "duration": 25},
+                {"clip_id": 103, "position": 75, "duration": 25}
+              ]
+            }
+          ]
+        },
+        "redo_state": {
+          "duration_frames": 75,
+          "tracks": [
+            {
+              "track_id": 0,
+              "locked": false,
+              "clips": [
+                {"clip_id": 101, "position": 0, "duration": 50},
+                {"clip_id": 103, "position": 50, "duration": 25}
+              ]
+            }
+          ]
+        },
+        "undo_observed": true,
+        "redo_observed": true
+      }
+    },
+    {
+      "id": "stale_plan_refusal",
+      "expected": {
+        "outcome": "refused",
+        "refusal_reason": "stale_plan",
+        "require_undo": false,
+        "require_redo": false
+      },
+      "observed": {
+        "outcome": "refused",
+        "refusal_reason": "stale_plan",
+        "pre_state": {"duration_frames": 100, "clips": 3},
+        "post_state": {"duration_frames": 100, "clips": 3}
+      }
+    },
+    {
+      "id": "repeated_take_overlap_refusal",
+      "expected": {
+        "outcome": "refused",
+        "refusal_reason": "overlap",
+        "require_undo": false,
+        "require_redo": false
+      },
+      "observed": {
+        "outcome": "refused",
+        "refusal_reason": "overlap",
+        "pre_state": {"duration_frames": 180, "clips": 5},
+        "post_state": {"duration_frames": 180, "clips": 5}
+      }
+    },
+    {
+      "id": "locked_track_refusal",
+      "expected": {
+        "outcome": "refused",
+        "refusal_reason": "locked_track",
+        "require_undo": false,
+        "require_redo": false
+      },
+      "observed": {
+        "outcome": "refused",
+        "refusal_reason": "locked_track",
+        "pre_state": {"duration_frames": 120, "tracks": [{"track_id": 0, "locked": true, "clips": 2}]},
+        "post_state": {"duration_frames": 120, "tracks": [{"track_id": 0, "locked": true, "clips": 2}]}
+      }
+    },
+    {
+      "id": "transaction_rollback_after_partial_failure",
+      "expected": {
+        "outcome": "rolled_back",
+        "require_undo": false,
+        "require_redo": false
+      },
+      "observed": {
+        "outcome": "rolled_back",
+        "pre_state": {"duration_frames": 240, "clips": 6, "effects": 2},
+        "post_state": {"duration_frames": 240, "clips": 6, "effects": 2},
+        "rollback_verified": true
+      }
+    }
+  ]
+}
