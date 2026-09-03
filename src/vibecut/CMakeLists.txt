@@ -59,11 +59,13 @@ set(kdenlive_SRCS
   vibecut/vibecutprojectsnapshot.cpp
   vibecut/vibecutprojectstate.cpp
   vibecut/vibecutproxytools.cpp
+  vibecut/vibecutr128extractortools.cpp
   vibecut/vibecutrelinkdiscoverytools.cpp
   vibecut/vibecutrelinktools.cpp
   vibecut/vibecutrenderrecommendtools.cpp
   vibecut/vibecutrendertools.cpp
   vibecut/vibecutrepeatedtaketools.cpp
+  vibecut/vibecutroomtone.cpp
   vibecut/vibecutroutingtools.cpp
   vibecut/vibecutscript.cpp
   vibecut/vibecutsecretstore.cpp
