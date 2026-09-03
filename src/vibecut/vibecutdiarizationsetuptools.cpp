@@ -190,6 +190,24 @@ QJsonObject setup(VibeCutTools *tools, const QJsonObject &)
     return QJsonObject{{QStringLiteral("ok"), true}, {QStringLiteral("started"), true},
                        {QStringLiteral("job_id"), jobId}, {QStringLiteral("stage"), QStringLiteral("create_venv")}};
 }
+
+QJsonObject startDiarization(VibeCutToolSurface *surface, const QJsonObject &input)
+{
+    if (!surface) return err(QStringLiteral("VibeCut tool surface is unavailable."));
+    const QString binId = input.value(QStringLiteral("bin_id")).toString().trimmed();
+    if (binId.isEmpty()) return err(QStringLiteral("speaker_diarization_start requires bin_id."));
+
+    QJsonObject request{{QStringLiteral("bin_id"), binId}};
+    for (const QString &name : {QStringLiteral("start_frame"), QStringLiteral("end_frame"),
+                                QStringLiteral("exclusive"), QStringLiteral("device"),
+                                QStringLiteral("min_speakers"), QStringLiteral("max_speakers")}) {
+        if (input.contains(name)) request.insert(name, input.value(name));
+    }
+    return surface->invoke(QStringLiteral("extractor_provider_start"),
+                           QJsonObject{{QStringLiteral("provider_id"), QStringLiteral("local_pyannote")},
+                                       {QStringLiteral("capability"), QStringLiteral("diarization")},
+                                       {QStringLiteral("request"), request}});
+}
 }
 
 bool registerVibeCutDiarizationSetupTools(VibeCutToolSurface &surface, QString *error)
@@ -216,8 +234,30 @@ bool registerVibeCutDiarizationSetupTools(VibeCutToolSurface &surface, QString *
     setupPolicy.asynchronous = true;
     setupPolicy.confirmationRequired = true;
     setupPolicy.mutatesProject = false;
-    return surface.registerTool(QJsonObject{{QStringLiteral("name"), setupPolicy.name},
-                                            {QStringLiteral("description"), QStringLiteral("Create a VibeCut-owned isolated Python environment and install the pinned local speaker-diarization runtime. This downloads/install packages, is cancellable through JobManager, always requires confirmation, and never accepts or exposes credentials.")},
-                                            {QStringLiteral("input_schema"), noArgs}},
-                                setupPolicy, [tools](const QJsonObject &input) { return setup(tools, input); }, error);
+    if (!surface.registerTool(QJsonObject{{QStringLiteral("name"), setupPolicy.name},
+                                          {QStringLiteral("description"), QStringLiteral("Create a VibeCut-owned isolated Python environment and install the pinned local speaker-diarization runtime. This downloads/install packages, is cancellable through JobManager, always requires confirmation, and never accepts or exposes credentials.")},
+                                          {QStringLiteral("input_schema"), noArgs}},
+                              setupPolicy, [tools](const QJsonObject &input) { return setup(tools, input); }, error)) return false;
+
+    const QJsonObject startInput{{QStringLiteral("type"), QStringLiteral("object")},
+                                 {QStringLiteral("properties"), QJsonObject{
+                                     {QStringLiteral("bin_id"), QJsonObject{{QStringLiteral("type"), QStringLiteral("string")}}},
+                                     {QStringLiteral("start_frame"), QJsonObject{{QStringLiteral("type"), QStringLiteral("integer")}, {QStringLiteral("minimum"), 0}}},
+                                     {QStringLiteral("end_frame"), QJsonObject{{QStringLiteral("type"), QStringLiteral("integer")}, {QStringLiteral("minimum"), 1}}},
+                                     {QStringLiteral("exclusive"), QJsonObject{{QStringLiteral("type"), QStringLiteral("boolean")}, {QStringLiteral("default"), true}}},
+                                     {QStringLiteral("device"), QJsonObject{{QStringLiteral("type"), QStringLiteral("string")},
+                                                                            {QStringLiteral("enum"), QJsonArray{QStringLiteral("auto"), QStringLiteral("cpu"), QStringLiteral("cuda")}}}},
+                                     {QStringLiteral("min_speakers"), QJsonObject{{QStringLiteral("type"), QStringLiteral("integer")}, {QStringLiteral("minimum"), 0}, {QStringLiteral("maximum"), 20}}},
+                                     {QStringLiteral("max_speakers"), QJsonObject{{QStringLiteral("type"), QStringLiteral("integer")}, {QStringLiteral("minimum"), 0}, {QStringLiteral("maximum"), 20}}}}},
+                                 {QStringLiteral("required"), QJsonArray{QStringLiteral("bin_id")}},
+                                 {QStringLiteral("additionalProperties"), false}};
+    VibeCutToolPolicy startPolicy;
+    startPolicy.name = QStringLiteral("speaker_diarization_start");
+    startPolicy.risk = VibeCutToolRisk::ExternalSideEffect;
+    startPolicy.asynchronous = true;
+    startPolicy.mutatesProject = false;
+    return surface.registerTool(QJsonObject{{QStringLiteral("name"), startPolicy.name},
+                                            {QStringLiteral("description"), QStringLiteral("Start bounded local speaker diarization for an authoritative file-backed bin asset using VibeCut's built-in local_pyannote provider. Source path/fingerprint are resolved internally; results remain anonymous speaker clusters until separately user-identified.")},
+                                            {QStringLiteral("input_schema"), startInput}},
+                                startPolicy, [&surface](const QJsonObject &input) { return startDiarization(&surface, input); }, error);
 }
