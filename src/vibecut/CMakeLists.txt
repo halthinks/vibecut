@@ -19,6 +19,7 @@ set(kdenlive_SRCS
   vibecut/vibecutconversationcontext.cpp
   vibecut/vibecutdeadartools.cpp
   vibecut/vibecutdeadlinkedtools.cpp
+  vibecut/vibecutdiarizationsetuptools.cpp
   vibecut/vibecutedittools.cpp
   vibecut/vibecuteffectgrouptools.cpp
   vibecut/vibecuteffectkeyframetools.cpp
@@ -34,6 +35,7 @@ set(kdenlive_SRCS
   vibecut/vibecuthooks.cpp
   vibecut/vibecutjobmanager.cpp
   vibecut/vibecutjobtools.cpp
+  vibecut/vibecutlocaldiarizationprovider.cpp
   vibecut/vibecutloudnessextractortools.cpp
   vibecut/vibecutmarkertools.cpp
   vibecut/vibecutmediaanalyzetools.cpp
