@@ -2,6 +2,7 @@
 #include "vibecutvisionsetuptools.h"
 
 #include "vibecutjobmanager.h"
+#include "vibecutlocalactionprovider.h"
 #include "vibecutlocalobjectprovider.h"
 #include "vibecuttools.h"
 #include "vibecuttoolsurface.h"
@@ -9,6 +10,7 @@
 
 #include <QDir>
 #include <QFileInfo>
+#include <QJsonArray>
 #include <QJsonObject>
 #include <QProcess>
 #include <QStandardPaths>
@@ -16,6 +18,10 @@
 namespace {
 const QString kDetrModel = QStringLiteral("facebook/detr-resnet-50");
 const QString kDetrRevision = QStringLiteral("ebd66332d81f2ee6d9fbfefd0235026b46a381d0");
+const QString kXclipModel = QStringLiteral("microsoft/xclip-base-patch32");
+const QString kXclipRevision = QStringLiteral("47627d79085e55e641829bd120ac64a3cc3c2238");
+const QString kActionTaxonomy = QStringLiteral("VibeCutActionSet-v1");
+const QString kActionSetSha256 = QStringLiteral("005794f327b4bbf0cea1dd3801009f1c9c51066fec0bb129b7a01b0f8d5520fc");
 const QString kPinnedTransformers = QStringLiteral("transformers==5.16.1");
 const QString kPinnedTorch = QStringLiteral("torch==2.14.0");
 const QString kPinnedTorchvision = QStringLiteral("torchvision==0.29.0");
@@ -75,7 +81,7 @@ void startDependencyInstall(VibeCutJobManager *jobs, const QString &jobId,
         }
         jobs->setProgress(jobId, 100, QStringLiteral("Local VibeCut vision runtime is ready."));
         jobs->markSucceeded(jobId,
-                            QStringLiteral("Installed and verified %1, %2, %3 and %4. DETR model acquisition occurs on first object-detection run if not cached.")
+                            QStringLiteral("Installed and verified %1, %2, %3 and %4. Pinned DETR and X-CLIP model acquisition occurs on first use if not cached; their outputs remain model-prediction evidence, not observed fact.")
                                 .arg(kPinnedTransformers, kPinnedTorch, kPinnedTorchvision, kPinnedPillow));
         process->deleteLater();
     });
@@ -92,29 +98,62 @@ void startDependencyInstall(VibeCutJobManager *jobs, const QString &jobId,
 QJsonObject status(const QJsonObject &)
 {
     ensureVibeCutLocalObjectProviderRegistered();
+    ensureVibeCutLocalActionProviderRegistered();
+
     QString dependencyError;
     const bool dependenciesReady = vibeCutVisionDependenciesReady(&dependencyError);
-    const QString script = vibeCutObjectDetectionScript();
-    const bool objectHelperReady = !script.isEmpty() && QFileInfo::exists(script);
+    const QString objectScript = vibeCutObjectDetectionScript();
+    const QString actionScript = vibeCutActionScript();
+    const bool objectHelperReady = !objectScript.isEmpty() && QFileInfo::exists(objectScript);
+    const bool actionHelperReady = !actionScript.isEmpty() && QFileInfo::exists(actionScript);
+
+    QJsonArray providers;
+    providers.append(QJsonObject{{QStringLiteral("provider_id"), QStringLiteral("local_detr_coco")},
+                                 {QStringLiteral("capability"), QStringLiteral("objects")},
+                                 {QStringLiteral("taxonomy"), QStringLiteral("COCO-2017")},
+                                 {QStringLiteral("model"), kDetrModel},
+                                 {QStringLiteral("model_revision"), kDetrRevision},
+                                 {QStringLiteral("helper"), objectScript},
+                                 {QStringLiteral("helper_ready"), objectHelperReady},
+                                 {QStringLiteral("ready"), dependenciesReady && objectHelperReady}});
+    providers.append(QJsonObject{{QStringLiteral("provider_id"), QStringLiteral("local_xclip_actions")},
+                                 {QStringLiteral("capability"), QStringLiteral("actions")},
+                                 {QStringLiteral("taxonomy"), kActionTaxonomy},
+                                 {QStringLiteral("model"), kXclipModel},
+                                 {QStringLiteral("model_revision"), kXclipRevision},
+                                 {QStringLiteral("model_license"), QStringLiteral("MIT")},
+                                 {QStringLiteral("score_semantics"), QStringLiteral("softmax_over_fixed_action_set")},
+                                 {QStringLiteral("action_set_sha256"), kActionSetSha256},
+                                 {QStringLiteral("helper"), actionScript},
+                                 {QStringLiteral("helper_ready"), actionHelperReady},
+                                 {QStringLiteral("ready"), dependenciesReady && actionHelperReady}});
+
     return QJsonObject{{QStringLiteral("ok"), true},
+                       // Compatibility fields for callers written against the first DETR-only status shape.
                        {QStringLiteral("provider_id"), QStringLiteral("local_detr_coco")},
                        {QStringLiteral("capability"), QStringLiteral("objects")},
                        {QStringLiteral("taxonomy"), QStringLiteral("COCO-2017")},
                        {QStringLiteral("model"), kDetrModel},
                        {QStringLiteral("model_revision"), kDetrRevision},
+                       {QStringLiteral("providers"), providers},
+                       {QStringLiteral("provider_count"), providers.size()},
                        {QStringLiteral("pinned_transformers"), kPinnedTransformers},
                        {QStringLiteral("pinned_torch"), kPinnedTorch},
                        {QStringLiteral("pinned_torchvision"), kPinnedTorchvision},
                        {QStringLiteral("pinned_pillow"), kPinnedPillow},
                        {QStringLiteral("python"), vibeCutVisionPython()},
                        {QStringLiteral("requirements"), vibeCutVisionRequirements()},
-                       {QStringLiteral("object_helper"), script},
+                       {QStringLiteral("object_helper"), objectScript},
+                       {QStringLiteral("action_helper"), actionScript},
                        {QStringLiteral("dependencies_ready"), dependenciesReady},
                        {QStringLiteral("object_helper_ready"), objectHelperReady},
+                       {QStringLiteral("action_helper_ready"), actionHelperReady},
                        {QStringLiteral("dependency_error"), dependenciesReady ? QString() : dependencyError},
-                       {QStringLiteral("ready"), dependenciesReady && objectHelperReady},
+                       {QStringLiteral("object_ready"), dependenciesReady && objectHelperReady},
+                       {QStringLiteral("action_ready"), dependenciesReady && actionHelperReady},
+                       {QStringLiteral("ready"), dependenciesReady && objectHelperReady && actionHelperReady},
                        {QStringLiteral("model_acquisition"), QStringLiteral("first_run_if_not_cached")},
-                       {QStringLiteral("note"), QStringLiteral("The vision environment is isolated from diarization and audio-event runtimes. DETR outputs sampled-frame model predictions with exact geometry; they are not identity or continuous-observation claims.")}};
+                       {QStringLiteral("note"), QStringLiteral("The vision environment is isolated from diarization and audio-event runtimes. DETR emits sampled-frame object predictions with exact geometry. X-CLIP emits eight-frame zero-shot action predictions whose scores are relative to a fixed versioned action set. Neither output is promoted to observed fact, continuous observation, or human identity.")}};
 }
 
 QJsonObject setup(VibeCutTools *tools, const QJsonObject &)
@@ -203,7 +242,7 @@ bool registerVibeCutVisionSetupTools(VibeCutToolSurface &surface, QString *error
     statusPolicy.name = QStringLiteral("vision_status");
     statusPolicy.risk = VibeCutToolRisk::ReadOnly;
     if (!surface.registerTool(QJsonObject{{QStringLiteral("name"), statusPolicy.name},
-                                          {QStringLiteral("description"), QStringLiteral("Report the isolated local VibeCut vision runtime and built-in DETR object provider, including pinned package/model provenance and readiness. No vision prediction is promoted to observed fact or human identity.")},
+                                          {QStringLiteral("description"), QStringLiteral("Report the isolated local VibeCut vision runtime and both built-in vision providers: DETR sampled-frame object detection and X-CLIP fixed-taxonomy action prediction, including pinned package/model provenance and readiness. No vision prediction is promoted to observed fact or human identity.")},
                                           {QStringLiteral("input_schema"), noArgs}},
                               statusPolicy, status, error)) return false;
 
@@ -219,7 +258,7 @@ bool registerVibeCutVisionSetupTools(VibeCutToolSurface &surface, QString *error
     setupPolicy.confirmationRequired = true;
     setupPolicy.mutatesProject = false;
     return surface.registerTool(QJsonObject{{QStringLiteral("name"), setupPolicy.name},
-                                            {QStringLiteral("description"), QStringLiteral("Create a VibeCut-owned isolated Python environment and install the pinned local vision runtime. This can download large Torch/Transformers packages, is cancellable through JobManager and always requires confirmation.")},
+                                            {QStringLiteral("description"), QStringLiteral("Create a VibeCut-owned isolated Python environment and install the pinned local vision runtime shared by DETR object detection and X-CLIP action prediction. This can download large Torch/Transformers packages, is cancellable through JobManager and always requires confirmation.")},
                                             {QStringLiteral("input_schema"), noArgs}},
                                 setupPolicy, [tools](const QJsonObject &input) { return setup(tools, input); }, error);
 }
