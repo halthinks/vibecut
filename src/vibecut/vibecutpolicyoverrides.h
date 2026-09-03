@@ -4,12 +4,20 @@
 #include "vibecutcontracts.h"
 
 #include <QHash>
+#include <QJsonObject>
 #include <QString>
 
 class VibeCutPolicyOverrides
 {
 public:
     static QString fileName();
+
+    /** Apply a parsed project-policy object to code-defined base policies.
+     * Code-defined confirmationRequired=true is a hard lower bound: project
+     * configuration may make policy stricter but may not waive it. */
+    static QHash<QString, VibeCutToolPolicy> applyObject(const QHash<QString, VibeCutToolPolicy> &basePolicies,
+                                                         const QJsonObject &root);
+
     static QHash<QString, VibeCutToolPolicy> applyCurrent(const QHash<QString, VibeCutToolPolicy> &basePolicies, QString *error = nullptr);
 
     // Compatibility facade for call sites that consume policy overrides as a
