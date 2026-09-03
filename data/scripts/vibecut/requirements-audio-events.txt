@@ -1,0 +1,4 @@
+# VibeCut local AudioSet event-classification runtime.
+# Pinned against the source implementation added September 2026.
+transformers==5.16.1
+torch==2.14.0
