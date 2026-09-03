@@ -54,17 +54,37 @@ VibeCutMediaEvidenceRecord audioEvent(const QString &label, int labelId, int ran
     };
     return record;
 }
+
+VibeCutMediaEvidenceRecord objectDetection(const QString &label, int labelId, int frame, double score)
+{
+    VibeCutMediaEvidenceRecord record;
+    record.kind = QStringLiteral("object_detection_prediction");
+    record.startFrame = frame;
+    record.endFrame = frame + 1;
+    record.text = QStringLiteral("COCO object prediction: %1").arg(label);
+    record.confidence = score;
+    record.metadata = QJsonObject{
+        {QStringLiteral("sample_frame"), frame},
+        {QStringLiteral("image_width"), 1920},
+        {QStringLiteral("image_height"), 1080},
+        {QStringLiteral("bbox_pixels"), QJsonObject{{QStringLiteral("x"), 300}, {QStringLiteral("y"), 100},
+                                                     {QStringLiteral("width"), 500}, {QStringLiteral("height"), 800}}},
+        {QStringLiteral("label"), label},
+        {QStringLiteral("label_id"), labelId},
+        {QStringLiteral("model"), QStringLiteral("facebook/detr-resnet-50")},
+        {QStringLiteral("model_revision"), QStringLiteral("ebd66332d81f2ee6d9fbfefd0235026b46a381d0")},
+        {QStringLiteral("taxonomy"), QStringLiteral("COCO-2017")},
+        {QStringLiteral("authority"), QStringLiteral("model_prediction")},
+    };
+    return record;
+}
 }
 
 TEST_CASE("diarization evidence contract accepts source-bounded anonymous speaker clusters", "[vibecut][extractor-provider][diarization]")
 {
-    QList<VibeCutMediaEvidenceRecord> records{
-        speakerSegment(QStringLiteral("SPEAKER_00"), 10, 40),
-        speakerSegment(QStringLiteral("SPEAKER_01"), 40, 85),
-    };
+    QList<VibeCutMediaEvidenceRecord> records{speakerSegment(QStringLiteral("SPEAKER_00"), 10, 40), speakerSegment(QStringLiteral("SPEAKER_01"), 40, 85)};
     records[1].metadata.insert(QStringLiteral("overlap"), false);
     records[1].metadata.insert(QStringLiteral("channel"), 0);
-
     QString error;
     CHECK(validateVibeCutExtractorEvidenceContract(QStringLiteral("diarization"), 0, 100, records, &error));
     CHECK(error.isEmpty());
@@ -74,7 +94,6 @@ TEST_CASE("diarization evidence contract rejects identity assertions from provid
 {
     VibeCutMediaEvidenceRecord record = speakerSegment(QStringLiteral("SPEAKER_00"), 10, 40);
     record.metadata.insert(QStringLiteral("display_name"), QStringLiteral("Alice"));
-
     QString error;
     CHECK_FALSE(validateVibeCutExtractorEvidenceContract(QStringLiteral("diarization"), 0, 100, {record}, &error));
     CHECK(error.contains(QStringLiteral("identity"), Qt::CaseInsensitive));
@@ -83,17 +102,14 @@ TEST_CASE("diarization evidence contract rejects identity assertions from provid
 TEST_CASE("diarization evidence contract rejects malformed or out-of-scope speaker segments", "[vibecut][extractor-provider][diarization]")
 {
     QString error;
-
     VibeCutMediaEvidenceRecord wrongKind = speakerSegment(QStringLiteral("SPEAKER_00"), 10, 40);
     wrongKind.kind = QStringLiteral("transcript");
     CHECK_FALSE(validateVibeCutExtractorEvidenceContract(QStringLiteral("diarization"), 0, 100, {wrongKind}, &error));
     CHECK(error.contains(QStringLiteral("speaker_segment")));
-
     error.clear();
     VibeCutMediaEvidenceRecord missingCluster = speakerSegment(QString(), 10, 40);
     CHECK_FALSE(validateVibeCutExtractorEvidenceContract(QStringLiteral("diarization"), 0, 100, {missingCluster}, &error));
     CHECK(error.contains(QStringLiteral("speaker_cluster_id")));
-
     error.clear();
     VibeCutMediaEvidenceRecord outside = speakerSegment(QStringLiteral("SPEAKER_00"), 90, 110);
     CHECK_FALSE(validateVibeCutExtractorEvidenceContract(QStringLiteral("diarization"), 0, 100, {outside}, &error));
@@ -103,47 +119,38 @@ TEST_CASE("diarization evidence contract rejects malformed or out-of-scope speak
 TEST_CASE("OCR evidence contract accepts exact-frame text with bounded geometry and provenance", "[vibecut][extractor-provider][ocr]")
 {
     QString error;
-    const VibeCutMediaEvidenceRecord record = ocrText(QStringLiteral("SALE"), 20);
-    CHECK(validateVibeCutExtractorEvidenceContract(QStringLiteral("ocr"), 0, 100, {record}, &error));
+    CHECK(validateVibeCutExtractorEvidenceContract(QStringLiteral("ocr"), 0, 100, {ocrText(QStringLiteral("SALE"), 20)}, &error));
     CHECK(error.isEmpty());
 }
 
 TEST_CASE("OCR evidence contract rejects loose ranges missing confidence and invalid geometry", "[vibecut][extractor-provider][ocr]")
 {
     QString error;
-
     VibeCutMediaEvidenceRecord loose = ocrText(QStringLiteral("SALE"), 20);
     loose.endFrame = 25;
     CHECK_FALSE(validateVibeCutExtractorEvidenceContract(QStringLiteral("ocr"), 0, 100, {loose}, &error));
     CHECK(error.contains(QStringLiteral("one sampled"), Qt::CaseInsensitive));
-
     error.clear();
     VibeCutMediaEvidenceRecord unknownConfidence = ocrText(QStringLiteral("SALE"), 20);
     unknownConfidence.confidence = -1.0;
     CHECK_FALSE(validateVibeCutExtractorEvidenceContract(QStringLiteral("ocr"), 0, 100, {unknownConfidence}, &error));
     CHECK(error.contains(QStringLiteral("confidence"), Qt::CaseInsensitive));
-
     error.clear();
     VibeCutMediaEvidenceRecord outsideBox = ocrText(QStringLiteral("SALE"), 20);
-    outsideBox.metadata.insert(QStringLiteral("bbox_pixels"),
-                               QJsonObject{{QStringLiteral("x"), 1800}, {QStringLiteral("y"), 1000},
-                                           {QStringLiteral("width"), 300}, {QStringLiteral("height"), 200}});
+    outsideBox.metadata.insert(QStringLiteral("bbox_pixels"), QJsonObject{{QStringLiteral("x"), 1800}, {QStringLiteral("y"), 1000},
+                                                                          {QStringLiteral("width"), 300}, {QStringLiteral("height"), 200}});
     CHECK_FALSE(validateVibeCutExtractorEvidenceContract(QStringLiteral("ocr"), 0, 100, {outsideBox}, &error));
     CHECK(error.contains(QStringLiteral("bbox_pixels")));
-
     error.clear();
-    VibeCutMediaEvidenceRecord outsideRange = ocrText(QStringLiteral("SALE"), 100);
-    CHECK_FALSE(validateVibeCutExtractorEvidenceContract(QStringLiteral("ocr"), 0, 100, {outsideRange}, &error));
+    CHECK_FALSE(validateVibeCutExtractorEvidenceContract(QStringLiteral("ocr"), 0, 100, {ocrText(QStringLiteral("SALE"), 100)}, &error));
     CHECK(error.contains(QStringLiteral("outside"), Qt::CaseInsensitive));
 }
 
 TEST_CASE("audio-event evidence contract accepts ranked model predictions with exact window provenance", "[vibecut][extractor-provider][audio-events]")
 {
     QString error;
-    QList<VibeCutMediaEvidenceRecord> records{
-        audioEvent(QStringLiteral("Speech"), 0, 1, 100, 350, 0.81),
-        audioEvent(QStringLiteral("Background music"), 267, 2, 100, 350, 0.12),
-    };
+    QList<VibeCutMediaEvidenceRecord> records{audioEvent(QStringLiteral("Speech"), 0, 1, 100, 350, 0.81),
+                                               audioEvent(QStringLiteral("Background music"), 267, 2, 100, 350, 0.12)};
     CHECK(validateVibeCutExtractorEvidenceContract(QStringLiteral("audio_events"), 0, 500, records, &error));
     CHECK(error.isEmpty());
 }
@@ -151,26 +158,58 @@ TEST_CASE("audio-event evidence contract accepts ranked model predictions with e
 TEST_CASE("audio-event evidence contract rejects fact promotion malformed ranks and mismatched windows", "[vibecut][extractor-provider][audio-events]")
 {
     QString error;
-
     VibeCutMediaEvidenceRecord fact = audioEvent(QStringLiteral("Speech"), 0, 1, 100, 350, 0.81);
     fact.metadata.insert(QStringLiteral("authority"), QStringLiteral("observation"));
     CHECK_FALSE(validateVibeCutExtractorEvidenceContract(QStringLiteral("audio_events"), 0, 500, {fact}, &error));
     CHECK(error.contains(QStringLiteral("model_prediction")));
-
     error.clear();
     VibeCutMediaEvidenceRecord badRank = audioEvent(QStringLiteral("Speech"), 0, 0, 100, 350, 0.81);
     CHECK_FALSE(validateVibeCutExtractorEvidenceContract(QStringLiteral("audio_events"), 0, 500, {badRank}, &error));
     CHECK(error.contains(QStringLiteral("rank")));
-
     error.clear();
     VibeCutMediaEvidenceRecord wrongWindow = audioEvent(QStringLiteral("Speech"), 0, 1, 100, 350, 0.81);
     wrongWindow.metadata.insert(QStringLiteral("window_end_frame"), 351);
     CHECK_FALSE(validateVibeCutExtractorEvidenceContract(QStringLiteral("audio_events"), 0, 500, {wrongWindow}, &error));
     CHECK(error.contains(QStringLiteral("window"), Qt::CaseInsensitive));
-
     error.clear();
     VibeCutMediaEvidenceRecord wrongKind = audioEvent(QStringLiteral("Speech"), 0, 1, 100, 350, 0.81);
     wrongKind.kind = QStringLiteral("speech");
     CHECK_FALSE(validateVibeCutExtractorEvidenceContract(QStringLiteral("audio_events"), 0, 500, {wrongKind}, &error));
     CHECK(error.contains(QStringLiteral("audio_event_prediction")));
+}
+
+TEST_CASE("object-detection contract accepts exact sampled-frame model predictions with bounded boxes", "[vibecut][extractor-provider][objects]")
+{
+    QString error;
+    CHECK(validateVibeCutExtractorEvidenceContract(QStringLiteral("objects"), 0, 100,
+                                                    {objectDetection(QStringLiteral("person"), 1, 20, 0.92)}, &error));
+    CHECK(error.isEmpty());
+}
+
+TEST_CASE("object-detection contract rejects fact promotion loose frames bad boxes and missing model revision", "[vibecut][extractor-provider][objects]")
+{
+    QString error;
+    VibeCutMediaEvidenceRecord fact = objectDetection(QStringLiteral("person"), 1, 20, 0.92);
+    fact.metadata.insert(QStringLiteral("authority"), QStringLiteral("observation"));
+    CHECK_FALSE(validateVibeCutExtractorEvidenceContract(QStringLiteral("objects"), 0, 100, {fact}, &error));
+    CHECK(error.contains(QStringLiteral("model_prediction")));
+
+    error.clear();
+    VibeCutMediaEvidenceRecord loose = objectDetection(QStringLiteral("person"), 1, 20, 0.92);
+    loose.endFrame = 23;
+    CHECK_FALSE(validateVibeCutExtractorEvidenceContract(QStringLiteral("objects"), 0, 100, {loose}, &error));
+    CHECK(error.contains(QStringLiteral("one sampled"), Qt::CaseInsensitive));
+
+    error.clear();
+    VibeCutMediaEvidenceRecord badBox = objectDetection(QStringLiteral("person"), 1, 20, 0.92);
+    badBox.metadata.insert(QStringLiteral("bbox_pixels"), QJsonObject{{QStringLiteral("x"), 1800}, {QStringLiteral("y"), 900},
+                                                                       {QStringLiteral("width"), 300}, {QStringLiteral("height"), 300}});
+    CHECK_FALSE(validateVibeCutExtractorEvidenceContract(QStringLiteral("objects"), 0, 100, {badBox}, &error));
+    CHECK(error.contains(QStringLiteral("bbox_pixels")));
+
+    error.clear();
+    VibeCutMediaEvidenceRecord noRevision = objectDetection(QStringLiteral("person"), 1, 20, 0.92);
+    noRevision.metadata.remove(QStringLiteral("model_revision"));
+    CHECK_FALSE(validateVibeCutExtractorEvidenceContract(QStringLiteral("objects"), 0, 100, {noRevision}, &error));
+    CHECK(error.contains(QStringLiteral("model_revision")));
 }
