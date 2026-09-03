@@ -63,6 +63,58 @@ bool validateOcrRecord(const VibeCutMediaEvidenceRecord &record, QString *error)
     }
     return true;
 }
+
+bool validateAudioEventRecord(const VibeCutMediaEvidenceRecord &record, QString *error)
+{
+    if (record.kind != QLatin1String("audio_event_prediction")) {
+        return fail(error, QStringLiteral("Audio-event providers may persist only 'audio_event_prediction' evidence records."));
+    }
+    if (record.startFrame < 0 || record.endFrame <= record.startFrame) {
+        return fail(error, QStringLiteral("Audio-event predictions require an exact non-empty source-frame window."));
+    }
+    if (record.confidence < 0.0 || record.confidence > 1.0) {
+        return fail(error, QStringLiteral("Audio-event predictions require a normalized score between 0 and 1."));
+    }
+    const QString label = record.metadata.value(QStringLiteral("label")).toString().trimmed();
+    if (label.isEmpty() || label.size() > 256) {
+        return fail(error, QStringLiteral("Audio-event metadata.label must contain 1 to 256 characters."));
+    }
+    const QJsonValue labelIdValue = record.metadata.value(QStringLiteral("label_id"));
+    if (!labelIdValue.isDouble()) {
+        return fail(error, QStringLiteral("Audio-event metadata.label_id must be a non-negative integer."));
+    }
+    const int labelId = labelIdValue.toInt(-1);
+    if (labelId < 0 || static_cast<double>(labelId) != labelIdValue.toDouble()) {
+        return fail(error, QStringLiteral("Audio-event metadata.label_id must be a non-negative integer."));
+    }
+    const QJsonValue rankValue = record.metadata.value(QStringLiteral("rank"));
+    if (!rankValue.isDouble()) {
+        return fail(error, QStringLiteral("Audio-event metadata.rank must be a positive integer."));
+    }
+    const int rank = rankValue.toInt(-1);
+    if (rank < 1 || rank > 100 || static_cast<double>(rank) != rankValue.toDouble()) {
+        return fail(error, QStringLiteral("Audio-event metadata.rank must be an integer from 1 to 100."));
+    }
+    if (record.metadata.value(QStringLiteral("window_start_frame")).toInt(-1) != record.startFrame ||
+        record.metadata.value(QStringLiteral("window_end_frame")).toInt(-1) != record.endFrame) {
+        return fail(error, QStringLiteral("Audio-event metadata window bounds must exactly match the evidence frame range."));
+    }
+    const QString model = record.metadata.value(QStringLiteral("model")).toString().trimmed();
+    if (model.isEmpty() || model.size() > 256) {
+        return fail(error, QStringLiteral("Audio-event metadata.model must contain 1 to 256 characters."));
+    }
+    const QString taxonomy = record.metadata.value(QStringLiteral("taxonomy")).toString().trimmed();
+    if (taxonomy.isEmpty() || taxonomy.size() > 128) {
+        return fail(error, QStringLiteral("Audio-event metadata.taxonomy must contain 1 to 128 characters."));
+    }
+    if (record.metadata.value(QStringLiteral("authority")).toString() != QLatin1String("model_prediction")) {
+        return fail(error, QStringLiteral("Audio-event evidence must declare authority='model_prediction'."));
+    }
+    if (record.text.trimmed().isEmpty() || record.text.size() > 1024) {
+        return fail(error, QStringLiteral("Audio-event prediction text must contain 1 to 1024 characters."));
+    }
+    return true;
+}
 }
 
 bool validateVibeCutExtractorEvidenceContract(const QString &capability,
@@ -86,6 +138,10 @@ bool validateVibeCutExtractorEvidenceContract(const QString &capability,
 
         if (normalizedCapability == QLatin1String("ocr")) {
             if (!validateOcrRecord(record, error)) return false;
+            continue;
+        }
+        if (normalizedCapability == QLatin1String("audio_events")) {
+            if (!validateAudioEventRecord(record, error)) return false;
             continue;
         }
         if (normalizedCapability != QLatin1String("diarization")) continue;
