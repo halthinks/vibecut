@@ -7,6 +7,9 @@
 #include <QJsonObject>
 #include <QString>
 #include <QtGlobal>
+#include <memory>
+
+class TimelineItemModel;
 
 struct VibeCutProjectDiff {
     qint64 revisionDelta = 0;
@@ -44,4 +47,9 @@ struct VibeCutProjectSnapshot {
      * restoring the same editable project state.
      */
     static QJsonObject captureMutationStateV1();
+
+    /** Model-bound form used by headless golden tests and any caller that already
+     * owns the authoritative TimelineItemModel. This is the canonical
+     * implementation; captureMutationStateV1() only resolves the active model. */
+    static QJsonObject mutationStateV1(const std::shared_ptr<TimelineItemModel> &model);
 };

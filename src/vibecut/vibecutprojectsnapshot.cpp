@@ -15,6 +15,7 @@
 
 #include <QDomDocument>
 #include <QJsonArray>
+#include <QJsonDocument>
 
 #include <algorithm>
 
@@ -201,15 +202,22 @@ VibeCutProjectSnapshot VibeCutProjectSnapshot::capture(quint64 revisionToken)
 
 QJsonObject VibeCutProjectSnapshot::captureMutationStateV1()
 {
+    return mutationStateV1(currentTimelineModel());
+}
+
+QJsonObject VibeCutProjectSnapshot::mutationStateV1(const std::shared_ptr<TimelineItemModel> &model)
+{
     QJsonObject state{{QStringLiteral("schema"), QStringLiteral("vibecut_mutation_state_v1")},
                       {QStringLiteral("available"), false}};
-    const std::shared_ptr<TimelineItemModel> model = currentTimelineModel();
     if (!model) {
         return state;
     }
 
     state.insert(QStringLiteral("available"), true);
     state.insert(QStringLiteral("duration_frames"), model->duration());
+    state.insert(QStringLiteral("track_count"), model->getTracksCount());
+    state.insert(QStringLiteral("clip_count"), model->getClipsCount());
+    state.insert(QStringLiteral("composition_count"), model->getCompositionsCount());
     state.insert(QStringLiteral("groups_data"), model->groupsData());
     state.insert(QStringLiteral("master_effects"), effectStackState(model->getMasterEffectStackModel()));
 
@@ -266,9 +274,11 @@ QJsonObject VibeCutProjectSnapshot::captureMutationStateV1()
     }
     state.insert(QStringLiteral("tracks"), tracks);
 
+    int subtitleCount = 0;
     if (model->hasSubtitleModel()) {
         const std::shared_ptr<SubtitleModel> subtitles = model->getSubtitleModel();
         if (subtitles) {
+            subtitleCount = static_cast<int>(subtitles->getAllSubIds().size());
             state.insert(QStringLiteral("subtitle_locked"), subtitles->isLocked());
             state.insert(QStringLiteral("subtitle_disabled"), subtitles->isDisabled());
             state.insert(QStringLiteral("subtitles"), subtitleState(model));
@@ -276,5 +286,6 @@ QJsonObject VibeCutProjectSnapshot::captureMutationStateV1()
     } else {
         state.insert(QStringLiteral("subtitles"), QJsonArray());
     }
+    state.insert(QStringLiteral("subtitle_count"), subtitleCount);
     return state;
 }
