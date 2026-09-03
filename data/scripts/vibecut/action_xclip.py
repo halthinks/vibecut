@@ -35,7 +35,6 @@ FRAMES_PER_WINDOW = 8
 MAX_WINDOWS = 100
 MAX_SAMPLED_FRAMES = 800
 
-# (stable id implied by list index, short label, actual zero-shot prompt)
 ACTION_SET: Sequence[Tuple[str, str]] = (
     ("no_clear_action", "a video with no clear action from the listed set"),
     ("talking", "a video of a person talking"),
@@ -92,6 +91,13 @@ _CURRENT: Optional[subprocess.Popen] = None
 def _action_set_hash() -> str:
     payload = "\n".join(f"{idx}\t{label}\t{prompt}" for idx, (label, prompt) in enumerate(ACTION_SET))
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
+def _round_positive_half_up(value: float) -> int:
+    """Match Qt qRound64 for non-negative frame conversions."""
+    if value < 0.0 or not math.isfinite(value):
+        raise RuntimeError("frame conversion requires a finite non-negative value")
+    return int(math.floor(value + 0.5))
 
 
 def _terminate_child(_signum, _frame) -> None:
@@ -207,8 +213,8 @@ def main() -> int:
     if not (0.0 <= args.min_score <= 1.0) or not math.isfinite(args.min_score):
         raise SystemExit("min_score must be finite and between 0 and 1")
 
-    window_frames = max(FRAMES_PER_WINDOW, int(round(args.window_seconds * args.fps)))
-    hop_frames = max(1, int(round(args.hop_seconds * args.fps)))
+    window_frames = max(FRAMES_PER_WINDOW, _round_positive_half_up(args.window_seconds * args.fps))
+    hop_frames = max(1, _round_positive_half_up(args.hop_seconds * args.fps))
     windows = _windows(args.start_frame, args.end_frame, window_frames, hop_frames, args.max_windows)
     unique_frames = sorted({frame for window in windows for frame in window["observed"]})
 
