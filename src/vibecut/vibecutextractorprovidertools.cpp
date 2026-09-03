@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL */
 #include "vibecutextractorprovidertools.h"
 
+#include "vibecutextractorevidencecontract.h"
 #include "vibecutextractorprovider.h"
 #include "vibecutextractorrequest.h"
 #include "vibecutjobmanager.h"
@@ -69,14 +70,21 @@ QJsonObject startProvider(VibeCutTools *tools, const QJsonObject &input)
     QString normalizeError;
     if (!normalizeVibeCutExtractorRequest(capability, request, normalizedRequest, &normalizeError)) return err(normalizeError);
 
+    const int requestedStartFrame = normalizedRequest.value(QStringLiteral("start_frame")).toInt(-1);
+    const int requestedEndFrame = normalizedRequest.value(QStringLiteral("end_frame")).toInt(-1);
     VibeCutExtractorProviderContext context;
     context.jobs = tools->jobManager();
-    context.persistEvidence = [](const QString &sourceId,
-                                 const QString &sourceFingerprint,
-                                 const QString &extractorId,
-                                 const QString &extractorVersion,
-                                 const QList<VibeCutMediaEvidenceRecord> &records,
-                                 QString *error) {
+    context.persistEvidence = [capability, requestedStartFrame, requestedEndFrame](const QString &sourceId,
+                                                                                  const QString &sourceFingerprint,
+                                                                                  const QString &extractorId,
+                                                                                  const QString &extractorVersion,
+                                                                                  const QList<VibeCutMediaEvidenceRecord> &records,
+                                                                                  QString *error) {
+        QString contractError;
+        if (!validateVibeCutExtractorEvidenceContract(capability, requestedStartFrame, requestedEndFrame, records, &contractError)) {
+            if (error) *error = contractError;
+            return false;
+        }
         return VibeCutMediaEvidence::replaceSourceExtractorCurrent(sourceId, sourceFingerprint, extractorId, extractorVersion, records, error);
     };
 
@@ -124,7 +132,7 @@ bool registerVibeCutExtractorProviderTools(VibeCutToolSurface &surface, QString 
     startPolicy.asynchronous = true;
     startPolicy.mutatesProject = false;
     return surface.registerTool(QJsonObject{{QStringLiteral("name"), startPolicy.name},
-                                            {QStringLiteral("description"), QStringLiteral("Start one explicitly registered model-backed media extractor capability through normalized authoritative source metadata, the shared VibeCut JobManager, and the validated evidence sink. The provider never receives a caller-invented source path or generic evidence-write escape hatch.")},
+                                            {QStringLiteral("description"), QStringLiteral("Start one explicitly registered model-backed media extractor capability through normalized authoritative source metadata, the shared VibeCut JobManager, capability-specific evidence contracts and the validated evidence sink. The provider never receives a caller-invented source path or generic evidence-write escape hatch.")},
                                             {QStringLiteral("input_schema"), startInput}},
                                 startPolicy, [tools](const QJsonObject &input) { return startProvider(tools, input); }, error);
 }
