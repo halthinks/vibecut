@@ -51,6 +51,7 @@ set(kdenlive_SRCS
   vibecut/vibecutmediaevidence.cpp
   vibecut/vibecutmediaevidencetools.cpp
   vibecut/vibecutmediaindex.cpp
+  vibecut/vibecutmediaindexdocuments.cpp
   vibecut/vibecutmediatools.cpp
   vibecut/vibecutmemorytools.cpp
   vibecut/vibecutmixtools.cpp
@@ -79,6 +80,8 @@ set(kdenlive_SRCS
   vibecut/vibecutscript.cpp
   vibecut/vibecutsecretstore.cpp
   vibecut/vibecutselectiontools.cpp
+  vibecut/vibecutsemanticruntime.cpp
+  vibecut/vibecutsemantictools.cpp
   vibecut/vibecutsequencetools.cpp
   vibecut/vibecutshotextractortools.cpp
   vibecut/vibecutsilenceextractortools.cpp
