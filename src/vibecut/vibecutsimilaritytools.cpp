@@ -5,8 +5,10 @@
 #include "bin/projectitemmodel.h"
 #include "core.h"
 #include "kdenlivesettings.h"
+#include "vibecutcrossmodaltools.h"
 #include "vibecutjobmanager.h"
 #include "vibecutmediaevidence.h"
+#include "vibecutsemantictools.h"
 #include "vibecuttools.h"
 #include "vibecuttoolsurface.h"
 
@@ -123,7 +125,7 @@ QJsonObject startSimilarity(VibeCutTools *tools, const QJsonObject &input)
         record.kind = matched ? QStringLiteral("video_similarity_match") : QStringLiteral("video_similarity_no_match");
         record.text = matched ? QStringLiteral("video similarity near duplicate match %1 frames").arg(matchingFrames)
                               : QStringLiteral("video similarity no MPEG-7 match");
-        record.confidence = matched ? 1.0 : 1.0;
+        record.confidence = 1.0;
         record.producedUtc = QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs);
         record.metadata = QJsonObject{{QStringLiteral("first_bin_id"), firstId}, {QStringLiteral("second_bin_id"), secondId},
                                       {QStringLiteral("first_source_fingerprint"), firstFingerprint},
@@ -184,5 +186,7 @@ bool registerVibeCutSimilarityTools(VibeCutToolSurface &surface, QString *error)
     policy.risk = VibeCutToolRisk::ExternalSideEffect;
     policy.asynchronous = true;
     policy.mutatesProject = false;
-    return surface.registerTool(schema, policy, [tools](const QJsonObject &input) { return startSimilarity(tools, input); }, error);
+    if (!surface.registerTool(schema, policy, [tools](const QJsonObject &input) { return startSimilarity(tools, input); }, error)) return false;
+    if (!registerVibeCutSemanticTools(surface, error)) return false;
+    return registerVibeCutCrossModalTools(surface, error);
 }
