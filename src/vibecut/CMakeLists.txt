@@ -82,6 +82,7 @@ set(kdenlive_SRCS
   vibecut/vibecutsourceextractortools.cpp
   vibecut/vibecutspeakeridentity.cpp
   vibecut/vibecutspeakeridentitytools.cpp
+  vibecut/vibecutsubjectcandidates.cpp
   vibecut/vibecutsubtitleedittools.cpp
   vibecut/vibecutsubtitlepipeline.cpp
   vibecut/vibecutsubtitletools.cpp
