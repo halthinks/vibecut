@@ -7,7 +7,9 @@ INSTALL(FILES
     diarize_pyannote.py
     objects_detr.py
     ocr_tesseract.py
+    semantic_minilm.py
     requirements-audio-events.txt
     requirements-diarization.txt
+    requirements-semantic.txt
     requirements-vision.txt
 DESTINATION ${KDE_INSTALL_DATADIR}${DATA_INSTALL_PREFIX}/scripts/vibecut)
