@@ -7,6 +7,7 @@
 #include "kdenlivesettings.h"
 #include "vibecutcrossmodaltools.h"
 #include "vibecutduplicatefusion.h"
+#include "vibecuthybridsearch.h"
 #include "vibecutjobmanager.h"
 #include "vibecutmediaevidence.h"
 #include "vibecutsemantictools.h"
@@ -190,5 +191,6 @@ bool registerVibeCutSimilarityTools(VibeCutToolSurface &surface, QString *error)
     if (!surface.registerTool(schema, policy, [tools](const QJsonObject &input) { return startSimilarity(tools, input); }, error)) return false;
     if (!registerVibeCutSemanticTools(surface, error)) return false;
     if (!registerVibeCutCrossModalTools(surface, error)) return false;
-    return registerVibeCutDuplicateFusionTools(surface, error);
+    if (!registerVibeCutDuplicateFusionTools(surface, error)) return false;
+    return registerVibeCutHybridSearchTools(surface, error);
 }
