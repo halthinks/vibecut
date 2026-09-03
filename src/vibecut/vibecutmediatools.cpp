@@ -5,6 +5,7 @@
 #include "vibecutmediatools.h"
 
 #include "vibecutmediaindex.h"
+#include "vibecutsemantictools.h"
 #include "vibecuttoolsurface.h"
 
 #include <QJsonArray>
@@ -23,9 +24,7 @@ QJsonObject mediaSearch(const QJsonObject &input)
     }
     const QList<VibeCutMediaSearchHit> hits = index.search(query, input.value(QStringLiteral("limit")).toInt(25));
     QJsonArray jsonHits;
-    for (const VibeCutMediaSearchHit &hit : hits) {
-        jsonHits.append(hit.toJson());
-    }
+    for (const VibeCutMediaSearchHit &hit : hits) jsonHits.append(hit.toJson());
     return QJsonObject{{QStringLiteral("ok"), true}, {QStringLiteral("query"), query},
                        {QStringLiteral("indexed_documents"), index.size()}, {QStringLiteral("hits"), jsonHits}};
 }
@@ -41,10 +40,11 @@ bool registerVibeCutMediaTools(VibeCutToolSurface &surface, QString *error)
                                   {QStringLiteral("required"), QJsonArray{QStringLiteral("query")}},
                                   {QStringLiteral("additionalProperties"), false}};
     const QJsonObject schema{{QStringLiteral("name"), QStringLiteral("media_search")},
-                             {QStringLiteral("description"), QStringLiteral("Search the active project's media knowledge index across transcript/subtitle text and clip names. Returns ranked, time-ranged evidence. Read-only. Future scene/OCR/audio/embedding extractors use this same contract.")},
+                             {QStringLiteral("description"), QStringLiteral("Deterministically search the active project's canonical media knowledge index across transcript/subtitle text, clip names and textual extractor evidence. Returns ranked, time-ranged evidence. Read-only. Use semantic_search_text for conceptual transcript/OCR similarity after semantic_text_refresh; this lexical path remains available independently of ML embeddings.")},
                              {QStringLiteral("input_schema"), inputSchema}};
     VibeCutToolPolicy policy;
     policy.name = QStringLiteral("media_search");
     policy.risk = VibeCutToolRisk::ReadOnly;
-    return surface.registerTool(schema, policy, mediaSearch, error);
+    if (!surface.registerTool(schema, policy, mediaSearch, error)) return false;
+    return registerVibeCutSemanticTools(surface, error);
 }
