@@ -213,6 +213,28 @@ bool validateActionRecord(const VibeCutMediaEvidenceRecord &record, QString *err
         taxonomy.isEmpty() || taxonomy.size() > 128) {
         return fail(error, QStringLiteral("Action metadata requires bounded model, model_revision and taxonomy provenance."));
     }
+    const QString scoreSemantics = record.metadata.value(QStringLiteral("score_semantics")).toString().trimmed();
+    if (scoreSemantics != QLatin1String("softmax_over_fixed_action_set")) {
+        return fail(error, QStringLiteral("Action evidence must declare score_semantics='softmax_over_fixed_action_set'."));
+    }
+    const QString actionSetHash = record.metadata.value(QStringLiteral("action_set_sha256")).toString().trimmed();
+    if (actionSetHash.size() != 64) {
+        return fail(error, QStringLiteral("Action metadata.action_set_sha256 must be a 64-character lowercase SHA-256 digest."));
+    }
+    for (const QChar ch : actionSetHash) {
+        if (!(ch.isDigit() || (ch >= QLatin1Char('a') && ch <= QLatin1Char('f')))) {
+            return fail(error, QStringLiteral("Action metadata.action_set_sha256 must be a 64-character lowercase SHA-256 digest."));
+        }
+    }
+    const QJsonValue candidateCountValue = record.metadata.value(QStringLiteral("candidate_count"));
+    const int candidateCount = candidateCountValue.toInt(-1);
+    if (!candidateCountValue.isDouble() || candidateCount < 1 || candidateCount > 10000 ||
+        static_cast<double>(candidateCount) != candidateCountValue.toDouble()) {
+        return fail(error, QStringLiteral("Action metadata.candidate_count must be a positive integer up to 10000."));
+    }
+    if (labelId >= candidateCount) {
+        return fail(error, QStringLiteral("Action metadata.label_id must be within the declared fixed candidate set."));
+    }
     if (record.metadata.value(QStringLiteral("authority")).toString() != QLatin1String("model_prediction")) {
         return fail(error, QStringLiteral("Action evidence must declare authority='model_prediction'."));
     }
