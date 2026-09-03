@@ -17,6 +17,7 @@
 #include <QtMath>
 
 #include <cmath>
+#include <limits>
 #include <memory>
 
 namespace {
@@ -298,22 +299,25 @@ public:
                     record.kind = QStringLiteral("object_detection_prediction");
                     record.startFrame = frame;
                     record.endFrame = frame + 1;
-                    record.text = QStringLiteral("COCO model prediction: %1 (score %2)").arg(label).arg(score, 0, 'f', 4);
+                    record.text = QStringLiteral("COCO object-model prediction: %1 (score %2)").arg(label).arg(score, 0, 'f', 4);
                     record.confidence = score;
-                    record.metadata = QJsonObject{{QStringLiteral("sample_frame"), frame},
-                                                   {QStringLiteral("image_width"), imageWidth},
-                                                   {QStringLiteral("image_height"), imageHeight},
-                                                   {QStringLiteral("bbox_pixels"), box},
-                                                   {QStringLiteral("label"), label},
-                                                   {QStringLiteral("label_id"), labelId},
-                                                   {QStringLiteral("model"), kModel},
-                                                   {QStringLiteral("model_revision"), kModelRevision},
-                                                   {QStringLiteral("taxonomy"), kTaxonomy},
-                                                   {QStringLiteral("authority"), QStringLiteral("model_prediction")},
-                                                   {QStringLiteral("device"), root.value(QStringLiteral("device")).toString()},
-                                                   {QStringLiteral("transformers_version"), transformersVersion},
-                                                   {QStringLiteral("torch_version"), torchVersion},
-                                                   {QStringLiteral("torchvision_version"), torchvisionVersion}};
+                    record.metadata = QJsonObject{
+                        {QStringLiteral("sample_frame"), frame},
+                        {QStringLiteral("image_width"), imageWidth},
+                        {QStringLiteral("image_height"), imageHeight},
+                        {QStringLiteral("bbox_pixels"), box},
+                        {QStringLiteral("label"), label},
+                        {QStringLiteral("label_id"), labelId},
+                        {QStringLiteral("model"), kModel},
+                        {QStringLiteral("model_revision"), kModelRevision},
+                        {QStringLiteral("taxonomy"), kTaxonomy},
+                        {QStringLiteral("authority"), QStringLiteral("model_prediction")},
+                        {QStringLiteral("device"), root.value(QStringLiteral("device")).toString()},
+                        {QStringLiteral("transformers_version"), transformersVersion},
+                        {QStringLiteral("torch_version"), torchVersion},
+                        {QStringLiteral("torchvision_version"), torchvisionVersion},
+                        {QStringLiteral("sample_interval_frames"), sampleIntervalFrames},
+                    };
                     records.append(record);
                 }
             }
@@ -324,7 +328,7 @@ public:
                 process->deleteLater();
                 return;
             }
-            jobs->markSucceeded(jobId, QStringLiteral("Persisted %1 object prediction(s) across %2 sampled frame(s).")
+            jobs->markSucceeded(jobId, QStringLiteral("Persisted %1 object-model prediction(s) across %2 sampled frame(s).")
                                            .arg(records.size()).arg(samples.size()));
             process->deleteLater();
         });
@@ -337,19 +341,24 @@ public:
         });
 
         process->start(vibeCutVisionPython(), arguments);
-        return QJsonObject{{QStringLiteral("ok"), true}, {QStringLiteral("started"), true},
-                           {QStringLiteral("job_id"), jobId}, {QStringLiteral("model"), kModel},
-                           {QStringLiteral("model_revision"), kModelRevision}, {QStringLiteral("taxonomy"), kTaxonomy},
+        return QJsonObject{{QStringLiteral("ok"), true},
+                           {QStringLiteral("started"), true},
+                           {QStringLiteral("job_id"), jobId},
+                           {QStringLiteral("model"), kModel},
+                           {QStringLiteral("model_revision"), kModelRevision},
+                           {QStringLiteral("taxonomy"), kTaxonomy},
+                           {QStringLiteral("required_samples"), requiredSamples},
                            {QStringLiteral("sample_interval_frames"), sampleIntervalFrames},
-                           {QStringLiteral("sample_count"), static_cast<qint64>(requiredSamples)},
-                           {QStringLiteral("min_score"), minScore}, {QStringLiteral("device"), device}};
+                           {QStringLiteral("min_score"), minScore},
+                           {QStringLiteral("device"), device}};
     }
 };
 }
 
 QString vibeCutObjectDetectionScript()
 {
-    return QStandardPaths::locate(QStandardPaths::AppDataLocation, QStringLiteral("scripts/vibecut/objects_detr.py"));
+    return QStandardPaths::locate(QStandardPaths::AppDataLocation,
+                                  QStringLiteral("scripts/vibecut/object_detect_detr.py"));
 }
 
 void ensureVibeCutLocalObjectProviderRegistered()
