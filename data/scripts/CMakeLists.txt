@@ -2,6 +2,7 @@
 # SPDX-FileCopyrightText: Jean-Baptiste Mardelle <jb@kdenlive.org>
 
 add_subdirectory(automask)
+add_subdirectory(vibecut)
 add_subdirectory(vosk)
 add_subdirectory(whisper)
 
