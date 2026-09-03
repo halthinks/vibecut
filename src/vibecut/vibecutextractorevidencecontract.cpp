@@ -19,6 +19,26 @@ bool withinRequestedRange(const VibeCutMediaEvidenceRecord &record, int startFra
     return record.startFrame >= startFrame && record.endFrame <= endFrame && record.endFrame >= record.startFrame;
 }
 
+bool validatePixelBox(const QJsonObject &metadata, const QString &prefix, QString *error)
+{
+    const int imageWidth = metadata.value(QStringLiteral("image_width")).toInt(-1);
+    const int imageHeight = metadata.value(QStringLiteral("image_height")).toInt(-1);
+    if (imageWidth <= 0 || imageHeight <= 0) {
+        return fail(error, QStringLiteral("%1 metadata requires positive image_width and image_height.").arg(prefix));
+    }
+    const QJsonObject box = metadata.value(QStringLiteral("bbox_pixels")).toObject();
+    const int x = box.value(QStringLiteral("x")).toInt(-1);
+    const int y = box.value(QStringLiteral("y")).toInt(-1);
+    const int width = box.value(QStringLiteral("width")).toInt(-1);
+    const int height = box.value(QStringLiteral("height")).toInt(-1);
+    if (x < 0 || y < 0 || width <= 0 || height <= 0 ||
+        static_cast<qint64>(x) + static_cast<qint64>(width) > imageWidth ||
+        static_cast<qint64>(y) + static_cast<qint64>(height) > imageHeight) {
+        return fail(error, QStringLiteral("%1 bbox_pixels must be a positive rectangle fully contained by the sampled image.").arg(prefix));
+    }
+    return true;
+}
+
 bool validateOcrRecord(const VibeCutMediaEvidenceRecord &record, QString *error)
 {
     if (record.kind != QLatin1String("ocr_text")) {
@@ -38,21 +58,7 @@ bool validateOcrRecord(const VibeCutMediaEvidenceRecord &record, QString *error)
     if (sampleFrame != record.startFrame) {
         return fail(error, QStringLiteral("OCR metadata.sample_frame must equal the evidence start_frame."));
     }
-    const int imageWidth = record.metadata.value(QStringLiteral("image_width")).toInt(-1);
-    const int imageHeight = record.metadata.value(QStringLiteral("image_height")).toInt(-1);
-    if (imageWidth <= 0 || imageHeight <= 0) {
-        return fail(error, QStringLiteral("OCR metadata requires positive image_width and image_height."));
-    }
-    const QJsonObject box = record.metadata.value(QStringLiteral("bbox_pixels")).toObject();
-    const int x = box.value(QStringLiteral("x")).toInt(-1);
-    const int y = box.value(QStringLiteral("y")).toInt(-1);
-    const int width = box.value(QStringLiteral("width")).toInt(-1);
-    const int height = box.value(QStringLiteral("height")).toInt(-1);
-    if (x < 0 || y < 0 || width <= 0 || height <= 0 ||
-        static_cast<qint64>(x) + static_cast<qint64>(width) > imageWidth ||
-        static_cast<qint64>(y) + static_cast<qint64>(height) > imageHeight) {
-        return fail(error, QStringLiteral("OCR bbox_pixels must be a positive rectangle fully contained by the sampled image."));
-    }
+    if (!validatePixelBox(record.metadata, QStringLiteral("OCR"), error)) return false;
     const QString language = record.metadata.value(QStringLiteral("language")).toString().trimmed();
     if (language.isEmpty() || language.size() > 128) {
         return fail(error, QStringLiteral("OCR metadata.language must contain 1 to 128 characters."));
@@ -115,6 +121,46 @@ bool validateAudioEventRecord(const VibeCutMediaEvidenceRecord &record, QString 
     }
     return true;
 }
+
+bool validateObjectDetectionRecord(const VibeCutMediaEvidenceRecord &record, QString *error)
+{
+    if (record.kind != QLatin1String("object_detection_prediction")) {
+        return fail(error, QStringLiteral("Object-detection providers may persist only 'object_detection_prediction' evidence records."));
+    }
+    if (record.startFrame < 0 || record.endFrame != record.startFrame + 1) {
+        return fail(error, QStringLiteral("Object detections must identify exactly one sampled source frame as [frame, frame+1)."));
+    }
+    if (record.confidence < 0.0 || record.confidence > 1.0) {
+        return fail(error, QStringLiteral("Object detections require a normalized model score between 0 and 1."));
+    }
+    if (record.metadata.value(QStringLiteral("sample_frame")).toInt(-1) != record.startFrame) {
+        return fail(error, QStringLiteral("Object-detection metadata.sample_frame must equal evidence start_frame."));
+    }
+    if (!validatePixelBox(record.metadata, QStringLiteral("Object-detection"), error)) return false;
+    const QString label = record.metadata.value(QStringLiteral("label")).toString().trimmed();
+    if (label.isEmpty() || label.size() > 256) {
+        return fail(error, QStringLiteral("Object-detection metadata.label must contain 1 to 256 characters."));
+    }
+    const QJsonValue labelIdValue = record.metadata.value(QStringLiteral("label_id"));
+    const int labelId = labelIdValue.toInt(-1);
+    if (!labelIdValue.isDouble() || labelId < 0 || static_cast<double>(labelId) != labelIdValue.toDouble()) {
+        return fail(error, QStringLiteral("Object-detection metadata.label_id must be a non-negative integer."));
+    }
+    const QString model = record.metadata.value(QStringLiteral("model")).toString().trimmed();
+    const QString modelRevision = record.metadata.value(QStringLiteral("model_revision")).toString().trimmed();
+    const QString taxonomy = record.metadata.value(QStringLiteral("taxonomy")).toString().trimmed();
+    if (model.isEmpty() || model.size() > 256 || modelRevision.isEmpty() || modelRevision.size() > 128 ||
+        taxonomy.isEmpty() || taxonomy.size() > 128) {
+        return fail(error, QStringLiteral("Object-detection metadata requires bounded model, model_revision and taxonomy provenance."));
+    }
+    if (record.metadata.value(QStringLiteral("authority")).toString() != QLatin1String("model_prediction")) {
+        return fail(error, QStringLiteral("Object-detection evidence must declare authority='model_prediction'."));
+    }
+    if (record.text.trimmed().isEmpty() || record.text.size() > 1024) {
+        return fail(error, QStringLiteral("Object-detection prediction text must contain 1 to 1024 characters."));
+    }
+    return true;
+}
 }
 
 bool validateVibeCutExtractorEvidenceContract(const QString &capability,
@@ -142,6 +188,10 @@ bool validateVibeCutExtractorEvidenceContract(const QString &capability,
         }
         if (normalizedCapability == QLatin1String("audio_events")) {
             if (!validateAudioEventRecord(record, error)) return false;
+            continue;
+        }
+        if (normalizedCapability == QLatin1String("objects")) {
+            if (!validateObjectDetectionRecord(record, error)) return false;
             continue;
         }
         if (normalizedCapability != QLatin1String("diarization")) continue;
