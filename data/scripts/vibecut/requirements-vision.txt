@@ -1,0 +1,5 @@
+# VibeCut local vision runtime shared by object and later action adapters.
+transformers==5.16.1
+torch==2.14.0
+torchvision==0.29.0
+Pillow==12.3.0
