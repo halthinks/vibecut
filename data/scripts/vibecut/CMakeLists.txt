@@ -2,7 +2,9 @@
 # SPDX-FileCopyrightText: 2026 vibecut contributors
 
 INSTALL(FILES
+    audio_events_ast.py
     diarize_pyannote.py
     ocr_tesseract.py
+    requirements-audio-events.txt
     requirements-diarization.txt
 DESTINATION ${KDE_INSTALL_DATADIR}${DATA_INSTALL_PREFIX}/scripts/vibecut)
