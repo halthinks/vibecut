@@ -11,6 +11,7 @@
 #include "vibecuthybridsearch.h"
 #include "vibecutjobmanager.h"
 #include "vibecutmediaevidence.h"
+#include "vibecutroughcutsynthesis.h"
 #include "vibecutsemantictools.h"
 #include "vibecuttools.h"
 #include "vibecuttoolsurface.h"
@@ -194,5 +195,6 @@ bool registerVibeCutSimilarityTools(VibeCutToolSurface &surface, QString *error)
     if (!registerVibeCutCrossModalTools(surface, error)) return false;
     if (!registerVibeCutDuplicateFusionTools(surface, error)) return false;
     if (!registerVibeCutHybridSearchTools(surface, error)) return false;
-    return registerVibeCutDuplicateCandidateTools(surface, error);
+    if (!registerVibeCutDuplicateCandidateTools(surface, error)) return false;
+    return registerVibeCutRoughCutSynthesisTools(surface, error);
 }
