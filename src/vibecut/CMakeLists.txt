@@ -64,6 +64,7 @@ set(kdenlive_SRCS
   vibecut/vibecutmodelprovider.cpp
   vibecut/vibecutobjecttracks.cpp
   vibecut/vibecutocrtemporal.cpp
+  vibecut/vibecutpacing.cpp
   vibecut/vibecutplangate.cpp
   vibecut/vibecutplanruntime.cpp
   vibecut/vibecutplantools.cpp
