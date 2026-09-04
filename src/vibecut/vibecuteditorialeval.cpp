@@ -5,6 +5,8 @@
 #include <QJsonArray>
 #include <QSet>
 
+#include <algorithm>
+
 namespace {
 bool parseIds(const QJsonArray &input, QStringList &ids, QString *error, const QString &label)
 {
@@ -29,6 +31,13 @@ bool parseIds(const QJsonArray &input, QStringList &ids, QString *error, const Q
     }
     return true;
 }
+
+QSet<QString> toSet(const QStringList &ids)
+{
+    QSet<QString> result;
+    for (const QString &id : ids) result.insert(id);
+    return result;
+}
 }
 
 QJsonObject evaluateVibeCutEditorialSelection(const QJsonArray &expectedCandidateIds,
@@ -41,8 +50,8 @@ QJsonObject evaluateVibeCutEditorialSelection(const QJsonArray &expectedCandidat
     if (!parseIds(expectedCandidateIds, expected, error, QStringLiteral("Expected")) ||
         !parseIds(actualCandidateIds, actual, error, QStringLiteral("Actual"))) return {};
 
-    const QSet<QString> expectedSet(expected.begin(), expected.end());
-    const QSet<QString> actualSet(actual.begin(), actual.end());
+    const QSet<QString> expectedSet = toSet(expected);
+    const QSet<QString> actualSet = toSet(actual);
     const QSet<QString> common = expectedSet & actualSet;
     const QSet<QString> missed = expectedSet - actualSet;
     const QSet<QString> unexpected = actualSet - expectedSet;
