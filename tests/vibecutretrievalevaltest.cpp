@@ -53,6 +53,18 @@ TEST_CASE("retrieval precision at k penalizes unfilled top-k slots", "[vibecut][
     CHECK(result.value(QStringLiteral("precision_at_k_denominator")).toString().contains(QStringLiteral("unfilled_slots")));
 }
 
+TEST_CASE("retrieval evaluator covers full 2000-pair discovery bound", "[vibecut][retrieval-eval][bound]")
+{
+    QString error;
+    const QJsonObject result = evaluateVibeCutRetrievalRanking(
+        QJsonArray{QStringLiteral("a")}, QJsonArray{QStringLiteral("a")}, 2000, &error);
+    REQUIRE(error.isEmpty());
+    CHECK(result.value(QStringLiteral("max_supported_ranked_items")).toInt() == 2000);
+    CHECK(result.value(QStringLiteral("returned_within_k")).toInt() == 1);
+    CHECK(result.value(QStringLiteral("precision_at_k")).toDouble() == Approx(1.0 / 2000.0).epsilon(1e-12));
+    CHECK(result.value(QStringLiteral("recall_at_k")).toDouble() == Approx(1.0));
+}
+
 TEST_CASE("retrieval evaluation distinguishes first-hit rank and missing relevant ids", "[vibecut][retrieval-eval][rank]")
 {
     QString error;
@@ -108,7 +120,7 @@ TEST_CASE("retrieval evaluation fails closed on empty reference duplicate ids an
 {
     QString error;
     CHECK(evaluateVibeCutRetrievalRanking(QJsonArray{}, QJsonArray{}, 5, &error).isEmpty());
-    CHECK(error.contains(QStringLiteral("1..1000")));
+    CHECK(error.contains(QStringLiteral("1..2000")));
 
     error.clear();
     CHECK(evaluateVibeCutRetrievalRanking(QJsonArray{QStringLiteral("a")},
@@ -117,7 +129,11 @@ TEST_CASE("retrieval evaluation fails closed on empty reference duplicate ids an
 
     error.clear();
     CHECK(evaluateVibeCutRetrievalRanking(QJsonArray{QStringLiteral("a")}, QJsonArray{QStringLiteral("a")}, 0, &error).isEmpty());
-    CHECK(error.contains(QStringLiteral("1..1000")));
+    CHECK(error.contains(QStringLiteral("1..2000")));
+
+    error.clear();
+    CHECK(evaluateVibeCutRetrievalRanking(QJsonArray{QStringLiteral("a")}, QJsonArray{QStringLiteral("a")}, 2001, &error).isEmpty());
+    CHECK(error.contains(QStringLiteral("1..2000")));
 }
 
 TEST_CASE("retrieval evaluation tool is read only reference based and exposes no quality threshold", "[vibecut][retrieval-eval][surface]")
@@ -136,6 +152,8 @@ TEST_CASE("retrieval evaluation tool is read only reference based and exposes no
     CHECK(properties.contains(QStringLiteral("relevant_ids")));
     CHECK(properties.contains(QStringLiteral("ranked_ids")));
     CHECK(properties.contains(QStringLiteral("k")));
+    CHECK(properties.value(QStringLiteral("ranked_ids")).toObject().value(QStringLiteral("maxItems")).toInt() == 2000);
+    CHECK(properties.value(QStringLiteral("k")).toObject().value(QStringLiteral("maximum")).toInt() == 2000);
     CHECK_FALSE(properties.contains(QStringLiteral("pass_threshold")));
     CHECK_FALSE(properties.contains(QStringLiteral("quality_score")));
     CHECK_FALSE(properties.contains(QStringLiteral("auto_execute")));
