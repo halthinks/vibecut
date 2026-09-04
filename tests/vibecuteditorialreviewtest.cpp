@@ -4,6 +4,8 @@
 #include "vibecut/vibecuttools.h"
 #include "vibecut/vibecuttoolsurface.h"
 
+#include <cmath>
+
 namespace {
 QJsonObject review(const QString &reviewer,
                    int relevance,
