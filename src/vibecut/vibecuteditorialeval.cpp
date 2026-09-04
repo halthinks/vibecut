@@ -3,6 +3,7 @@
 
 #include "vibecuteditorialcase.h"
 #include "vibecuteditorialreview.h"
+#include "vibecutretrievaleval.h"
 #include "vibecuttoolsurface.h"
 
 #include <QHash>
@@ -153,5 +154,6 @@ bool registerVibeCutEditorialEvalTools(VibeCutToolSurface &surface, QString *err
                                           {QStringLiteral("input_schema"), input}},
                               policy, toolHandler, error)) return false;
     if (!registerVibeCutEditorialReviewTools(surface, error)) return false;
-    return registerVibeCutEditorialCaseTools(surface, error);
+    if (!registerVibeCutEditorialCaseTools(surface, error)) return false;
+    return registerVibeCutRetrievalEvalTools(surface, error);
 }
