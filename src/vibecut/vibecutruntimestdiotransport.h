@@ -1,0 +1,56 @@
+/* SPDX-License-Identifier: GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL */
+#pragma once
+
+#include "vibecutcontracts.h"
+
+#include <QByteArray>
+#include <QJsonObject>
+#include <QObject>
+#include <QStringList>
+
+class QProcess;
+class VibeCutRuntimeProtocolAdapter;
+
+/** NDJSON transport to an out-of-process runtime. The transport has no editor
+ * authority of its own; every inbound request passes through
+ * VibeCutRuntimeProtocolAdapter. */
+class VibeCutRuntimeStdioTransport : public QObject
+{
+    Q_OBJECT
+public:
+    static constexpr int MaxProtocolLineBytes = 2 * 1024 * 1024;
+
+    explicit VibeCutRuntimeStdioTransport(VibeCutRuntimeProtocolAdapter *adapter, QObject *parent = nullptr);
+    ~VibeCutRuntimeStdioTransport() override;
+
+    bool start(const QString &program, const QStringList &arguments = QStringList(),
+               VibeCutTrustMode helloMode = VibeCutTrustMode::Off,
+               QString *error = nullptr);
+    void stop(const QString &reason = QStringLiteral("Runtime transport stopped by adapter."));
+    bool running() const;
+
+    /** Send a human/adapter authorization decision to the connected runtime. */
+    bool sendAuthorization(VibeCutTrustMode mode, bool humanApproved,
+                           bool humanDecisionPresent = true,
+                           QString *error = nullptr);
+
+Q_SIGNALS:
+    void diagnostic(const QString &message);
+    void stopped(int exitCode, int exitStatus);
+
+private Q_SLOTS:
+    void readRuntimeStdout();
+    void readRuntimeStderr();
+    void runtimeFinished(int exitCode, int exitStatus);
+
+private:
+    bool writeEnvelope(const QJsonObject &envelope, QString *error = nullptr);
+    void invalidatePlanForDisconnect(const QString &reason);
+    void failProtocol(const QString &message);
+
+    VibeCutRuntimeProtocolAdapter *m_adapter = nullptr;
+    QProcess *m_process = nullptr;
+    QByteArray m_stdoutBuffer;
+    VibeCutTrustMode m_helloMode = VibeCutTrustMode::Off;
+    bool m_stopping = false;
+};
