@@ -70,9 +70,11 @@ Rules:
 5. Before each invoke, adapter requires current project revision == `expected_revision`.
 6. A successful response returns `revision_before` and `revision_after`; runtime uses `revision_after` as the next `expected_revision`.
 7. If an external-only asynchronous job is running and project state changes before remaining operations, the remaining plan is stale and must stop.
-8. A rejected/stale authorization id cannot be reused.
+8. `complete_plan` explicitly releases a successful authorization after all approved operations have completed and the expected revision still matches.
+9. `abort_plan` explicitly stops a pending/authorized plan. Initial shim behavior invalidates authorization; Step 4 adds plan-wide checkpoint rollback parity.
+10. A rejected/stale/completed/aborted authorization id cannot be reused.
 
-This prevents both stale-plan execution and post-approval plan substitution.
+This prevents stale-plan execution, post-approval plan substitution, and ambiguous authorization lifetime.
 
 ## 5. Required message types
 
@@ -104,7 +106,7 @@ The tool table is authoritative for that adapter session. The runtime must not i
 
 Direction: runtime → adapter request.
 
-Payload names an inspection operation and JSON input. The adapter returns current editor-derived state plus the revision token used for the inspection.
+Payload names a read-only advertised tool and JSON input. The adapter returns current editor-derived state plus the revision token used for the inspection.
 
 ```json
 {"operation":"project_snapshot","input":{}}
@@ -133,7 +135,7 @@ Approved response payload:
 }
 ```
 
-Rejected response omits `authorization_id` and contains a reason. Version 1 never infers approval from silence.
+Rejected response omits `authorization_id` and contains a reason. Version 1 never infers approval from silence where policy requires a human decision.
 
 ### `invoke`
 
@@ -175,11 +177,40 @@ Direction: runtime → adapter request.
   "operation_id": "op-1",
   "expected_revision": 43,
   "expected_postconditions": ["..."],
-  "inspection": "project_snapshot"
+  "inspection": "project_snapshot",
+  "inspection_input": {}
 }
 ```
 
-The adapter returns measured/native postcondition evidence. `ok: true` without supporting state/evidence is not sufficient verification.
+`inspection` must name an advertised read-only adapter tool. The adapter returns its measured/native state together with the expected-postcondition strings. Generic strings are not magically interpreted as truth by the adapter. `ok: true` without supporting state/evidence is not sufficient verification.
+
+### `complete_plan`
+
+Direction: runtime → adapter request.
+
+```json
+{
+  "plan_id": "plan-...",
+  "authorization_id": "auth-...",
+  "expected_revision": 43
+}
+```
+
+The adapter accepts completion only when every approved operation is terminal-successful, no tracked background operation remains, and current revision equals `expected_revision`. It then invalidates the authorization. Step 4 uses this lifecycle boundary to close a plan-wide Undo checkpoint/macro.
+
+### `abort_plan`
+
+Direction: runtime → adapter request.
+
+```json
+{
+  "plan_id": "plan-...",
+  "authorization_id": "auth-...",
+  "reason": "runtime stopped after failed verification"
+}
+```
+
+A pending plan may omit `authorization_id`. Abort invalidates pending/authorization state. Initial Step-2 shim does not claim plan-wide rollback parity; Step 4 adds adapter-side checkpoint rollback at this boundary.
 
 ### `job_update`
 
@@ -201,7 +232,7 @@ Revision tokens are opaque monotonic adapter state. Runtime-owned successful ope
 
 Direction: runtime/adapter → evidence-store owner request.
 
-Payload contains one or more records conforming to `schema/evidence.schema.json`. Evidence persistence never mutates Kdenlive project truth by itself.
+Payload contains one or more records conforming to `schema/evidence.schema.json`. Version 1 adapter persistence may require all records in one put to share the same source id/fingerprint/extractor id/version so replacement remains one canonical evidence slice. Evidence persistence never mutates Kdenlive project truth by itself.
 
 ### `evidence_get`
 
@@ -310,5 +341,7 @@ The first extracted runtime is protocol-valid only when a fake adapter can demon
 8. reject unexpected revision changes while accepting revision changes caused by prior approved operations;
 9. invoke only advertised and approved tools;
 10. verify postconditions from adapter state;
-11. receive job lifecycle events and stop remaining work when an external-only job observes project drift;
-12. persist/retrieve evidence without converting it into editor truth.
+11. complete an all-success plan and invalidate its authorization;
+12. abort a pending/authorized plan and invalidate its authorization;
+13. receive job lifecycle events and stop remaining work when an external-only job observes project drift;
+14. persist/retrieve evidence without converting it into editor truth.
