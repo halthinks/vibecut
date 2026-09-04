@@ -1,8 +1,12 @@
 /* SPDX-License-Identifier: GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL */
 #include "catch.hpp"
+#include "tests_definitions.h"
 #include "vibecut/vibecutretrievaleval.h"
 #include "vibecut/vibecuttools.h"
 #include "vibecut/vibecuttoolsurface.h"
+
+#include <QFile>
+#include <QJsonDocument>
 
 #include <cmath>
 
@@ -62,6 +66,42 @@ TEST_CASE("retrieval evaluation distinguishes first-hit rank and missing relevan
     const QJsonArray missing = result.value(QStringLiteral("missing_relevant_ids")).toArray();
     REQUIRE(missing.size() == 1);
     CHECK(missing.at(0).toString() == QStringLiteral("z"));
+}
+
+TEST_CASE("golden retrieval ranking fixtures reproduce declared metrics", "[vibecut][retrieval-eval][golden]")
+{
+    QFile file(sourcesPath + QStringLiteral("/dataset/vibecut/retrieval_ranking_cases.json"));
+    REQUIRE(file.open(QIODevice::ReadOnly));
+    QJsonParseError parseError;
+    const QJsonDocument document = QJsonDocument::fromJson(file.readAll(), &parseError);
+    REQUIRE(parseError.error == QJsonParseError::NoError);
+    REQUIRE(document.isObject());
+    const QJsonObject root = document.object();
+    CHECK(root.value(QStringLiteral("schema_version")).toInt() == 1);
+    CHECK(root.value(QStringLiteral("semantics")).toString().contains(QStringLiteral("not_semantic_truth")));
+    const QJsonArray fixtures = root.value(QStringLiteral("fixtures")).toArray();
+    REQUIRE(fixtures.size() >= 5);
+    for (const QJsonValue &value : fixtures) {
+        REQUIRE(value.isObject());
+        const QJsonObject fixture = value.toObject();
+        INFO("fixture: " << fixture.value(QStringLiteral("id")).toString().toStdString());
+        QString error;
+        const QJsonObject result = evaluateVibeCutRetrievalRanking(
+            fixture.value(QStringLiteral("relevant_ids")).toArray(),
+            fixture.value(QStringLiteral("ranked_ids")).toArray(),
+            fixture.value(QStringLiteral("k")).toInt(), &error);
+        REQUIRE(error.isEmpty());
+        const QJsonObject expected = fixture.value(QStringLiteral("expected")).toObject();
+        CHECK(result.value(QStringLiteral("precision_at_k")).toDouble() == Approx(expected.value(QStringLiteral("precision_at_k")).toDouble()).epsilon(1e-9));
+        CHECK(result.value(QStringLiteral("recall_at_k")).toDouble() == Approx(expected.value(QStringLiteral("recall_at_k")).toDouble()).epsilon(1e-9));
+        CHECK(result.value(QStringLiteral("average_precision_at_k")).toDouble() == Approx(expected.value(QStringLiteral("average_precision_at_k")).toDouble()).epsilon(1e-9));
+        CHECK(result.value(QStringLiteral("reciprocal_rank")).toDouble() == Approx(expected.value(QStringLiteral("reciprocal_rank")).toDouble()).epsilon(1e-9));
+        CHECK(result.value(QStringLiteral("recall_over_full_ranked_list")).toDouble() == Approx(expected.value(QStringLiteral("recall_over_full_ranked_list")).toDouble()).epsilon(1e-9));
+        if (expected.contains(QStringLiteral("missing_relevant_ids"))) {
+            CHECK(result.value(QStringLiteral("missing_relevant_ids")).toArray() == expected.value(QStringLiteral("missing_relevant_ids")).toArray());
+        }
+        CHECK_FALSE(result.value(QStringLiteral("quality_claim")).toBool(true));
+    }
 }
 
 TEST_CASE("retrieval evaluation fails closed on empty reference duplicate ids and invalid k", "[vibecut][retrieval-eval][integrity]")
