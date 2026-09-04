@@ -3,7 +3,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any, Mapping
 
 from .contracts import EditPlan, validate_plan
@@ -84,6 +84,48 @@ class RuntimeSession:
             policies[name] = policy
         self.hello = SessionHello(editor_id, adapter_id, revision, trust_mode, schemas, policies)
         return self.hello
+
+    def inspect(
+        self,
+        adapter: AdapterClient,
+        operation: str,
+        input: Mapping[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Run one advertised read-only adapter inspection and refresh revision.
+
+        Inspection is deliberately disabled while an authorization is active.
+        If current editor revision changed since hello, any merely prepared plan
+        is discarded because its immutable base_revision is no longer current.
+        """
+        hello = self._require_hello()
+        if self.authorization_id is not None or (self.gate is not None and self.gate.authorized):
+            raise SessionError("cannot refresh inspection state while a plan authorization is active")
+        name = _bounded_string(operation, "inspection operation")
+        policy = hello.policies.get(name)
+        if policy is None or not policy.enabled:
+            raise SessionError(f"inspection tool is unavailable: {name}")
+        if policy.risk is not ToolRisk.READ_ONLY or policy.mutates_project:
+            raise SessionError(f"inspect may use advertised read-only tools only: {name}")
+        payload_input = dict(input or {})
+        response = self._exchange(
+            adapter,
+            request("inspect", {"operation": name, "input": payload_input}),
+        )
+        payload = self._success_payload(response, "inspect")
+        if payload.get("operation") != name:
+            raise SessionError("adapter inspection response names a different operation")
+        revision = _revision(payload.get("project_revision"), "project_revision")
+        result = payload.get("result")
+        if not isinstance(result, dict):
+            raise SessionError("inspection response requires structured adapter state evidence")
+        if revision != hello.project_revision:
+            self.hello = replace(hello, project_revision=revision)
+            if self.plan is not None and self.plan.base_revision != revision:
+                self.plan = None
+                self.execution_order = ()
+                self.gate = None
+                self.approved_operation_ids = frozenset()
+        return dict(payload)
 
     def prepare_plan(self, value: EditPlan | Mapping[str, Any]) -> EditPlan:
         hello = self._require_hello()
@@ -286,8 +328,6 @@ class RuntimeSession:
             if event.type == "error":
                 raise SessionError(_error_message(event))
             if event.type == "revision":
-                # A generic revision event is not attributable to the active job,
-                # so even a mutating job cannot claim it as its own state change.
                 revision = _revision(event.payload.get("project_revision"), "project_revision")
                 gate.require_current(revision)
                 continue
