@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://halthinks.example/vibecut/runtime/schema/job.schema.json",
+  "$comment": "SPDX-License-Identifier: Apache-2.0",
+  "title": "VibeCut Job Record v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "kind", "label", "state", "progress", "message", "cancelable"],
+  "properties": {
+    "id": {"type": "string", "minLength": 1, "maxLength": 1024},
+    "kind": {"type": "string", "minLength": 1, "maxLength": 1024},
+    "label": {"type": "string", "maxLength": 4096},
+    "state": {
+      "type": "string",
+      "enum": ["queued", "running", "cancel_requested", "succeeded", "failed", "cancelled"]
+    },
+    "progress": {
+      "type": "integer",
+      "minimum": -1,
+      "maximum": 100,
+      "description": "-1 means progress unavailable."
+    },
+    "message": {"type": "string", "maxLength": 16384},
+    "cancelable": {"type": "boolean"},
+    "result": {
+      "type": "object",
+      "description": "Optional bounded machine-readable successful result. Adapter/runtime implementations must enforce their byte limit."
+    }
+  }
+}
