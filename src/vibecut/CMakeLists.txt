@@ -40,6 +40,7 @@ set(kdenlive_SRCS
   vibecut/vibecutextractorrequest.cpp
   vibecut/vibecutfreezeextractortools.cpp
   vibecut/vibecutgrouptools.cpp
+  vibecut/vibecuthighlights.cpp
   vibecut/vibecuthooks.cpp
   vibecut/vibecuthybridsearch.cpp
   vibecut/vibecutjobmanager.cpp
