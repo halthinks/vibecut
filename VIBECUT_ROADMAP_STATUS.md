@@ -37,11 +37,12 @@ No merge to `vibecut` until all of the following are green on a real Kdenlive de
 8. Rough-cut context/objective-ranking/alternative-comparison smoke proving revision/context hash refusal and zero mutation authority.
 9. Highlight/short proposal smoke proving exact integer budgets, objective/context provenance, overlap rejection and zero mutation authority.
 10. B-roll opportunity → SigLIP candidate retrieval → placement-proposal smoke, including cancellation, context-change refusal and proof that sampled visual frames are not silently promoted into invented source excerpts.
-11. Pacing/narrative analysis smoke proving exact source/context freshness, semantic fallback behavior and zero normative/edit authority.
-12. Editorial agreement + blinded-review smoke proving explicit-reference semantics, exact proposal/context binding, duplicate-reviewer refusal and zero automatic execution gate.
-13. Debian package build plus clean-host install/uninstall/coexistence smoke.
-14. Hands-on editor plan → authorize → execute → verify/diff → Undo across major edit families.
-15. Review/Auto/Turbo and policy-override smoke, including non-waivable hard confirmation.
+11. Pacing/narrative/continuity analysis smoke proving exact source/context freshness, semantic fallback behavior and zero normative/edit authority.
+12. Editorial agreement + frozen-case + blinded-review smoke proving explicit-reference semantics, exact proposal/context binding, duplicate-reviewer refusal and zero automatic execution gate.
+13. Retrieval/duplicate evaluation smoke proving deterministic top-k metrics, order-independent duplicate-pair identity and zero semantic/duplicate-truth claim.
+14. Debian package build plus clean-host install/uninstall/coexistence smoke.
+15. Hands-on editor plan → authorize → execute → verify/diff → Undo across major edit families.
+16. Review/Auto/Turbo and policy-override smoke, including non-waivable hard confirmation.
 
 Only after those gates pass may the integration branch merge to `vibecut`. An upstream PR remains optional.
 
@@ -102,8 +103,16 @@ Only after those gates pass may the integration branch merge to `vibecut`. An up
 - Strong classification requires multiple independent signals; output authority is `derived_candidate`, never duplicate probability/fact.
 - `media_duplicate_candidates` performs bounded project-wide discovery (max 100 assets / 2,000 pairs) without silently launching expensive missing extractors.
 
+### Retrieval and duplicate evaluation — SOURCE FOUNDATION LANDED
+- `retrieval_ranking_evaluate` measures explicit-reference precision@k, recall@k, AP@k, binary nDCG@k, reciprocal rank and full-list recall.
+- `tests/dataset/vibecut/retrieval_ranking_cases.json` provides synthetic deterministic metric-regression fixtures.
+- `duplicate_ranking_evaluate` canonicalizes each unordered asset pair to one SHA-256 identity, so `(A,B)` and `(B,A)` cannot count twice.
+- Duplicate evaluation reuses retrieval ranking metrics and separately reports fusion classification/evidence-coverage diagnostics; it explicitly makes no duplicate-truth claim.
+- `tests/dataset/vibecut/duplicate_ranking_cases.json` provides synthetic deterministic duplicate-ranking metric fixtures.
+- **Still open:** representative-project relevance/duplicate references and measured performance on real workloads.
+
 ### Retrieval/evidence work still open before autonomous synthesis consumes it by default
-- Quantitative retrieval precision/recall fixtures and duplicate-ranking fixtures on representative projects.
+- Quantitative retrieval precision/recall and duplicate-ranking evaluation on representative projects using the now-landed evaluator contracts.
 - Raw `semantic_search_text` still annotates rather than pre-filters source-fingerprint staleness; `media_search_hybrid` is the preferred current-only path and now enforces both text and source identity.
 - Camera-motion, shot-scale and composition evidence where it demonstrably improves editorial decisions.
 - Runtime verification and quality/calibration fixtures for all learned providers.
@@ -161,17 +170,28 @@ Only after those gates pass may the integration branch merge to `vibecut`. An up
 - `rough_cut_pacing_analyze` revalidates candidate IDs through the canonical rough-cut proposal contract, then reports duration/rhythm variability, chronology, overlap warnings and bounded transcript-density measurements.
 - Pacing applies **no good/bad thresholds** and remains `derived_analysis`, `mutation_authority=none`.
 
-### Narrative / continuity analysis — RELATIVE FOUNDATION LANDED
+### Narrative analysis — RELATIVE FOUNDATION LANDED
 - `rough_cut_narrative_analyze` validates the exact current candidate sequence before analysis.
 - Current MiniLM vectors are used only when anchor ID, source ID/fingerprint and full-text SHA match the canonical candidate; otherwise lexical Jaccard is used as an explicit fallback.
 - Adjacent similarities are reported as continuity measurements; the lowest relative adjacency similarities become possible section-boundary candidates.
 - Highest non-adjacent similarities become possible repetition candidates.
 - No absolute story-quality threshold is applied; output is relative `derived_analysis`, not narrative fact and not edit authority.
 
+### Structural continuity warnings — SOURCE FOUNDATION LANDED
+- `rough_cut_continuity_analyze` revalidates the exact current candidate sequence through the canonical rough-cut proposal contract.
+- Reports source chronology reversals, overlapping authoritative ranges, repeated full normalized transcript hashes and source/provenance changes as explicit review candidates.
+- Positive source gaps are ranked only relative to one another; no gap threshold is applied.
+- Findings are `derived_analysis`, `quality_claim=false`, `executable=false`, `mutation_authority=none`.
+
 ### Editorial agreement evaluation — SOURCE FOUNDATION LANDED
 - `editorial_selection_evaluate` compares an actual candidate-ID sequence against an **explicit** human/golden reference using precision, recall, F1, exact set/order match and pairwise order agreement.
 - `tests/dataset/vibecut/editorial_selection_cases.json` establishes the first reusable deterministic agreement corpus.
 - Agreement metrics explicitly declare `not_editorial_quality`; they do not manufacture a reference answer and do not grant execution authority.
+
+### Frozen editorial evaluation cases — SOURCE FOUNDATION LANDED
+- `editorial_case_validate` binds one frozen context to 2–5 exact proposal IDs under opaque labels and emits deterministic `case_sha256` identity.
+- Optional structural references must declare explicit `golden` or `human_consensus` provenance.
+- `VIBECUT_EDITORIAL_EVALUATION.md` defines the durable blinded-review/evaluation protocol and explicitly forbids metrics or reviews from self-elevating into execution authority.
 
 ### Blinded human review harness — SOURCE FOUNDATION LANDED
 - Fixed rubric `VibeCutEditorialReview-v1`: objective relevance, narrative coherence, pacing fit, source fidelity and overall preference, each 1–5.
@@ -182,7 +202,7 @@ Only after those gates pass may the integration branch merge to `vibecut`. An up
 
 ### Synthesis execution gate — CLOSED
 The architecture needed to measure proposal agreement and collect blinded human reviews now exists, but **synthesis execution is not authorized yet**. The gate remains closed because:
-- current agreement fixtures are structural/toy fixtures, not representative editorial benchmarks;
+- current agreement/retrieval/duplicate fixtures are structural or synthetic metric-regression fixtures, not representative editorial benchmarks;
 - no representative blinded human-review corpus has been collected;
 - no acceptance thresholds have been justified from measured workloads;
 - learned retrieval/evidence providers still require runtime/calibration validation;
@@ -190,7 +210,7 @@ The architecture needed to measure proposal agreement and collect blinded human 
 
 ### Next source sequence
 1. Build representative rough-cut/highlight/B-roll evaluation cases and collect blinded reviews bound to exact proposal IDs.
-2. Add retrieval precision/recall + duplicate-ranking fixtures on representative projects.
+2. Build representative retrieval and duplicate-reference datasets, then score them with `retrieval_ranking_evaluate` / `duplicate_ranking_evaluate`.
 3. Compare proposal versions/providers using agreement metrics plus human-review distributions; do **not** collapse subjective review into an automatic pass/fail score.
 4. Richer highlight/B-roll ranking may incorporate measured audiovisual quality only where calibration is demonstrated.
 5. **Only after evaluation evidence justifies it:** design an explicit approved-proposal → existing governed `EditPlan` translation with normal authorization, verification and Undo. Do not create a parallel synthesis mutation path.
@@ -211,4 +231,5 @@ The repository preserves three documentation layers: halthinks/VibeCut capabilit
 - A sampled B-roll retrieval frame is not a source excerpt; excerpt resolution remains a separate governed step.
 - Agreement with a reference is not intrinsic editorial quality; subjective human review is not ground truth.
 - Human-review records must bind to the exact proposal/context that was actually reviewed.
+- Duplicate-pair benchmark identity is order-independent; reversed pair ordering cannot create a second judgment.
 - A synthesis feature is not complete because a model can suggest it. Execution is complete only when its native mutation, verification and Undo story are real and quantitatively evaluated.
