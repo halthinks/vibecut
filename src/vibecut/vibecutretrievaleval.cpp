@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL */
 #include "vibecutretrievaleval.h"
 
+#include "vibecutduplicateeval.h"
 #include "vibecuttoolsurface.h"
 
 #include <QJsonArray>
@@ -166,8 +167,9 @@ bool registerVibeCutRetrievalEvalTools(VibeCutToolSurface &surface, QString *err
     VibeCutToolPolicy policy;
     policy.name = QStringLiteral("retrieval_ranking_evaluate");
     policy.risk = VibeCutToolRisk::ReadOnly;
-    return surface.registerTool(QJsonObject{{QStringLiteral("name"), policy.name},
-                                            {QStringLiteral("description"), QStringLiteral("Evaluate a ranked retrieval/duplicate-candidate ID list against an explicit relevance reference using precision@k, recall@k, AP@k, binary nDCG@k, reciprocal rank and full-list recall. Metrics measure reference agreement only, not semantic truth or editorial quality.")},
-                                            {QStringLiteral("input_schema"), input}},
-                                policy, toolHandler, error);
+    if (!surface.registerTool(QJsonObject{{QStringLiteral("name"), policy.name},
+                                          {QStringLiteral("description"), QStringLiteral("Evaluate a ranked retrieval/duplicate-candidate ID list against an explicit relevance reference using precision@k, recall@k, AP@k, binary nDCG@k, reciprocal rank and full-list recall. Metrics measure reference agreement only, not semantic truth or editorial quality.")},
+                                          {QStringLiteral("input_schema"), input}},
+                              policy, toolHandler, error)) return false;
+    return registerVibeCutDuplicateEvalTools(surface, error);
 }
