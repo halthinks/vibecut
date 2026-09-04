@@ -35,9 +35,11 @@ No merge to `vibecut` until all of the following are green on a real Kdenlive de
 6. Hybrid lexical+MiniLM search smoke proving stale text and source-fingerprint semantic anchors are excluded from final ranking.
 7. Pairwise MPEG-7, fused duplicate scoring and bounded project-wide duplicate-candidate smoke.
 8. Rough-cut context/objective-ranking/alternative-comparison smoke proving revision/context hash refusal and zero mutation authority.
-9. Debian package build plus clean-host install/uninstall/coexistence smoke.
-10. Hands-on editor plan → authorize → execute → verify/diff → Undo across major edit families.
-11. Review/Auto/Turbo and policy-override smoke, including non-waivable hard confirmation.
+9. Highlight/short proposal smoke proving exact integer budgets, objective/context provenance, overlap rejection and zero mutation authority.
+10. B-roll opportunity → SigLIP candidate retrieval → placement-proposal smoke, including cancellation, context-change refusal and proof that sampled visual frames are not silently promoted into invented source excerpts.
+11. Debian package build plus clean-host install/uninstall/coexistence smoke.
+12. Hands-on editor plan → authorize → execute → verify/diff → Undo across major edit families.
+13. Review/Auto/Turbo and policy-override smoke, including non-waivable hard confirmation.
 
 Only after those gates pass may the integration branch merge to `vibecut`. An upstream PR remains optional.
 
@@ -105,7 +107,7 @@ Only after those gates pass may the integration branch merge to `vibecut`. An up
 - Runtime verification and quality/calibration fixtures for all learned providers.
 - Privacy-safe person/face evidence only if a governed identity boundary and product need justify it.
 
-## Phase 5 — editorial synthesis — FIRST PROPOSAL PIPELINE LANDED IN SOURCE
+## Phase 5 — editorial synthesis — PROPOSAL PIPELINE EXPANDING IN SOURCE
 
 ### Rough-cut proposal context — LANDED
 - `rough_cut_context` builds a bounded canonical candidate universe from current transcript/subtitle documents only.
@@ -136,12 +138,26 @@ Only after those gates pass may the integration branch merge to `vibecut`. An up
 - Weights are code-defined and not caller-adjustable.
 - `top_ranked_alternative_id` means top under the declared rubric only; output authority is `derived_comparison`, `executable=false`, `mutation_authority=none`.
 
+### Highlights / shorts — PROPOSAL FOUNDATION LANDED
+- `highlight_proposal_build` builds deterministic `highlight_reel`, `short` or `quote` proposals from the exact completed rough-cut objective ranking.
+- Selection is bounded by exact integer segment/frame budgets, minimum relevance, overlap rejection and optional source-order preservation.
+- Direct invocation revalidates integer/boolean/numeric types instead of relying only on the JSON schema.
+- Ranked candidate provenance must exactly match the canonical rough-cut context and every final selection is revalidated through `validateVibeCutRoughCutProposal`.
+- Output discloses skipped overlap/budget/provenance/relevance candidates, remains `proposal`, `executable=false`, `mutation_authority=none` and makes no quality-probability claim.
+
+### B-roll opportunity / retrieval / placement — PROPOSAL FOUNDATION LANDED
+- `broll_opportunity_validate` binds a model/user-proposed visual need to exactly one canonical A-roll candidate, bounded visual query and fixed editorial-purpose vocabulary.
+- A-roll target frame geometry/provenance is resolved from the canonical rough-cut context; raw target geometry is never caller-supplied.
+- `broll_candidate_search` asynchronously delegates to current SigLIP text→visual retrieval, propagates cancellation and revalidates project revision plus the full transcript/evidence context at completion.
+- `broll_placement_plan_validate` may select only a visual anchor returned exactly once by that completed current search result.
+- The selected visual frame remains a retrieval reference/center only. VibeCut explicitly leaves source excerpt in/out **unresolved**; a later governed execution translator must resolve and verify a real excerpt of the required duration.
+- B-roll outputs remain proposal/derived-ranking authority with `mutation_authority=none`; there is still no synthesis mutation path.
+
 ### Next source sequence
-1. Highlights/shorts candidate contract with explicit objective/rubric and source-range provenance.
-2. B-roll opportunity detection, candidate retrieval and reviewable placement proposal.
-3. Pacing, section/narrative and continuity analysis.
-4. Quantitative editorial-quality fixtures for rough-cut/highlight alternatives.
-5. **Only after proposal/evaluation quality is measurable:** translate an explicitly approved synthesis proposal into the existing governed `EditPlan`/native mutation path with normal authorization, verification and Undo. Do not create a parallel synthesis mutation path.
+1. Pacing, section/narrative and continuity analysis.
+2. Quantitative editorial-quality fixtures for rough-cut/highlight/B-roll alternatives.
+3. Richer highlight/B-roll ranking using measured audiovisual quality only where calibration is available.
+4. **Only after proposal/evaluation quality is measurable:** translate an explicitly approved synthesis proposal into the existing governed `EditPlan`/native mutation path with normal authorization, verification and Undo. Do not create a parallel synthesis mutation path.
 
 ## Distribution and README lineage
 
@@ -156,4 +172,5 @@ The repository preserves three documentation layers: halthinks/VibeCut capabilit
 - Diarization clusters are not identities.
 - AudioSet/DETR/X-CLIP outputs are model predictions, not facts.
 - Temporal tracks, room-tone/subject/duplicate candidates, hybrid rankings and synthesis comparison scores are derived inference, not promoted observations or probabilities.
+- A sampled B-roll retrieval frame is not a source excerpt; excerpt resolution remains a separate governed step.
 - A synthesis feature is not complete because a model can suggest it. Execution is complete only when its native mutation, verification and Undo story are real and quantitatively evaluated.
