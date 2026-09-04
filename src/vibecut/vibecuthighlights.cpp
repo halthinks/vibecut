@@ -113,7 +113,8 @@ QJsonObject buildTool(VibeCutTools *tools, VibeCutToolSurface *surface, const QJ
     qint64 maxTextChars64 = 600;
     qint64 maxSegments64 = 8;
     qint64 maxTotalFrames = -1;
-    if (!exactInteger(input, QStringLiteral("base_revision"), 0, std::numeric_limits<qint64>::max(), -1, true, baseRevision64, &numberError) ||
+    constexpr qint64 MaxExactJsonInteger = 9007199254740991LL;
+    if (!exactInteger(input, QStringLiteral("base_revision"), 0, MaxExactJsonInteger, -1, true, baseRevision64, &numberError) ||
         !exactInteger(input, QStringLiteral("context_max_candidates"), 1, 300, 200, true, maxCandidates64, &numberError) ||
         !exactInteger(input, QStringLiteral("context_max_text_chars"), 64, 2048, 600, true, maxTextChars64, &numberError) ||
         !exactInteger(input, QStringLiteral("max_segments"), 1, 50, 8, true, maxSegments64, &numberError) ||
