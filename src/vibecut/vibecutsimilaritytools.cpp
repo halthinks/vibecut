@@ -6,6 +6,7 @@
 #include "core.h"
 #include "kdenlivesettings.h"
 #include "vibecutbroll.h"
+#include "vibecutcontinuity.h"
 #include "vibecutcrossmodaltools.h"
 #include "vibecutduplicatecandidates.h"
 #include "vibecutduplicatefusion.h"
@@ -210,5 +211,6 @@ bool registerVibeCutSimilarityTools(VibeCutToolSurface &surface, QString *error)
     if (!registerVibeCutBrollTools(surface, error)) return false;
     if (!registerVibeCutPacingTools(surface, error)) return false;
     if (!registerVibeCutNarrativeTools(surface, error)) return false;
+    if (!registerVibeCutContinuityTools(surface, error)) return false;
     return registerVibeCutEditorialEvalTools(surface, error);
 }
