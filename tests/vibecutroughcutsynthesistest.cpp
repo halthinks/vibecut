@@ -1,6 +1,8 @@
 /* SPDX-License-Identifier: GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL */
 #include "catch.hpp"
 #include "vibecut/vibecutroughcutsynthesis.h"
+#include "vibecut/vibecuttools.h"
+#include "vibecut/vibecuttoolsurface.h"
 
 namespace {
 VibeCutMediaDocument doc(const QString &id, const QString &kind, int start, int end, const QString &text,
@@ -29,6 +31,15 @@ QJsonObject proposalFor(const QJsonObject &context, quint64 revision, const QJso
                        {QStringLiteral("context_sha256"), context.value(QStringLiteral("context_sha256"))},
                        {QStringLiteral("objective"), objective},
                        {QStringLiteral("selected_candidate_ids"), ids}};
+}
+
+QJsonObject schemaByName(const VibeCutToolSurface &surface, const QString &name)
+{
+    for (const QJsonValue &value : surface.schemas()) {
+        const QJsonObject schema = value.toObject();
+        if (schema.value(QStringLiteral("name")).toString() == name) return schema;
+    }
+    return {};
 }
 }
 
@@ -120,4 +131,27 @@ TEST_CASE("rough-cut proposal fails closed on stale context tamper invented ids 
     tooLong.insert(QStringLiteral("max_total_frames"), 80);
     CHECK(validateVibeCutRoughCutProposal(context, tooLong, 7, &error).isEmpty());
     CHECK(error.contains(QStringLiteral("exceeds"), Qt::CaseInsensitive));
+}
+
+TEST_CASE("rough-cut tools are read-only and do not expose raw edit geometry", "[vibecut][rough-cut][surface]")
+{
+    VibeCutTools base;
+    VibeCutToolSurface surface(&base);
+    const auto policies = surface.policies();
+    REQUIRE(policies.contains(QStringLiteral("rough_cut_context")));
+    REQUIRE(policies.contains(QStringLiteral("rough_cut_proposal_validate")));
+    CHECK(policies.value(QStringLiteral("rough_cut_context")).risk == VibeCutToolRisk::ReadOnly);
+    CHECK(policies.value(QStringLiteral("rough_cut_proposal_validate")).risk == VibeCutToolRisk::ReadOnly);
+    CHECK_FALSE(policies.value(QStringLiteral("rough_cut_proposal_validate")).mutatesProject);
+
+    const QJsonObject schema = schemaByName(surface, QStringLiteral("rough_cut_proposal_validate"));
+    REQUIRE_FALSE(schema.isEmpty());
+    const QJsonObject properties = schema.value(QStringLiteral("input_schema")).toObject()
+                                       .value(QStringLiteral("properties")).toObject();
+    CHECK(properties.contains(QStringLiteral("selected_candidate_ids")));
+    CHECK(properties.contains(QStringLiteral("objective")));
+    CHECK_FALSE(properties.contains(QStringLiteral("start_frame")));
+    CHECK_FALSE(properties.contains(QStringLiteral("end_frame")));
+    CHECK_FALSE(properties.contains(QStringLiteral("source_path")));
+    CHECK_FALSE(properties.contains(QStringLiteral("operations")));
 }
