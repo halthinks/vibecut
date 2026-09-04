@@ -36,6 +36,19 @@ bool exactInteger(const QJsonObject &input, const QString &key, qint64 minimum, 
     return true;
 }
 
+QString frameDomain(const QJsonObject &candidate)
+{
+    const QString source = candidate.value(QStringLiteral("source_id")).toString().trimmed();
+    const QString fingerprint = candidate.value(QStringLiteral("source_fingerprint")).toString().trimmed();
+    if (source.isEmpty()) return QStringLiteral("active_timeline_unscoped");
+    if (source.startsWith(QStringLiteral("timeline:"))) {
+        const QStringList parts = source.split(QLatin1Char(':'));
+        const QString timelineId = parts.size() >= 2 ? parts.at(1) : source;
+        return QStringLiteral("timeline:%1|%2").arg(timelineId, fingerprint);
+    }
+    return source + QLatin1Char('|') + fingerprint;
+}
+
 bool buildCurrentContext(VibeCutToolSurface *surface, int maxCandidates, int maxTextChars,
                          QJsonObject &context, QString *error)
 {
@@ -126,6 +139,7 @@ QJsonObject analyzeVibeCutRoughCutContinuity(const QJsonObject &context,
     int overlapCount = 0;
     int repeatedTextCount = 0;
     int provenanceChangeCount = 0;
+    int frameComparisonSkippedCount = 0;
 
     for (int i = 0; i < segments.size(); ++i) {
         const QJsonObject current = segments.at(i).toObject();
@@ -152,9 +166,39 @@ QJsonObject analyzeVibeCutRoughCutContinuity(const QJsonObject &context,
         const int previousEnd = previous.value(QStringLiteral("end_frame")).toInt(-1);
         const int currentStart = current.value(QStringLiteral("start_frame")).toInt(-1);
         const int currentEnd = current.value(QStringLiteral("end_frame")).toInt(-1);
+        const QString previousDomain = frameDomain(previous);
+        const QString currentDomain = frameDomain(current);
+        const bool comparableFrames = !previousDomain.isEmpty() && previousDomain == currentDomain;
         const QJsonObject edgeBase{{QStringLiteral("proposal_edge_index"), i - 1},
                                    {QStringLiteral("left_candidate_id"), previousId},
-                                   {QStringLiteral("right_candidate_id"), currentId}};
+                                   {QStringLiteral("right_candidate_id"), currentId},
+                                   {QStringLiteral("left_frame_domain"), previousDomain},
+                                   {QStringLiteral("right_frame_domain"), currentDomain},
+                                   {QStringLiteral("frame_coordinates_comparable"), comparableFrames}};
+
+        const QString previousSource = previous.value(QStringLiteral("source_id")).toString();
+        const QString currentSource = current.value(QStringLiteral("source_id")).toString();
+        const QString previousFingerprint = previous.value(QStringLiteral("source_fingerprint")).toString();
+        const QString currentFingerprint = current.value(QStringLiteral("source_fingerprint")).toString();
+        const bool sourceChange = previousSource != currentSource;
+        const bool fingerprintChange = previousFingerprint != currentFingerprint;
+        if (sourceChange || fingerprintChange) {
+            QJsonObject warning = edgeBase;
+            warning.insert(QStringLiteral("kind"), QStringLiteral("source_provenance_change"));
+            warning.insert(QStringLiteral("left_source_id"), previousSource);
+            warning.insert(QStringLiteral("right_source_id"), currentSource);
+            warning.insert(QStringLiteral("left_source_fingerprint"), previousFingerprint);
+            warning.insert(QStringLiteral("right_source_fingerprint"), currentFingerprint);
+            warning.insert(QStringLiteral("frame_coordinate_comparison_skipped"), !comparableFrames);
+            warning.insert(QStringLiteral("interpretation"), QStringLiteral("review_candidate_not_error"));
+            warnings.append(warning);
+            ++provenanceChangeCount;
+        }
+
+        if (!comparableFrames) {
+            ++frameComparisonSkippedCount;
+            continue;
+        }
 
         if (currentStart < previousStart) {
             QJsonObject warning = edgeBase;
@@ -178,29 +222,11 @@ QJsonObject analyzeVibeCutRoughCutContinuity(const QJsonObject &context,
             ++overlapCount;
         }
 
-        const QString previousSource = previous.value(QStringLiteral("source_id")).toString();
-        const QString currentSource = current.value(QStringLiteral("source_id")).toString();
-        const QString previousFingerprint = previous.value(QStringLiteral("source_fingerprint")).toString();
-        const QString currentFingerprint = current.value(QStringLiteral("source_fingerprint")).toString();
-        const bool sourceChange = !previousSource.isEmpty() && !currentSource.isEmpty() && previousSource != currentSource;
-        const bool fingerprintChange = !previousFingerprint.isEmpty() && !currentFingerprint.isEmpty() &&
-                                       previousFingerprint != currentFingerprint;
-        if (sourceChange || fingerprintChange) {
-            QJsonObject warning = edgeBase;
-            warning.insert(QStringLiteral("kind"), QStringLiteral("source_provenance_change"));
-            warning.insert(QStringLiteral("left_source_id"), previousSource);
-            warning.insert(QStringLiteral("right_source_id"), currentSource);
-            warning.insert(QStringLiteral("left_source_fingerprint"), previousFingerprint);
-            warning.insert(QStringLiteral("right_source_fingerprint"), currentFingerprint);
-            warning.insert(QStringLiteral("interpretation"), QStringLiteral("review_candidate_not_error"));
-            warnings.append(warning);
-            ++provenanceChangeCount;
-        }
-
         if (previousEnd >= 0 && currentStart > previousEnd) {
             sourceGaps.append(QJsonObject{{QStringLiteral("proposal_edge_index"), i - 1},
                                           {QStringLiteral("left_candidate_id"), previousId},
                                           {QStringLiteral("right_candidate_id"), currentId},
+                                          {QStringLiteral("frame_domain"), currentDomain},
                                           {QStringLiteral("positive_source_gap_frames"), currentStart - previousEnd},
                                           {QStringLiteral("interpretation"), QStringLiteral("relative_gap_candidate_not_error")}});
         }
@@ -232,7 +258,9 @@ QJsonObject analyzeVibeCutRoughCutContinuity(const QJsonObject &context,
                        {QStringLiteral("overlapping_range_count"), overlapCount},
                        {QStringLiteral("repeated_transcript_content_count"), repeatedTextCount},
                        {QStringLiteral("source_provenance_change_count"), provenanceChangeCount},
+                       {QStringLiteral("frame_comparison_skipped_due_to_domain_count"), frameComparisonSkippedCount},
                        {QStringLiteral("ranked_positive_source_gap_candidates"), rankedGaps},
+                       {QStringLiteral("frame_domain_semantics"), QStringLiteral("frame_order_overlap_gap_only_compared_within_same_provenance_coordinate_domain")},
                        {QStringLiteral("source_gap_threshold_applied"), false},
                        {QStringLiteral("normative_thresholds_applied"), false},
                        {QStringLiteral("quality_claim"), false},
@@ -260,7 +288,7 @@ bool registerVibeCutContinuityTools(VibeCutToolSurface &surface, QString *error)
     policy.name = QStringLiteral("rough_cut_continuity_analyze");
     policy.risk = VibeCutToolRisk::ReadOnly;
     return surface.registerTool(QJsonObject{{QStringLiteral("name"), policy.name},
-                                            {QStringLiteral("description"), QStringLiteral("Analyze one exact current rough-cut candidate-ID sequence for structural continuity review candidates: source chronology reversals, overlapping ranges, repeated full transcript content, provenance changes and relatively large positive source gaps. No quality threshold or edit authority is applied.")},
+                                            {QStringLiteral("description"), QStringLiteral("Analyze one exact current rough-cut candidate-ID sequence for structural continuity review candidates. Frame chronology/overlap/gap is compared only within the same proven coordinate/provenance domain; cross-domain edges report provenance change without pretending their frame numbers are comparable. No quality threshold or edit authority is applied.")},
                                             {QStringLiteral("input_schema"), input}},
                                 policy, [surfacePtr](const QJsonObject &args) { return toolHandler(surfacePtr, args); }, error);
 }
