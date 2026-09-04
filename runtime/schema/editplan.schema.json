@@ -1,0 +1,74 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://halthinks.example/vibecut/runtime/schema/editplan.schema.json",
+  "$comment": "SPDX-License-Identifier: Apache-2.0",
+  "title": "VibeCut EditPlan v1",
+  "description": "Serialized editor-agnostic EditPlan contract mirroring current VibeCutEditPlan/VibeCutPlanOperation field names. Dependency existence/cycle checks and revision equality remain semantic validation outside JSON Schema.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "base_revision", "objective", "operations"],
+  "properties": {
+    "id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 1024
+    },
+    "base_revision": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9007199254740991
+    },
+    "objective": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 16384
+    },
+    "operations": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 1000,
+      "items": {"$ref": "#/$defs/operation"}
+    }
+  },
+  "$defs": {
+    "operation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "tool", "input", "depends_on", "expected_postconditions"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1024
+        },
+        "tool": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1024
+        },
+        "input": {
+          "type": "object"
+        },
+        "depends_on": {
+          "type": "array",
+          "maxItems": 1000,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1024
+          }
+        },
+        "expected_postconditions": {
+          "type": "array",
+          "maxItems": 1000,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 4096
+          }
+        }
+      }
+    }
+  }
+}
