@@ -1,6 +1,7 @@
 # Copyright (c) 2026 halthinks. All rights reserved.
 # SPDX-License-Identifier: LicenseRef-halthinks-Proprietary
 
+from .child_stdio import ChildStdioAdapterClient, ChildStdioError
 from .contracts import EditPlan, PlanOperation, PlanValidationError, validate_plan
 from .evidence import EvidenceError, EvidenceRecord, EvidenceStore
 from .jobs import JobError, JobManager, JobRecord, JobState
@@ -13,6 +14,8 @@ from .stdio import StdioAdapterClient, StdioClientError
 
 __all__ = [
     "AdapterClient",
+    "ChildStdioAdapterClient",
+    "ChildStdioError",
     "EditPlan",
     "Envelope",
     "EvidenceError",
