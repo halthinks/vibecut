@@ -65,7 +65,30 @@ TEST_CASE("rough-cut context admits only transcript candidates and prefers sourc
     REQUIRE(candidates.size() == 2);
     CHECK(candidates.at(0).toObject().value(QStringLiteral("candidate_id")).toString() == QStringLiteral("evidence:whisper:1"));
     CHECK(candidates.at(0).toObject().value(QStringLiteral("source_fingerprint")).toString() == QStringLiteral("fp-a"));
+    CHECK(candidates.at(0).toObject().value(QStringLiteral("text_sha256")).toString().size() == 64);
     CHECK(candidates.at(1).toObject().value(QStringLiteral("candidate_id")).toString() == QStringLiteral("subtitle:2"));
+}
+
+TEST_CASE("rough-cut context hash binds full normalized text beyond the displayed preview", "[vibecut][rough-cut][context][integrity]")
+{
+    const QString prefix(80, QLatin1Char('x'));
+    QString error;
+    const QJsonObject first = buildVibeCutRoughCutContext(
+        {doc(QStringLiteral("a"), QStringLiteral("transcript"), 0, 100, prefix + QStringLiteral(" first ending"))},
+        3, 20, 64, &error);
+    REQUIRE(error.isEmpty());
+    const QJsonObject second = buildVibeCutRoughCutContext(
+        {doc(QStringLiteral("a"), QStringLiteral("transcript"), 0, 100, prefix + QStringLiteral(" different ending"))},
+        3, 20, 64, &error);
+    REQUIRE(error.isEmpty());
+
+    const QJsonObject firstCandidate = first.value(QStringLiteral("candidates")).toArray().at(0).toObject();
+    const QJsonObject secondCandidate = second.value(QStringLiteral("candidates")).toArray().at(0).toObject();
+    CHECK(firstCandidate.value(QStringLiteral("text")).toString() == secondCandidate.value(QStringLiteral("text")).toString());
+    CHECK(firstCandidate.value(QStringLiteral("text_truncated")).toBool());
+    CHECK(secondCandidate.value(QStringLiteral("text_truncated")).toBool());
+    CHECK(firstCandidate.value(QStringLiteral("text_sha256")).toString() != secondCandidate.value(QStringLiteral("text_sha256")).toString());
+    CHECK(first.value(QStringLiteral("context_sha256")).toString() != second.value(QStringLiteral("context_sha256")).toString());
 }
 
 TEST_CASE("validated rough-cut proposal resolves exact candidate ranges but grants no mutation authority", "[vibecut][rough-cut][proposal]")
