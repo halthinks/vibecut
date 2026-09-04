@@ -35,6 +35,10 @@ public:
 
     QJsonArray schemas() const;
     QHash<QString, VibeCutToolPolicy> policies() const;
+    /** Deterministic protocol-facing snapshot of the currently advertised
+     * schemas paired with their effective policies and current revision.
+     * Denied tools are omitted because schemas() already applies overrides. */
+    QJsonObject runtimeContractSnapshot() const;
     QJsonObject invoke(const QString &name, const QJsonObject &input) const;
     /** Bypass any surface override and invoke the original native handler. */
     QJsonObject invokeBase(const QString &name, const QJsonObject &input) const;
