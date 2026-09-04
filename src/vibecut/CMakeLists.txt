@@ -8,7 +8,7 @@ set(kdenlive_SRCS
   vibecut/vibecutagentprovider.cpp
   vibecut/vibecutaudioeventsetuptools.cpp
   vibecut/vibecudaudioeventsummary.cpp
-  vibecut/vibecutaudiomonitortools.cpp
+  vibecut/vibecudaudiomonitortools.cpp
   vibecut/vibecutbinfoldertools.cpp
   vibecut/vibecutbinmetadatatools.cpp
   vibecut/vibecutbintools.cpp
@@ -62,6 +62,7 @@ set(kdenlive_SRCS
   vibecut/vibecutmemorytools.cpp
   vibecut/vibecutmixtools.cpp
   vibecut/vibecutmodelprovider.cpp
+  vibecut/vibecutnarrative.cpp
   vibecut/vibecutobjecttracks.cpp
   vibecut/vibecutocrtemporal.cpp
   vibecut/vibecutpacing.cpp
