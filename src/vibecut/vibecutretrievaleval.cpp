@@ -12,12 +12,14 @@
 #include <cmath>
 
 namespace {
+constexpr int kMaxRankedItems = 2000;
+
 bool parseIds(const QJsonArray &array, const QString &label, bool requireNonEmpty,
               QStringList &ids, QString *error)
 {
     ids.clear();
-    if ((requireNonEmpty && array.isEmpty()) || array.size() > 1000) {
-        if (error) *error = QStringLiteral("%1 must contain %2..1000 IDs.").arg(label).arg(requireNonEmpty ? 1 : 0);
+    if ((requireNonEmpty && array.isEmpty()) || array.size() > kMaxRankedItems) {
+        if (error) *error = QStringLiteral("%1 must contain %2..%3 IDs.").arg(label).arg(requireNonEmpty ? 1 : 0).arg(kMaxRankedItems);
         return false;
     }
     QSet<QString> seen;
@@ -40,12 +42,12 @@ bool parseIds(const QJsonArray &array, const QString &label, bool requireNonEmpt
 bool exactK(const QJsonValue &value, int &k, QString *error)
 {
     if (!value.isDouble()) {
-        if (error) *error = QStringLiteral("k must be an integer 1..1000.");
+        if (error) *error = QStringLiteral("k must be an integer 1..%1.").arg(kMaxRankedItems);
         return false;
     }
     const double number = value.toDouble();
-    if (!std::isfinite(number) || std::floor(number) != number || number < 1.0 || number > 1000.0) {
-        if (error) *error = QStringLiteral("k must be an integer 1..1000.");
+    if (!std::isfinite(number) || std::floor(number) != number || number < 1.0 || number > kMaxRankedItems) {
+        if (error) *error = QStringLiteral("k must be an integer 1..%1.").arg(kMaxRankedItems);
         return false;
     }
     k = static_cast<int>(number);
@@ -77,8 +79,8 @@ QJsonObject evaluateVibeCutRetrievalRanking(const QJsonArray &relevantIds,
                                             QString *error)
 {
     if (error) error->clear();
-    if (k < 1 || k > 1000) {
-        if (error) *error = QStringLiteral("k must be 1..1000.");
+    if (k < 1 || k > kMaxRankedItems) {
+        if (error) *error = QStringLiteral("k must be 1..%1.").arg(kMaxRankedItems);
         return {};
     }
     QStringList relevant;
@@ -129,6 +131,7 @@ QJsonObject evaluateVibeCutRetrievalRanking(const QJsonArray &relevantIds,
                        {QStringLiteral("authority"), QStringLiteral("evaluation")},
                        {QStringLiteral("evaluation_semantics"), QStringLiteral("ranked_retrieval_agreement_against_explicit_relevance_reference_not_semantic_truth_or_editorial_quality")},
                        {QStringLiteral("k"), k},
+                       {QStringLiteral("max_supported_ranked_items"), kMaxRankedItems},
                        {QStringLiteral("relevant_count"), relevant.size()},
                        {QStringLiteral("ranked_count"), ranked.size()},
                        {QStringLiteral("returned_within_k"), inspectCount},
@@ -150,7 +153,7 @@ QJsonObject evaluateVibeCutRetrievalRanking(const QJsonArray &relevantIds,
 bool registerVibeCutRetrievalEvalTools(VibeCutToolSurface &surface, QString *error)
 {
     const QJsonObject idArray{{QStringLiteral("type"), QStringLiteral("array")},
-                              {QStringLiteral("maxItems"), 1000},
+                              {QStringLiteral("maxItems"), kMaxRankedItems},
                               {QStringLiteral("items"), QJsonObject{{QStringLiteral("type"), QStringLiteral("string")},
                                                                     {QStringLiteral("minLength"), 1},
                                                                     {QStringLiteral("maxLength"), 1024}}}};
@@ -161,14 +164,14 @@ bool registerVibeCutRetrievalEvalTools(VibeCutToolSurface &surface, QString *err
                                 {QStringLiteral("relevant_ids"), relevantArray},
                                 {QStringLiteral("ranked_ids"), idArray},
                                 {QStringLiteral("k"), QJsonObject{{QStringLiteral("type"), QStringLiteral("integer")},
-                                                                   {QStringLiteral("minimum"), 1}, {QStringLiteral("maximum"), 1000}}}}},
+                                                                   {QStringLiteral("minimum"), 1}, {QStringLiteral("maximum"), kMaxRankedItems}}}}},
                             {QStringLiteral("required"), QJsonArray{QStringLiteral("relevant_ids"), QStringLiteral("ranked_ids"), QStringLiteral("k")}},
                             {QStringLiteral("additionalProperties"), false}};
     VibeCutToolPolicy policy;
     policy.name = QStringLiteral("retrieval_ranking_evaluate");
     policy.risk = VibeCutToolRisk::ReadOnly;
     if (!surface.registerTool(QJsonObject{{QStringLiteral("name"), policy.name},
-                                          {QStringLiteral("description"), QStringLiteral("Evaluate a ranked retrieval/duplicate-candidate ID list against an explicit relevance reference using precision@k, recall@k, AP@k, binary nDCG@k, reciprocal rank and full-list recall. Metrics measure reference agreement only, not semantic truth or editorial quality.")},
+                                          {QStringLiteral("description"), QStringLiteral("Evaluate a ranked retrieval/duplicate-candidate ID list of up to 2,000 items against an explicit relevance reference using precision@k, recall@k, AP@k, binary nDCG@k, reciprocal rank and full-list recall. Metrics measure reference agreement only, not semantic truth or editorial quality.")},
                                           {QStringLiteral("input_schema"), input}},
                               policy, toolHandler, error)) return false;
     return registerVibeCutDuplicateEvalTools(surface, error);
