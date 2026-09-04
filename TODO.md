@@ -196,7 +196,9 @@ Convert “source-implemented” into “known-good application.” No merge to 
 - [ ] R128/room-tone/AST audio-event smoke.
 - [ ] DETR object + X-CLIP action inference smoke.
 - [ ] MiniLM text semantic refresh/search and SigLIP visual refresh/cross-modal search smoke.
-- [ ] Duplicate-fusion candidate smoke with missing-evidence disclosure.
+- [ ] Hybrid lexical+MiniLM current-only search smoke, including stale text/source-fingerprint refusal.
+- [ ] Duplicate-fusion and bounded project-wide duplicate-candidate smoke with missing-evidence disclosure.
+- [ ] Rough-cut context/objective-ranking/alternative-comparison smoke proving proposal-only authority and stale-context refusal.
 
 ## Governance smoke matrix
 - [ ] Review mode asks where required.
@@ -208,6 +210,7 @@ Convert “source-implemented” into “known-good application.” No merge to 
 - [ ] Stale plan rejects after user/project mutation.
 - [ ] External-only job does not open a project undo macro.
 - [ ] Learned evidence cannot self-promote from model prediction/representation into observation or identity.
+- [ ] Synthesis rankings/comparisons remain proposal/derived authority and cannot mutate the timeline.
 - [ ] `timeline_range_remove` and `repeated_take_selection_execute` remain `MajorEdit`, reversible and project-mutating in the policy surface.
 
 ## Acceptance gate
@@ -233,7 +236,7 @@ A user can open a broken project and ask: “What is missing, where was it expec
 
 ---
 
-# PHASE 4 — Rich media intelligence — MAJOR SOURCE FOUNDATION LANDED; SEMANTIC RETRIEVAL ACTIVE
+# PHASE 4 — Rich media intelligence — MAJOR SOURCE FOUNDATION LANDED; SEMANTIC RETRIEVAL STRONG SOURCE BASELINE
 
 ## Goal
 Move from understanding timeline structure/transcripts to understanding audiovisual content. These evidence contracts land before higher-level autonomous editorial synthesis so later features consume one shared, timestamp/range-addressable truth layer.
@@ -271,25 +274,26 @@ Move from understanding timeline structure/transcripts to understanding audiovis
 - [ ] Camera-motion/shot-scale/composition descriptors where they materially improve editing decisions.
 - [ ] Real-media package/CPU/GPU/cancellation and quantitative vision-accuracy smoke.
 
-## Semantic retrieval — ACTIVE SOURCE BASELINE
+## Semantic retrieval — STRONG SOURCE BASELINE
 - [x] MiniLM transcript/OCR text embeddings in a pinned 384-D model space with revision-bound atomic refresh.
 - [x] MiniLM asynchronous text semantic search with exact model-space cosine semantics and canonical media-document anchors.
 - [x] SigLIP sampled-frame visual embeddings in a pinned shared 768-D image/text space.
 - [x] SigLIP text→visual cross-modal semantic search over current source-fingerprint visual anchors.
 - [x] Semantic and cross-modal tools are exposed through the normal `VibeCutToolSurface`, not merely compiled as orphan code.
+- [x] `media_search_hybrid` combines canonical lexical ranking with MiniLM semantic ranking and excludes stale text **and source ID/fingerprint** semantic anchors before final fusion.
+- [x] Hybrid parent/child cancellation and already-terminal child races are handled explicitly.
 - [x] Stronger pairwise duplicate/near-duplicate candidate fusion combining current MPEG-7 evidence, SigLIP visual similarity, temporal ordering, MiniLM source-text similarity, transcript/OCR lexical overlap and duration similarity.
 - [x] Duplicate-fusion scores disclose available evidence/coverage/missing work and are explicitly derived similarity candidates, not probabilities or duplicate facts.
-- [ ] MiniLM source-backed search pre-filtering should exclude stale source fingerprints before ranking; current output identifies stale anchors with `anchor_current` and project revision guards, but pre-filtering remains a hardening item.
-- [ ] Hybrid lexical + MiniLM + SigLIP + editorial relevance/freshness ranking in one reviewable search surface.
-- [ ] Project-wide bounded duplicate-candidate discovery over the pairwise fusion primitive.
-- [ ] Media-search precision/recall and duplicate-ranking fixtures before editorial synthesis consumes semantic retrieval automatically.
+- [x] `media_duplicate_candidates` performs bounded project-wide discovery over the pairwise fusion primitive without auto-launching missing expensive extractors.
+- [ ] Raw MiniLM `semantic_search_text` still annotates rather than pre-filters source-fingerprint staleness; the current-only hybrid surface is the preferred downstream path.
+- [ ] Media-search precision/recall and duplicate-ranking fixtures before more autonomous synthesis consumes semantic retrieval automatically.
 
 ### User outcome
 Requests like “find the cleanest answer from Sarah,” “find every shot of the engine housing,” or “show every on-screen mention of the launch date” now have source implementations for the required evidence/search foundations. Release-quality claims remain gated on Phase 2 runtime verification and quantitative retrieval evaluation.
 
 ---
 
-# PHASE 5 — Editorial reasoning and autonomous edit synthesis — NEXT PRODUCT EDGE AFTER RETRIEVAL HARDENING
+# PHASE 5 — Editorial reasoning and autonomous edit synthesis — FIRST PROPOSAL PIPELINE LANDED
 
 ## Goal
 Stop making the user specify frame-level commands and begin solving editorial problems while still producing reviewable deterministic plans.
@@ -303,20 +307,31 @@ Stop making the user specify frame-level commands and begin solving editorial pr
 - [x] Source-level golden live/headless mutation fixtures cover success, refusal, stale plan, rollback and exact Undo/Redo fidelity.
 - [ ] Phase 2 authoritative compile/runtime verification before release-quality claim.
 
-## Editorial synthesis — BUILD IN THIS ORDER
-- [ ] Rough-cut synthesis from transcript + scene + audiovisual quality + semantic retrieval evidence.
-- [ ] Highlights/shorts extraction with explicit objective/rubric and source-range provenance.
+## Rough-cut synthesis proposal foundation — LANDED IN SOURCE
+- [x] `rough_cut_context`: bounded revision-bound candidate universe from current transcript/subtitle documents only.
+- [x] Source-backed transcript evidence is preferred over duplicate subtitle representations at the same range/text.
+- [x] Context SHA-256 binds candidate IDs, exact ranges/provenance and the **full normalized transcript text hash** even when returned text previews are truncated.
+- [x] `rough_cut_proposal_validate`: candidate-ID-only ordered proposals with exact-context identity, duration budget and no caller-supplied raw ranges/paths/edit operations.
+- [x] Proposal validation resolves authoritative ranges from context and returns `executable=false`, `mutation_authority=none`.
+- [x] `rough_cut_objective_rank`: asynchronous exact-context objective relevance through current-only hybrid retrieval.
+- [x] Objective ranking re-hashes current candidate context after the child job completes, refusing transcript/evidence changes even when timeline revision did not move.
+- [x] `rough_cut_alternatives_compare`: 2–5 validated alternatives under a fixed disclosed rubric: objective relevance 0.60, retrieval coverage 0.15, chronology 0.10, overlap cleanliness 0.10, provenance coverage 0.05.
+- [x] Alternative comparison keeps missing relevance separate as coverage loss, disallows caller-defined weights and remains derived comparison authority only.
+- [ ] Quantitative editorial-quality fixtures/human review for the rough-cut proposal rubric.
+- [ ] Translate an explicitly approved rough-cut proposal into a normal governed `EditPlan` only after proposal quality is measured; do **not** create a separate synthesis mutation path.
+
+## Editorial synthesis — BUILD NEXT IN THIS ORDER
+- [ ] Highlights/shorts candidate/proposal contract with explicit objective/rubric and source-range provenance.
 - [ ] B-roll opportunity detection and candidate retrieval.
 - [ ] B-roll planning/guide placement before mutation; execution remains a separate governed plan.
 - [ ] Pacing analysis: shot length, silence, speaker balance, rhythm and density.
 - [ ] Narrative analysis: sections, topic progression, repetition, continuity and alternative orderings.
-- [ ] Candidate cut scoring and alternative reviewable plans.
 - [ ] Basic continuity warnings.
 - [ ] Auto finishing pass: subtitles, richer titles/templates, supported transitions/mixes, audio cleanup and render recommendation.
 - [ ] Reference-style matching based on extracted visual/audio style evidence.
 
 ## Acceptance principle
-The model may propose high-level editorial intent, but final execution still resolves to explicit governed native tool operations with preconditions and evidence.
+The model may propose high-level editorial intent, but final execution still resolves to explicit governed native tool operations with preconditions and evidence. Proposal/ranking/comparison authority can never self-elevate into execution authority.
 
 ---
 
@@ -333,6 +348,7 @@ Make VibeCut performance measurable rather than anecdotal. Start this before exp
 - [x] Real-mutation-then-failure checkpoint rollback fixture.
 - [x] Stale-plan refusal after real intervening edit.
 - [x] Repeated-take overlap refusal and successful one-command Undo/Redo fixture.
+- [x] Pure source fixtures for rough-cut context integrity, objective relevance and alternative comparison authority/scoring.
 - [ ] Extend mutation fixtures across effects, transitions, titles, relink/proxy, render and future synthesis families.
 - [ ] Plan correctness / tool hallucination rate regression suites.
 - [ ] Long-job cancellation correctness across learned model/process trees.
@@ -414,10 +430,10 @@ These are intentionally not prerequisites for the governed agent editor.
 # Release sequence
 
 ## R0 — Architecture branch
-Current state: governed kernel + broad native editing vocabulary + quantitative mutation fixtures + rich audio/vision evidence foundations + semantic text/visual retrieval + pairwise duplicate fusion, all source-landed. Not release-qualified until Phase 2 passes.
+Current state: governed kernel + broad native editing vocabulary + quantitative mutation fixtures + rich audio/vision evidence foundations + semantic retrieval/duplicate understanding + first rough-cut proposal pipeline, all source-landed. Not release-qualified until Phase 2 passes.
 
 ## R1 — Verified governed editor
-Requires Phase 2 complete, including `timeline_range_remove`, repeated-take execution, learned-runtime and semantic-retrieval smoke. Merge to `vibecut` only after clean compile/tests/smoke.
+Requires Phase 2 complete, including `timeline_range_remove`, repeated-take execution, learned-runtime, semantic-retrieval and rough-cut proposal smoke. Merge to `vibecut` only after clean compile/tests/smoke.
 
 ## R2 — Resilient project editor
 Hardens Phase 3 source-health/relink/proxy/preflight with adversarial fixtures.
@@ -426,10 +442,10 @@ Hardens Phase 3 source-health/relink/proxy/preflight with adversarial fixtures.
 Phase 4 source foundations are substantially present; R3 requires runtime verification, retrieval-quality/duplicate-ranking evaluation, stale-index hardening and any remaining useful camera/composition evidence.
 
 ## R4 — Editorial copilot
-Adds first Phase 5 rough-cut/highlight/B-roll/pacing/narrative workflows with Phase 6 evaluation gates.
+Rough-cut proposal/relevance/alternative comparison is source-landed. R4 additionally requires highlights/shorts, B-roll, pacing/narrative workflows and Phase 6 editorial-quality evaluation gates before any broad autonomous execution claim.
 
 ## R5 — Autonomous governed editor
-Large multi-step editorial plans, finishing passes and evidence-backed review.
+Large multi-step editorial plans, finishing passes and evidence-backed review, with explicitly approved synthesis translated through the same normal governed EditPlan/native-edit runtime.
 
 ## R6+ — Ecosystem
 Provider/task-routing breadth, acquisition/publishing, templates, advanced media systems and optional alternate frontends.
@@ -439,16 +455,17 @@ Provider/task-routing breadth, acquisition/publishing, templates, advanced media
 # Immediate execution order from current branch
 
 1. **Keep the hard release gate authoritative:** compile/link and run all `vibecut*` tests with `scripts/vibecut-verify.sh` on the proper Kdenlive host; repair every failure before merge/release claims.
-2. **Finish semantic retrieval hardening:** pre-filter stale MiniLM source fingerprints, add hybrid lexical/semantic/freshness ranking, and add bounded project-wide duplicate-candidate discovery over `media_duplicate_fusion`.
-3. **Quantify retrieval quality:** precision/recall fixtures for transcript/OCR semantic search, text→visual search and duplicate ranking; do not let editorial synthesis consume weak/unmeasured retrieval automatically.
-4. **Begin editorial synthesis on reviewable plans:** rough-cut candidate synthesis → highlights/shorts → B-roll opportunities/retrieval/planning → pacing/narrative analysis.
-5. **Keep mutation evaluation cross-cutting:** every new destructive/synthesizing execution path gets explicit requested-postcondition and Undo/Redo fidelity fixtures.
-6. **Presentation/audio breadth:** richer titles/templates/brand packs and mixer/mix editing only where safe Kdenlive backend seams are proven.
-7. **Provider scale:** additional adapters and per-task routing only after task/evidence contracts remain stable across measured workloads.
-8. **Merge to `vibecut` only after Phase 2 is green**, preserving the halthinks → original VibeCut → Kdenlive README lineage.
+2. **Quantify retrieval quality:** precision/recall fixtures for transcript/OCR semantic search, text→visual search and duplicate ranking; do not let downstream synthesis hide weak/unmeasured retrieval.
+3. **Continue proposal-only editorial synthesis:** highlights/shorts contract → B-roll opportunities/retrieval/planning → pacing/narrative analysis.
+4. **Evaluate rough-cut/highlight alternatives:** fixed rubrics plus blinded human review before synthesis can translate into executable plans.
+5. **Only after measured proposal quality:** translate explicitly approved synthesis into the existing governed `EditPlan`/native edit primitives with standard authorization, verification and Undo; never add a parallel mutation path.
+6. **Keep mutation evaluation cross-cutting:** every new destructive execution path gets explicit requested-postcondition and Undo/Redo fidelity fixtures.
+7. **Presentation/audio breadth:** richer titles/templates/brand packs and mixer/mix editing only where safe Kdenlive backend seams are proven.
+8. **Provider scale:** additional adapters and per-task routing only after task/evidence contracts remain stable across measured workloads.
+9. **Merge to `vibecut` only after Phase 2 is green**, preserving the halthinks → original VibeCut → Kdenlive README lineage.
 
 ---
 
 # Priority principle
 
-The core product is the governed agent runtime plus native editing vocabulary plus media evidence and retrieval. New work should be prioritized by **how much real editing time it removes while preserving inspectability, verification, Undo, truthfulness and human authority**. A capability is not considered finished merely because a model can propose it: consequential edits must have a safe native backend seam, live verification and a measurable recovery/Undo story. Likewise, a model score is not a fact: learned evidence and semantic similarity remain explicitly calibrated, source-bound and reviewable until a governed downstream path acts on them.
+The core product is the governed agent runtime plus native editing vocabulary plus media evidence/retrieval plus proposal-governed editorial synthesis. New work should be prioritized by **how much real editing time it removes while preserving inspectability, verification, Undo, truthfulness and human authority**. A capability is not considered finished merely because a model can propose it: consequential edits must have a safe native backend seam, live verification and a measurable recovery/Undo story. Likewise, a model score is not a fact: learned evidence, semantic similarity and synthesis comparison scores remain explicitly calibrated, source-bound and reviewable until a governed downstream path acts on them.
