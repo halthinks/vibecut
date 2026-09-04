@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://halthinks.example/vibecut/runtime/schema/envelope.schema.json",
+  "$comment": "SPDX-License-Identifier: Apache-2.0",
+  "title": "VibeCut Runtime Protocol Envelope v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["v", "id", "kind", "type", "payload"],
+  "properties": {
+    "v": {"const": 1},
+    "id": {"type": "string", "minLength": 1, "maxLength": 1024},
+    "kind": {"type": "string", "enum": ["request", "response", "event"]},
+    "type": {
+      "type": "string",
+      "enum": ["hello", "inspect", "propose_plan", "authorize", "invoke", "verify", "job_update", "revision", "evidence_put", "evidence_get", "error"]
+    },
+    "payload": {"type": "object"}
+  }
+}
