@@ -63,6 +63,7 @@ private:
     const VibeCutPlanOperation *operationById(const QString &id) const;
     bool operationDependenciesComplete(const VibeCutPlanOperation &operation, QString *error) const;
     bool remainingOperations() const;
+    QString nextOperationId() const;
 
     QJsonObject responseEnvelope(const QJsonObject &request, const QJsonObject &payload) const;
     QJsonObject errorEnvelope(const QJsonObject &request, const QString &code,
@@ -74,6 +75,8 @@ private:
     QJsonObject handleProposePlan(const QJsonObject &request);
     QJsonObject handleInvoke(const QJsonObject &request);
     QJsonObject handleVerify(const QJsonObject &request);
+    QJsonObject handleCompletePlan(const QJsonObject &request);
+    QJsonObject handleAbortPlan(const QJsonObject &request);
     QJsonObject handleEvidencePut(const QJsonObject &request);
     QJsonObject handleEvidenceGet(const QJsonObject &request);
 
@@ -84,6 +87,7 @@ private:
     QStringList m_executionOrder;
     QSet<QString> m_approvedOperationIds;
     QSet<QString> m_completedOperationIds;
+    QHash<QString, VibeCutToolPolicy> m_authorizedPolicies;
     QString m_authorizationId;
     quint64 m_expectedRevision = 0;
     VibeCutTrustMode m_authorizedMode = VibeCutTrustMode::Off;
