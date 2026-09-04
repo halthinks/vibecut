@@ -36,6 +36,33 @@ bool supportedFormat(const QString &format)
            format == QLatin1String("quote");
 }
 
+bool exactInteger(const QJsonObject &input, const QString &key, qint64 minimum, qint64 maximum,
+                  qint64 defaultValue, bool required, qint64 &value, QString *error)
+{
+    if (!input.contains(key)) {
+        if (required) {
+            if (error) *error = QStringLiteral("%1 is required.").arg(key);
+            return false;
+        }
+        value = defaultValue;
+        return true;
+    }
+    const QJsonValue raw = input.value(key);
+    if (!raw.isDouble()) {
+        if (error) *error = QStringLiteral("%1 must be an integer.").arg(key);
+        return false;
+    }
+    const double number = raw.toDouble();
+    if (!std::isfinite(number) || std::floor(number) != number ||
+        number < static_cast<double>(minimum) || number > static_cast<double>(maximum)) {
+        if (error) *error = QStringLiteral("%1 must be an integer in the supported range %2..%3.")
+                               .arg(key).arg(minimum).arg(maximum);
+        return false;
+    }
+    value = static_cast<qint64>(number);
+    return true;
+}
+
 bool sameCandidateProvenance(const QJsonObject &a, const QJsonObject &b)
 {
     const QStringList stringFields{QStringLiteral("candidate_id"), QStringLiteral("kind"),
@@ -79,27 +106,59 @@ bool buildCurrentContext(VibeCutToolSurface *surface, int maxCandidates, int max
 QJsonObject buildTool(VibeCutTools *tools, VibeCutToolSurface *surface, const QJsonObject &input)
 {
     if (!tools || !surface || !tools->jobManager()) return err(QStringLiteral("Highlight proposal requires the VibeCut runtime."));
+
+    QString numberError;
+    qint64 baseRevision64 = -1;
+    qint64 maxCandidates64 = 200;
+    qint64 maxTextChars64 = 600;
+    qint64 maxSegments64 = 8;
+    qint64 maxTotalFrames = -1;
+    if (!exactInteger(input, QStringLiteral("base_revision"), 0, std::numeric_limits<qint64>::max(), -1, true, baseRevision64, &numberError) ||
+        !exactInteger(input, QStringLiteral("context_max_candidates"), 1, 300, 200, true, maxCandidates64, &numberError) ||
+        !exactInteger(input, QStringLiteral("context_max_text_chars"), 64, 2048, 600, true, maxTextChars64, &numberError) ||
+        !exactInteger(input, QStringLiteral("max_segments"), 1, 50, 8, true, maxSegments64, &numberError) ||
+        !exactInteger(input, QStringLiteral("max_total_frames"), 1, std::numeric_limits<int>::max(), -1, true, maxTotalFrames, &numberError)) {
+        return err(numberError);
+    }
+
     const quint64 currentRevision = surface->projectRevision();
-    const quint64 baseRevision = static_cast<quint64>(input.value(QStringLiteral("base_revision")).toDouble(-1));
-    if (baseRevision != currentRevision) {
+    if (static_cast<quint64>(baseRevision64) != currentRevision) {
         return err(QStringLiteral("Highlight context is stale: base revision %1 does not match current revision %2.")
-                       .arg(baseRevision).arg(currentRevision));
+                       .arg(baseRevision64).arg(currentRevision));
     }
     const QString contextSha = input.value(QStringLiteral("context_sha256")).toString().trimmed();
     if (contextSha.size() != 64) return err(QStringLiteral("context_sha256 must contain exactly 64 characters."));
-    const int maxCandidates = input.value(QStringLiteral("context_max_candidates")).toInt(200);
-    const int maxTextChars = input.value(QStringLiteral("context_max_text_chars")).toInt(600);
+
+    const QString objectiveJobId = input.value(QStringLiteral("objective_job_id")).toString().trimmed();
+    if (objectiveJobId.isEmpty()) return err(QStringLiteral("objective_job_id must not be empty."));
+    const QString format = input.value(QStringLiteral("format")).toString().trimmed().toLower();
+    if (!supportedFormat(format)) return err(QStringLiteral("format must be highlight_reel, short, or quote."));
+
+    double minRelevance = 0.0;
+    if (input.contains(QStringLiteral("min_relevance"))) {
+        const QJsonValue raw = input.value(QStringLiteral("min_relevance"));
+        if (!raw.isDouble() || !std::isfinite(raw.toDouble()) || raw.toDouble() < 0.0 || raw.toDouble() > 1.0) {
+            return err(QStringLiteral("min_relevance must be a finite number between 0 and 1."));
+        }
+        minRelevance = raw.toDouble();
+    }
+    bool preserveSourceOrder = true;
+    if (input.contains(QStringLiteral("preserve_source_order"))) {
+        if (!input.value(QStringLiteral("preserve_source_order")).isBool()) {
+            return err(QStringLiteral("preserve_source_order must be boolean."));
+        }
+        preserveSourceOrder = input.value(QStringLiteral("preserve_source_order")).toBool();
+    }
 
     QJsonObject context;
     QString contextError;
-    if (!buildCurrentContext(surface, maxCandidates, maxTextChars, context, &contextError)) return err(contextError);
+    if (!buildCurrentContext(surface, static_cast<int>(maxCandidates64), static_cast<int>(maxTextChars64), context, &contextError)) return err(contextError);
     if (context.value(QStringLiteral("context_sha256")).toString() != contextSha) {
         return err(QStringLiteral("Highlight proposal was not requested against the exact current candidate context."));
     }
 
-    const QString objectiveJobId = input.value(QStringLiteral("objective_job_id")).toString().trimmed();
     VibeCutJob objectiveJob;
-    if (objectiveJobId.isEmpty() || !tools->jobManager()->job(objectiveJobId, objectiveJob) ||
+    if (!tools->jobManager()->job(objectiveJobId, objectiveJob) ||
         objectiveJob.kind != QLatin1String("rough_cut_objective_rank") || objectiveJob.state != VibeCutJobState::Succeeded) {
         return err(QStringLiteral("objective_job_id must identify a succeeded rough-cut objective-ranking job."));
     }
@@ -108,15 +167,9 @@ QJsonObject buildTool(VibeCutTools *tools, VibeCutToolSurface *surface, const QJ
         return err(QStringLiteral("Objective-ranking job is stale or belongs to a different highlight context."));
     }
 
-    const QString format = input.value(QStringLiteral("format")).toString().trimmed().toLower();
-    const int maxSegments = input.value(QStringLiteral("max_segments")).toInt(8);
-    const qint64 maxTotalFrames = static_cast<qint64>(input.value(QStringLiteral("max_total_frames")).toDouble(-1));
-    const double minRelevance = input.value(QStringLiteral("min_relevance")).toDouble(0.0);
-    const bool preserveSourceOrder = input.value(QStringLiteral("preserve_source_order")).toBool(true);
-
     QString buildError;
     QJsonObject result = buildVibeCutHighlightProposal(context, objectiveJob.result, format,
-                                                       maxSegments, maxTotalFrames, minRelevance,
+                                                       static_cast<int>(maxSegments64), maxTotalFrames, minRelevance,
                                                        preserveSourceOrder, currentRevision, &buildError);
     if (!buildError.isEmpty()) return err(buildError);
     result.insert(QStringLiteral("ok"), true);
@@ -273,8 +326,6 @@ QJsonObject buildVibeCutHighlightProposal(const QJsonObject &context,
     }
     const double meanRelevance = relevanceSum / selected.size();
 
-    // Re-run the canonical proposal validator so this deterministic selector
-    // cannot bypass context-hash/range/id/duration invariants.
     const QJsonObject canonicalProposal{{QStringLiteral("schema_version"), 1},
                                         {QStringLiteral("authority"), QStringLiteral("proposal")},
                                         {QStringLiteral("base_revision"), static_cast<qint64>(currentRevision)},
