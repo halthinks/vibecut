@@ -1,0 +1,32 @@
+{
+  "schema_version": 1,
+  "semantics": "synthetic_regression_cases_for_duplicate_pair_ranking_metrics_not_duplicate_truth",
+  "fixtures": [
+    {
+      "id": "reversed-pairs-canonicalize",
+      "relevant_pairs": [
+        {"first_bin_id": "cam-a", "second_bin_id": "cam-b"},
+        {"first_bin_id": "take-1", "second_bin_id": "take-2"}
+      ],
+      "ranked_pairs": [
+        {"first_bin_id": "cam-b", "second_bin_id": "cam-a", "fusion_score": 0.96, "classification": "strong_duplicate_candidate", "independent_signal_count": 4, "available_weight": 0.9},
+        {"first_bin_id": "other-a", "second_bin_id": "other-b", "fusion_score": 0.61, "classification": "possible_related_candidate", "independent_signal_count": 2, "available_weight": 0.5},
+        {"first_bin_id": "take-2", "second_bin_id": "take-1", "fusion_score": 0.84, "classification": "near_duplicate_candidate", "independent_signal_count": 3, "available_weight": 0.75}
+      ],
+      "k": 3,
+      "expected": {"precision_at_k": 0.6666666666666666, "recall_at_k": 1.0, "first_relevant_rank": 1, "insufficient_evidence_count_at_k": 0}
+    },
+    {
+      "id": "insufficient-evidence-visible",
+      "relevant_pairs": [
+        {"first_bin_id": "master", "second_bin_id": "copy"}
+      ],
+      "ranked_pairs": [
+        {"first_bin_id": "noise-a", "second_bin_id": "noise-b", "fusion_score": 0.0, "classification": "insufficient_evidence", "independent_signal_count": 1, "available_weight": 0.3},
+        {"first_bin_id": "master", "second_bin_id": "copy", "fusion_score": 0.78, "classification": "near_duplicate_candidate", "independent_signal_count": 3, "available_weight": 0.7}
+      ],
+      "k": 2,
+      "expected": {"precision_at_k": 0.5, "recall_at_k": 1.0, "first_relevant_rank": 2, "insufficient_evidence_count_at_k": 1}
+    }
+  ]
+}
