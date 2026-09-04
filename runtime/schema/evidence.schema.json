@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://halthinks.example/vibecut/runtime/schema/evidence.schema.json",
+  "$comment": "SPDX-License-Identifier: Apache-2.0",
+  "title": "VibeCut Media Evidence Record v1",
+  "description": "Public record shape mirroring VibeCutMediaEvidenceRecord::toJson(). Evidence remains provenance-bound and does not become editor/project truth automatically.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "source_id", "source_fingerprint", "extractor_id", "extractor_version", "kind", "start_frame", "end_frame", "text", "confidence", "produced_utc", "metadata"],
+  "properties": {
+    "id": {"type": "string", "minLength": 1, "maxLength": 1024},
+    "source_id": {"type": "string", "minLength": 1, "maxLength": 4096},
+    "source_fingerprint": {"type": "string", "minLength": 1, "maxLength": 4096},
+    "extractor_id": {"type": "string", "minLength": 1, "maxLength": 1024},
+    "extractor_version": {"type": "string", "minLength": 1, "maxLength": 1024},
+    "kind": {"type": "string", "minLength": 1, "maxLength": 1024},
+    "start_frame": {"type": "integer", "minimum": -1, "maximum": 2147483647},
+    "end_frame": {"type": "integer", "minimum": -1, "maximum": 2147483647},
+    "text": {"type": "string", "maxLength": 1048576},
+    "confidence": {
+      "type": "number",
+      "minimum": -1.0,
+      "maximum": 1.0,
+      "description": "-1 means unknown; otherwise confidence is expected in [0,1]."
+    },
+    "produced_utc": {"type": "string", "minLength": 1, "maxLength": 128},
+    "metadata": {"type": "object"}
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "start_frame": {"minimum": 0},
+          "end_frame": {"minimum": 0}
+        },
+        "required": ["start_frame", "end_frame"]
+      },
+      "then": {
+        "$comment": "JSON Schema draft 2020-12 cannot directly express end_frame >= start_frame without $data extensions; runtime semantic validation must enforce it."
+      }
+    }
+  ]
+}
