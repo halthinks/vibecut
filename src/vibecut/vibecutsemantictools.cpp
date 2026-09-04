@@ -81,8 +81,6 @@ bool parseVector(const QJsonValue &value, QVector<double> &unit, QString *error)
         if (error) *error = normalizeError;
         return false;
     }
-    // The helper promises unit output; a materially non-unit vector is a
-    // provenance/runtime failure rather than something VibeCut silently fixes.
     long double dot = 0.0L;
     for (int i = 0; i < vector.size(); ++i) dot += static_cast<long double>(vector.at(i)) * unit.at(i);
     if (std::abs(static_cast<double>(dot) - 1.0) > 0.001) {
@@ -474,20 +472,16 @@ QJsonObject startSearch(VibeCutTools *tools, VibeCutToolSurface *surface, const 
     QString storeError;
     const QJsonObject embeddingRoot = VibeCutEmbeddingStore::loadCurrent(&storeError);
     if (!storeError.isEmpty()) return err(storeError);
-    int compatibleCount = 0;
-    for (const QJsonValue &value : embeddingRoot.value(QStringLiteral("records")).toArray()) {
-        const QJsonObject object = value.toObject();
-        if (object.value(QStringLiteral("model")).toString() == kModel &&
-            object.value(QStringLiteral("model_revision")).toString() == kModelRevision &&
-            object.value(QStringLiteral("modality")).toString() == QLatin1String("text")) ++compatibleCount;
-    }
-    if (compatibleCount == 0) return err(QStringLiteral("No current MiniLM text embeddings are available. Run semantic_text_refresh first."));
-
     VibeCutMediaIndex index;
     QString indexError;
     if (!index.rebuildFromCurrentProject(&indexError)) return err(indexError);
-    QHash<QString, VibeCutMediaDocument> documents;
-    for (const VibeCutMediaDocument &document : index.documents()) documents.insert(document.id, document);
+    int initialStaleSkipped = 0;
+    QString freshnessError;
+    const QJsonObject initialCurrentRoot = filterVibeCutCurrentSemanticTextEmbeddingRoot(
+        embeddingRoot, index.documents(), &initialStaleSkipped, &freshnessError);
+    if (!freshnessError.isEmpty()) return err(freshnessError);
+    const int compatibleCount = initialCurrentRoot.value(QStringLiteral("records")).toArray().size();
+    if (compatibleCount == 0) return err(QStringLiteral("No current MiniLM text embeddings are available after freshness validation. Run semantic_text_refresh first."));
 
     const quint64 baseRevision = surface->projectRevision();
     const QJsonObject request{{QStringLiteral("schema_version"), 1},
@@ -507,7 +501,7 @@ QJsonObject startSearch(VibeCutTools *tools, VibeCutToolSurface *surface, const 
     writeRequestWhenStarted(process, payload);
     bindFailedStart(process, jobs, jobId, QStringLiteral("MiniLM semantic query helper"));
     QObject::connect(process, qOverload<int, QProcess::ExitStatus>(&QProcess::finished), process,
-                     [process, jobs, jobId, surface, baseRevision, query, limit, minSimilarity, embeddingRoot, documents]
+                     [process, jobs, jobId, surface, baseRevision, query, limit, minSimilarity, initialStaleSkipped]
                      (int exitCode, QProcess::ExitStatus processStatus) {
         if (cancelled(jobs, jobId, QStringLiteral("Semantic search cancelled."))) {
             process->deleteLater();
@@ -557,9 +551,42 @@ QJsonObject startSearch(VibeCutTools *tools, VibeCutToolSurface *surface, const 
             process->deleteLater();
             return;
         }
+
+        QString liveStoreError;
+        const QJsonObject liveEmbeddingRoot = VibeCutEmbeddingStore::loadCurrent(&liveStoreError);
+        if (!liveStoreError.isEmpty()) {
+            jobs->markFailed(jobId, QStringLiteral("Semantic embedding store changed or became invalid while search was running: %1").arg(liveStoreError));
+            process->deleteLater();
+            return;
+        }
+        VibeCutMediaIndex liveIndex;
+        QString liveIndexError;
+        if (!liveIndex.rebuildFromCurrentProject(&liveIndexError)) {
+            jobs->markFailed(jobId, QStringLiteral("Canonical media index could not be rebuilt before semantic ranking: %1").arg(liveIndexError));
+            process->deleteLater();
+            return;
+        }
+        int staleSkipped = 0;
+        QString freshnessError;
+        const QJsonObject currentEmbeddingRoot = filterVibeCutCurrentSemanticTextEmbeddingRoot(
+            liveEmbeddingRoot, liveIndex.documents(), &staleSkipped, &freshnessError);
+        if (!freshnessError.isEmpty()) {
+            jobs->markFailed(jobId, freshnessError);
+            process->deleteLater();
+            return;
+        }
+        const int currentEmbeddingCount = currentEmbeddingRoot.value(QStringLiteral("records")).toArray().size();
+        if (currentEmbeddingCount == 0) {
+            jobs->markFailed(jobId, QStringLiteral("No current MiniLM embeddings remain after completion-time freshness validation; refresh embeddings before searching."));
+            process->deleteLater();
+            return;
+        }
+        QHash<QString, VibeCutMediaDocument> documents;
+        for (const VibeCutMediaDocument &document : liveIndex.documents()) documents.insert(document.id, document);
+
         QString searchError;
         const QList<VibeCutEmbeddingSearchHit> hits = VibeCutEmbeddingStore::cosineSearch(
-            embeddingRoot, queryVector, kModel, kModelRevision, QStringList{QStringLiteral("text")},
+            currentEmbeddingRoot, queryVector, kModel, kModelRevision, QStringList{QStringLiteral("text")},
             limit, minSimilarity, &searchError);
         if (!searchError.isEmpty()) {
             jobs->markFailed(jobId, searchError);
@@ -568,17 +595,17 @@ QJsonObject startSearch(VibeCutTools *tools, VibeCutToolSurface *surface, const 
         }
         QJsonArray outputHits;
         for (const VibeCutEmbeddingSearchHit &hit : hits) {
-            QJsonObject object = hit.toJson();
             const VibeCutMediaDocument document = documents.value(hit.anchorId);
-            if (!document.id.isEmpty()) {
-                const QString storedHash = hit.metadata.value(QStringLiteral("text_sha256")).toString();
-                const QString currentHash = textHash(document.text.trimmed());
-                object.insert(QStringLiteral("anchor_current"), storedHash.isEmpty() || storedHash == currentHash);
-                object.insert(QStringLiteral("text"), document.text.left(2048));
-                object.insert(QStringLiteral("document_kind"), document.kind);
-            } else {
-                object.insert(QStringLiteral("anchor_current"), false);
+            if (document.id.isEmpty()) {
+                jobs->markFailed(jobId, QStringLiteral("Fresh semantic ranking returned an anchor absent from the canonical media index."));
+                process->deleteLater();
+                return;
             }
+            QJsonObject object = hit.toJson();
+            object.insert(QStringLiteral("anchor_current"), true);
+            object.insert(QStringLiteral("freshness_verified_before_ranking"), true);
+            object.insert(QStringLiteral("text"), document.text.left(2048));
+            object.insert(QStringLiteral("document_kind"), document.kind);
             outputHits.append(object);
         }
         const QJsonObject result{{QStringLiteral("kind"), QStringLiteral("semantic_text_search")},
@@ -587,7 +614,11 @@ QJsonObject startSearch(VibeCutTools *tools, VibeCutToolSurface *surface, const 
                                  {QStringLiteral("model_revision"), kModelRevision},
                                  {QStringLiteral("dimension"), kDimension},
                                  {QStringLiteral("score_semantics"), QStringLiteral("cosine_similarity_same_embedding_space")},
+                                 {QStringLiteral("freshness_semantics"), QStringLiteral("exact_producer_model_anchor_range_source_fingerprint_and_full_text_hash_filtered_before_cosine_ranking")},
                                  {QStringLiteral("base_revision"), static_cast<qint64>(baseRevision)},
+                                 {QStringLiteral("current_compatible_embedding_count"), currentEmbeddingCount},
+                                 {QStringLiteral("stale_embedding_records_excluded_before_ranking"), staleSkipped},
+                                 {QStringLiteral("initial_stale_embedding_records_detected"), initialStaleSkipped},
                                  {QStringLiteral("hit_count"), outputHits.size()},
                                  {QStringLiteral("hits"), outputHits}};
         QString resultError;
@@ -596,13 +627,15 @@ QJsonObject startSearch(VibeCutTools *tools, VibeCutToolSurface *surface, const 
             process->deleteLater();
             return;
         }
-        jobs->markSucceeded(jobId, QStringLiteral("Semantic search produced %1 ranked hit(s).").arg(outputHits.size()));
+        jobs->markSucceeded(jobId, QStringLiteral("Semantic search produced %1 current-only ranked hit(s); %2 stale MiniLM record(s) were excluded before ranking.")
+                                        .arg(outputHits.size()).arg(staleSkipped));
         process->deleteLater();
     });
     process->start(vibeCutSemanticPython(), {vibeCutSemanticScript()});
     return QJsonObject{{QStringLiteral("ok"), true}, {QStringLiteral("started"), true},
                        {QStringLiteral("job_id"), jobId}, {QStringLiteral("base_revision"), static_cast<qint64>(baseRevision)},
-                       {QStringLiteral("compatible_embedding_count"), compatibleCount}};
+                       {QStringLiteral("compatible_embedding_count"), compatibleCount},
+                       {QStringLiteral("initial_stale_embedding_records_detected"), initialStaleSkipped}};
 }
 
 QJsonObject resultTool(VibeCutTools *tools, const QJsonObject &input)
@@ -687,7 +720,7 @@ bool registerVibeCutSemanticTools(VibeCutToolSurface &surface, QString *error)
     searchPolicy.risk = VibeCutToolRisk::ReadOnly;
     searchPolicy.asynchronous = true;
     if (!surface.registerTool(QJsonObject{{QStringLiteral("name"), searchPolicy.name},
-                                          {QStringLiteral("description"), QStringLiteral("Asynchronously encode a text query with the exact pinned MiniLM embedding space and rank current transcript/OCR anchors by cosine similarity. Returns a job_id; call semantic_result for the bounded ranked result. Similarity is not semantic truth or probability.")},
+                                          {QStringLiteral("description"), QStringLiteral("Asynchronously encode a text query with the exact pinned MiniLM embedding space and rank only current transcript/OCR anchors by cosine similarity. Stored records are filtered before ranking by exact producer/model, anchor kind/range, source ID/fingerprint and full-text SHA, and freshness is revalidated when the async query completes. Similarity is not semantic truth or probability.")},
                                           {QStringLiteral("input_schema"), QJsonObject{{QStringLiteral("type"), QStringLiteral("object")},
                                                                                        {QStringLiteral("properties"), searchProperties},
                                                                                        {QStringLiteral("required"), QJsonArray{QStringLiteral("query")}},
@@ -702,7 +735,7 @@ bool registerVibeCutSemanticTools(VibeCutToolSurface &surface, QString *error)
     resultPolicy.name = QStringLiteral("semantic_result");
     resultPolicy.risk = VibeCutToolRisk::ReadOnly;
     return surface.registerTool(QJsonObject{{QStringLiteral("name"), resultPolicy.name},
-                                            {QStringLiteral("description"), QStringLiteral("Read the state/result of one semantic setup, refresh or search job. Successful semantic search jobs return their bounded ranked hit payload here.")},
+                                            {QStringLiteral("description"), QStringLiteral("Read the state/result of one semantic setup, refresh or search job. Successful semantic search jobs return their bounded current-only ranked hit payload here.")},
                                             {QStringLiteral("input_schema"), resultInput}},
                                 resultPolicy, [tools](const QJsonObject &input) { return resultTool(tools, input); }, error);
 }
