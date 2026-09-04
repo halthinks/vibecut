@@ -5,6 +5,7 @@
 #include "bin/projectitemmodel.h"
 #include "core.h"
 #include "kdenlivesettings.h"
+#include "vibecutbroll.h"
 #include "vibecutcrossmodaltools.h"
 #include "vibecutduplicatecandidates.h"
 #include "vibecutduplicatefusion.h"
@@ -202,5 +203,6 @@ bool registerVibeCutSimilarityTools(VibeCutToolSurface &surface, QString *error)
     if (!registerVibeCutRoughCutSynthesisTools(surface, error)) return false;
     if (!registerVibeCutRoughCutRelevanceTools(surface, error)) return false;
     if (!registerVibeCutRoughCutAlternativeTools(surface, error)) return false;
-    return registerVibeCutHighlightTools(surface, error);
+    if (!registerVibeCutHighlightTools(surface, error)) return false;
+    return registerVibeCutBrollTools(surface, error);
 }
