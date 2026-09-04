@@ -9,6 +9,7 @@ from .protocol import AdapterClient, Envelope, ProtocolError, decode_line, reque
 from .providers import ModelProvider, ModelRequest, ProviderClient, ProviderError
 from .revision import RevisionError, RevisionGate, StaleRevisionError
 from .session import ExecutionResult, RuntimeSession, SessionError, SessionHello
+from .stdio import StdioAdapterClient, StdioClientError
 
 __all__ = [
     "AdapterClient",
@@ -35,6 +36,8 @@ __all__ = [
     "SessionError",
     "SessionHello",
     "StaleRevisionError",
+    "StdioAdapterClient",
+    "StdioClientError",
     "ToolPolicy",
     "ToolRisk",
     "TrustMode",
