@@ -14,6 +14,7 @@
 #include <cmath>
 
 namespace {
+constexpr int kMaxPairs = 2000;
 const QSet<QString> kClassifications{
     QStringLiteral("insufficient_evidence"),
     QStringLiteral("strong_duplicate_candidate"),
@@ -89,10 +90,11 @@ bool parsePairs(const QJsonArray &input, bool ranked, bool requireNonEmpty,
 {
     ids = {};
     normalized = {};
-    if ((requireNonEmpty && input.isEmpty()) || input.size() > 1000) {
-        if (error) *error = QStringLiteral("%1 duplicate pairs must contain %2..1000 entries.")
+    if ((requireNonEmpty && input.isEmpty()) || input.size() > kMaxPairs) {
+        if (error) *error = QStringLiteral("%1 duplicate pairs must contain %2..%3 entries.")
                                .arg(ranked ? QStringLiteral("Ranked") : QStringLiteral("Relevant reference"))
-                               .arg(requireNonEmpty ? 1 : 0);
+                               .arg(requireNonEmpty ? 1 : 0)
+                               .arg(kMaxPairs);
         return false;
     }
     QSet<QString> seen;
@@ -114,12 +116,12 @@ bool parsePairs(const QJsonArray &input, bool ranked, bool requireNonEmpty,
 bool exactK(const QJsonValue &value, int &k, QString *error)
 {
     if (!value.isDouble()) {
-        if (error) *error = QStringLiteral("k must be an integer 1..1000.");
+        if (error) *error = QStringLiteral("k must be an integer 1..%1.").arg(kMaxPairs);
         return false;
     }
     const double number = value.toDouble();
-    if (!std::isfinite(number) || std::floor(number) != number || number < 1.0 || number > 1000.0) {
-        if (error) *error = QStringLiteral("k must be an integer 1..1000.");
+    if (!std::isfinite(number) || std::floor(number) != number || number < 1.0 || number > kMaxPairs) {
+        if (error) *error = QStringLiteral("k must be an integer 1..%1.").arg(kMaxPairs);
         return false;
     }
     k = static_cast<int>(number);
@@ -212,6 +214,7 @@ QJsonObject evaluateVibeCutDuplicateRanking(const QJsonArray &relevantPairs,
 
     result.insert(QStringLiteral("evaluation_semantics"), QStringLiteral("ranked_duplicate_pair_agreement_against_explicit_reference_not_duplicate_truth_or_probability_calibration"));
     result.insert(QStringLiteral("pair_identity_semantics"), QStringLiteral("order_independent_sha256_of_sorted_asset_ids"));
+    result.insert(QStringLiteral("max_supported_pairs"), kMaxPairs);
     result.insert(QStringLiteral("normalized_relevant_pairs"), normalizedRelevant);
     result.insert(QStringLiteral("normalized_ranked_pairs"), normalizedRanked);
     result.insert(QStringLiteral("classification_metadata_available_at_k"), classificationAvailable);
@@ -254,20 +257,20 @@ bool registerVibeCutDuplicateEvalTools(VibeCutToolSurface &surface, QString *err
     const QJsonObject input{{QStringLiteral("type"), QStringLiteral("object")},
                             {QStringLiteral("properties"), QJsonObject{
                                 {QStringLiteral("relevant_pairs"), QJsonObject{{QStringLiteral("type"), QStringLiteral("array")},
-                                                                              {QStringLiteral("minItems"), 1}, {QStringLiteral("maxItems"), 1000},
+                                                                              {QStringLiteral("minItems"), 1}, {QStringLiteral("maxItems"), kMaxPairs},
                                                                               {QStringLiteral("items"), referencePair}}},
                                 {QStringLiteral("ranked_pairs"), QJsonObject{{QStringLiteral("type"), QStringLiteral("array")},
-                                                                            {QStringLiteral("maxItems"), 1000},
+                                                                            {QStringLiteral("maxItems"), kMaxPairs},
                                                                             {QStringLiteral("items"), rankedPair}}},
                                 {QStringLiteral("k"), QJsonObject{{QStringLiteral("type"), QStringLiteral("integer")},
-                                                                   {QStringLiteral("minimum"), 1}, {QStringLiteral("maximum"), 1000}}}}},
+                                                                   {QStringLiteral("minimum"), 1}, {QStringLiteral("maximum"), kMaxPairs}}}}},
                             {QStringLiteral("required"), QJsonArray{QStringLiteral("relevant_pairs"), QStringLiteral("ranked_pairs"), QStringLiteral("k")}},
                             {QStringLiteral("additionalProperties"), false}};
     VibeCutToolPolicy policy;
     policy.name = QStringLiteral("duplicate_ranking_evaluate");
     policy.risk = VibeCutToolRisk::ReadOnly;
     return surface.registerTool(QJsonObject{{QStringLiteral("name"), policy.name},
-                                            {QStringLiteral("description"), QStringLiteral("Evaluate ranked duplicate/near-duplicate asset pairs against an explicit reference set. Pair identity is order-independent; metrics reuse retrieval precision/recall/AP/nDCG/rank agreement while fusion classifications and evidence coverage remain diagnostic metadata, never duplicate truth.")},
+                                            {QStringLiteral("description"), QStringLiteral("Evaluate up to 2,000 ranked duplicate/near-duplicate asset pairs against an explicit reference set, matching the full bounded project-wide duplicate scan. Pair identity is order-independent; fusion classifications and evidence coverage remain diagnostic metadata, never duplicate truth.")},
                                             {QStringLiteral("input_schema"), input}},
                                 policy, toolHandler, error);
 }
