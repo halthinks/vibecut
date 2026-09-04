@@ -14,6 +14,7 @@ set(kdenlive_SRCS
   vibecut/vibecutbintools.cpp
   vibecut/vibecutblackextractortools.cpp
   vibecut/vibecutblurextractortools.cpp
+  vibecut/vibecutbroll.cpp
   vibecut/vibecutbulkcopytools.cpp
   vibecut/vibecutbulktools.cpp
   vibecut/vibecutbuseffecttools.cpp
