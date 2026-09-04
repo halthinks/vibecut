@@ -13,6 +13,7 @@
 #include "vibecuthybridsearch.h"
 #include "vibecutjobmanager.h"
 #include "vibecutmediaevidence.h"
+#include "vibecutnarrative.h"
 #include "vibecutpacing.h"
 #include "vibecutroughcutalternatives.h"
 #include "vibecutroughcutrelevance.h"
@@ -206,5 +207,6 @@ bool registerVibeCutSimilarityTools(VibeCutToolSurface &surface, QString *error)
     if (!registerVibeCutRoughCutAlternativeTools(surface, error)) return false;
     if (!registerVibeCutHighlightTools(surface, error)) return false;
     if (!registerVibeCutBrollTools(surface, error)) return false;
-    return registerVibeCutPacingTools(surface, error);
+    if (!registerVibeCutPacingTools(surface, error)) return false;
+    return registerVibeCutNarrativeTools(surface, error);
 }
