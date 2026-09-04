@@ -7,6 +7,9 @@
 #include <cmath>
 
 namespace {
+const QString kContext = QString(64, QLatin1Char('a'));
+const QString kProposal = QString(64, QLatin1Char('b'));
+
 QJsonObject review(const QString &reviewer,
                    int relevance,
                    int coherence,
@@ -15,7 +18,9 @@ QJsonObject review(const QString &reviewer,
                    int preference,
                    const QString &candidate = QStringLiteral("candidate-a"),
                    const QString &caseId = QStringLiteral("case-1"),
-                   bool blind = true)
+                   bool blind = true,
+                   const QString &contextSha = kContext,
+                   const QString &proposalId = kProposal)
 {
     return QJsonObject{{QStringLiteral("schema_version"), 1},
                        {QStringLiteral("rubric_id"), vibeCutEditorialReviewRubricId()},
@@ -24,6 +29,8 @@ QJsonObject review(const QString &reviewer,
                        {QStringLiteral("candidate_id"), candidate},
                        {QStringLiteral("reviewer_id"), reviewer},
                        {QStringLiteral("task_type"), QStringLiteral("rough_cut")},
+                       {QStringLiteral("context_sha256"), contextSha},
+                       {QStringLiteral("proposal_id"), proposalId},
                        {QStringLiteral("scores"), QJsonObject{
                            {QStringLiteral("objective_relevance"), relevance},
                            {QStringLiteral("narrative_coherence"), coherence},
@@ -42,7 +49,7 @@ QJsonObject schemaByName(const VibeCutToolSurface &surface, const QString &name)
 }
 }
 
-TEST_CASE("blinded editorial review validates fixed rubric without granting quality ground truth", "[vibecut][editorial-review]")
+TEST_CASE("blinded editorial review validates fixed rubric and exact proposal binding without granting ground truth", "[vibecut][editorial-review]")
 {
     QString error;
     const QJsonObject normalized = validateVibeCutEditorialReview(review(QStringLiteral("r1"), 5, 4, 3, 5, 4), &error);
@@ -50,6 +57,8 @@ TEST_CASE("blinded editorial review validates fixed rubric without granting qual
     CHECK(normalized.value(QStringLiteral("rubric_id")).toString() == vibeCutEditorialReviewRubricId());
     CHECK(normalized.value(QStringLiteral("authority")).toString() == QStringLiteral("human_review"));
     CHECK(normalized.value(QStringLiteral("blind")).toBool(false));
+    CHECK(normalized.value(QStringLiteral("context_sha256")).toString() == kContext);
+    CHECK(normalized.value(QStringLiteral("proposal_id")).toString() == kProposal);
     CHECK_FALSE(normalized.value(QStringLiteral("quality_ground_truth")).toBool(true));
     CHECK(normalized.value(QStringLiteral("mutation_authority")).toString() == QStringLiteral("none"));
 }
@@ -66,6 +75,8 @@ TEST_CASE("editorial review aggregation reports mean and disagreement without pa
     REQUIRE(error.isEmpty());
     CHECK(result.value(QStringLiteral("authority")).toString() == QStringLiteral("human_review_aggregate"));
     CHECK(result.value(QStringLiteral("review_count")).toInt() == 3);
+    CHECK(result.value(QStringLiteral("context_sha256")).toString() == kContext);
+    CHECK(result.value(QStringLiteral("proposal_id")).toString() == kProposal);
     CHECK_FALSE(result.value(QStringLiteral("automatic_execution_gate")).toBool(true));
     CHECK_FALSE(result.value(QStringLiteral("quality_ground_truth")).toBool(true));
     const QJsonObject metrics = result.value(QStringLiteral("metrics")).toObject();
@@ -75,7 +86,7 @@ TEST_CASE("editorial review aggregation reports mean and disagreement without pa
     CHECK(metrics.value(QStringLiteral("source_fidelity")).toObject().value(QStringLiteral("mean")).toDouble() == Approx(5.0));
 }
 
-TEST_CASE("editorial review aggregation fails closed on duplicate reviewers mixed targets and non blind reviews", "[vibecut][editorial-review][integrity]")
+TEST_CASE("editorial review aggregation fails closed on duplicate reviewers mixed targets proposal drift and non blind reviews", "[vibecut][editorial-review][integrity]")
 {
     QString error;
     CHECK(aggregateVibeCutEditorialReviews(QJsonArray{
@@ -87,7 +98,14 @@ TEST_CASE("editorial review aggregation fails closed on duplicate reviewers mixe
     CHECK(aggregateVibeCutEditorialReviews(QJsonArray{
         review(QStringLiteral("r1"), 4, 4, 4, 4, 4),
         review(QStringLiteral("r2"), 4, 4, 4, 4, 4, QStringLiteral("candidate-b"))}, &error).isEmpty());
-    CHECK(error.contains(QStringLiteral("same case_id"), Qt::CaseInsensitive));
+    CHECK(error.contains(QStringLiteral("same case"), Qt::CaseInsensitive));
+
+    error.clear();
+    CHECK(aggregateVibeCutEditorialReviews(QJsonArray{
+        review(QStringLiteral("r1"), 4, 4, 4, 4, 4),
+        review(QStringLiteral("r2"), 4, 4, 4, 4, 4, QStringLiteral("candidate-a"), QStringLiteral("case-1"), true,
+               kContext, QString(64, QLatin1Char('c')))}, &error).isEmpty());
+    CHECK(error.contains(QStringLiteral("proposal_id"), Qt::CaseInsensitive));
 
     error.clear();
     CHECK(validateVibeCutEditorialReview(review(QStringLiteral("r1"), 4, 4, 4, 4, 4,
@@ -95,9 +113,16 @@ TEST_CASE("editorial review aggregation fails closed on duplicate reviewers mixe
     CHECK(error.contains(QStringLiteral("blind=true"), Qt::CaseInsensitive));
 }
 
-TEST_CASE("editorial review rejects unknown criteria and out of range scores", "[vibecut][editorial-review][rubric]")
+TEST_CASE("editorial review rejects invalid hashes unknown criteria and out of range scores", "[vibecut][editorial-review][rubric]")
 {
     QString error;
+    QJsonObject badHash = review(QStringLiteral("r1"), 4, 4, 4, 4, 4,
+                                 QStringLiteral("candidate-a"), QStringLiteral("case-1"), true,
+                                 QStringLiteral("not-a-hash"), kProposal);
+    CHECK(validateVibeCutEditorialReview(badHash, &error).isEmpty());
+    CHECK(error.contains(QStringLiteral("64 hexadecimal"), Qt::CaseInsensitive));
+
+    error.clear();
     QJsonObject badScore = review(QStringLiteral("r1"), 6, 4, 4, 4, 4);
     CHECK(validateVibeCutEditorialReview(badScore, &error).isEmpty());
     CHECK(error.contains(QStringLiteral("1..5")));
@@ -111,7 +136,7 @@ TEST_CASE("editorial review rejects unknown criteria and out of range scores", "
     CHECK(error.contains(QStringLiteral("Unknown"), Qt::CaseInsensitive));
 }
 
-TEST_CASE("editorial review tools are read only and expose no execution threshold", "[vibecut][editorial-review][surface]")
+TEST_CASE("editorial review tools are read only proposal bound and expose no execution threshold", "[vibecut][editorial-review][surface]")
 {
     VibeCutTools base;
     VibeCutToolSurface surface(&base);
@@ -122,9 +147,18 @@ TEST_CASE("editorial review tools are read only and expose no execution threshol
     CHECK(policies.value(QStringLiteral("editorial_review_aggregate")).risk == VibeCutToolRisk::ReadOnly);
     CHECK_FALSE(policies.value(QStringLiteral("editorial_review_aggregate")).mutatesProject);
 
-    const QJsonObject schema = schemaByName(surface, QStringLiteral("editorial_review_aggregate"));
-    REQUIRE_FALSE(schema.isEmpty());
-    const QJsonObject properties = schema.value(QStringLiteral("input_schema")).toObject()
+    const QJsonObject validateSchema = schemaByName(surface, QStringLiteral("editorial_review_validate"));
+    REQUIRE_FALSE(validateSchema.isEmpty());
+    const QJsonObject reviewProperties = validateSchema.value(QStringLiteral("input_schema")).toObject()
+                                              .value(QStringLiteral("properties")).toObject()
+                                              .value(QStringLiteral("review")).toObject()
+                                              .value(QStringLiteral("properties")).toObject();
+    CHECK(reviewProperties.contains(QStringLiteral("context_sha256")));
+    CHECK(reviewProperties.contains(QStringLiteral("proposal_id")));
+
+    const QJsonObject aggregateSchema = schemaByName(surface, QStringLiteral("editorial_review_aggregate"));
+    REQUIRE_FALSE(aggregateSchema.isEmpty());
+    const QJsonObject properties = aggregateSchema.value(QStringLiteral("input_schema")).toObject()
                                        .value(QStringLiteral("properties")).toObject();
     CHECK(properties.contains(QStringLiteral("reviews")));
     CHECK_FALSE(properties.contains(QStringLiteral("pass_threshold")));
