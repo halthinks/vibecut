@@ -74,6 +74,7 @@ set(KdenliveTest_SOURCES
     vibecutmediaevidencetest.cpp
     vibecutmediaindextest.cpp
     vibecutmodelprovidertest.cpp
+    vibecutpacingtest.cpp
     vibecutplangatetest.cpp
     vibecutplanruntimetest.cpp
     vibecutpolicyoverridestest.cpp
