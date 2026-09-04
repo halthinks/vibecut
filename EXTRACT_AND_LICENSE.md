@@ -116,7 +116,7 @@ Every message is one JSON object with:
   "v": 1,
   "id": "msg-…",
   "kind": "request | response | event",
-  "type": "inspect | propose_plan | authorize | invoke | job_update | evidence | error",
+  "type": "hello | inspect | propose_plan | authorize | invoke | verify | job_update | revision | evidence_put | evidence_get | error",
   "payload": {}
 }
 
@@ -124,18 +124,39 @@ Every message is one JSON object with:
 
 - `hello` — adapter announces editor id, protocol version, available tools + policies
 - `inspect` — runtime asks adapter for live state (clips, selection, revision, …)
-- `propose_plan` — runtime emits an `EditPlan` bound to `baseRevision`
-- `authorize` — adapter returns Review / Auto / Turbo decision from the human
-- `invoke` — runtime asks adapter to run one named tool with JSON input
-- `verify` — runtime asks adapter for postconditions against live state
-- `job_update` — adapter pushes job lifecycle
+- `propose_plan` — runtime emits an `EditPlan` bound to immutable `base_revision`; adapter stores the accepted plan object for authorization
+- `authorize` — adapter/human returns Review / Auto / Turbo decision; approval creates an opaque `authorization_id` and starting `expected_revision`
+- `invoke` — runtime references only an approved `operation_id`; the adapter resolves the stored approved tool/input and refuses post-approval substitution
+- `verify` — runtime asks adapter for postconditions against live state using the current `expected_revision`
+- `job_update` — adapter pushes job lifecycle and current revision where continuation is revision-sensitive
 - `revision` — adapter pushes current project revision token
 - `evidence_put` / `evidence_get` — sidecar records, never treated as project truth
 - `error` — structured failure, never `ok: true` without evidence
 
+### Revision / authorization hardening (non-negotiable)
+
+`base_revision` and execution revision are **not the same thing**:
+
+- `base_revision` is immutable plan provenance: the revision the plan was reasoned from.
+- `expected_revision` is the moving execution token. It starts when authorization is granted and advances only from successful adapter-reported operations/events.
+
+The adapter must store the exact approved plan. After approval the runtime is not allowed to send a replacement tool name or replacement JSON input. `invoke` identifies the stored approved operation by `plan_id` + `authorization_id` + `operation_id` + `expected_revision`.
+
+Before each operation the adapter checks current revision equals `expected_revision`. A legitimate approved mutation may advance the revision; the adapter returns `revision_after`, which becomes the next expected token. An unrelated user/project change makes the remaining plan stale.
+
+This mirrors the current integrated `VibeCutPlanRuntime`, which tracks a moving expected revision while allowing its own approved operations to advance the undo-stack revision.
+
 Kdenlive remains authoritative state. The runtime is not a second project database.
 
-A first-cut schema lives at `runtime/schema/editplan.schema.json` and `runtime/protocol.md`.
+The v1 public contract lives at:
+
+- `runtime/protocol.md`
+- `runtime/schema/editplan.schema.json`
+- `runtime/schema/toolpolicy.schema.json`
+- `runtime/schema/evidence.schema.json`
+- `runtime/schema/job.schema.json`
+- `runtime/schema/envelope.schema.json`
+- `runtime/schema/messages.schema.json`
 
 ---
 
@@ -207,33 +228,39 @@ Keep Kdenlive as authoritative state in every user-facing doc.
 
 ## 7. Extraction steps (do these in order)
 
-### Step 0 — freeze the contract
+### Step 0 — freeze the contract — LANDED IN SOURCE
 
 - [x] This file
 - [x] `runtime/protocol.md`
 - [x] `runtime/schema/editplan.schema.json`
 - [x] `runtime/LICENSE.md`
-- [ ] Tool policy table exported as JSON from `VibeCutToolSurface` (generate, do not hand-edit as the long-term source)
+- [x] Tool policy table exported as JSON from `VibeCutToolSurface::runtimeContractSnapshot()` (generated from the live/effective schemas + policies; do not hand-edit a long-term policy dump)
 
-### Step 1 — export schemas from the live C++ types
+### Step 1 — export schemas from the live C++ types — LANDED IN SOURCE
 
 Mirror, as JSON Schema:
 
-- `VibeCutToolPolicy`
-- `VibeCutEditPlan` / `VibeCutPlanOperation` / `VibeCutPlanValidation`
-- job record (`id`, state, progress, cancel requested, terminal reason)
-- evidence record (source identity, fingerprint, extractor id/version, kind, range, confidence, provenance)
-- hello / inspect / invoke / verify envelopes
+- [x] `VibeCutToolPolicy` → `runtime/schema/toolpolicy.schema.json`
+- [x] `VibeCutEditPlan` / `VibeCutPlanOperation` shape → `runtime/schema/editplan.schema.json`; graph/revision rules remain semantic validation
+- [x] job record → `runtime/schema/job.schema.json`
+- [x] evidence record → `runtime/schema/evidence.schema.json`
+- [x] common envelope → `runtime/schema/envelope.schema.json`
+- [x] hello / inspect / propose / authorize / invoke / verify / job / revision / evidence / error payloads → `runtime/schema/messages.schema.json`
 
 Keep field names stable. If C++ names change, version the protocol.
 
-### Step 2 — write a protocol adapter shim inside this GPL tree
+### Step 2 — write a protocol adapter shim inside this GPL tree — NEXT
 
-Add a small GPL process in this repo that:
+Add a small GPL adapter transport in this repo that:
 
-- speaks stdio JSON
+- speaks stdio JSON to an out-of-process runtime
 - calls existing `VibeCutToolSurface` handlers
-- does **not** move those handlers out of GPL
+- exports `runtimeContractSnapshot()` as the authoritative hello/tool-policy table
+- stores the exact proposed plan before authorization
+- binds authorization to an opaque `authorization_id`
+- resolves invoke tool/input from the stored approved operation rather than trusting replacement input from the runtime
+- enforces moving `expected_revision` around native calls
+- does **not** move Kdenlive handlers out of GPL
 
 This shim is the proof that the runtime can be out-of-process.
 
@@ -255,6 +282,8 @@ Tests must pass with a fake adapter. No Kdenlive linked.
 `VibeCutPlanRuntime` in the editor keeps working for the integrated product. The commercial SKU uses the out-of-process runtime + GPL shim. Do not delete the integrated path until the protocol path has parity on:
 
 - stale-plan rejection
+- moving expected-revision handling across multiple approved operations
+- no post-approval operation substitution
 - Review / Auto / Turbo
 - undo checkpoint + rollback behavior (adapter-side)
 - job wait
@@ -291,12 +320,14 @@ Price is a business choice. License shape is not.
 
 runtime/
   LICENSE.md                 commercial terms + GPL boundary
-  protocol.md                message catalog
+  protocol.md                message catalog + revision/authorization semantics
   schema/
     editplan.schema.json
     toolpolicy.schema.json
     evidence.schema.json
+    job.schema.json
     envelope.schema.json
+    messages.schema.json
   src/                       editor-agnostic implementation (future)
   tests/                     fake-adapter tests (future)
 
@@ -310,14 +341,16 @@ Extraction is done only when all of these pass:
 
 1. `runtime/` builds with no Kdenlive, MLT, KF6, or `src/` editor headers.
 2. A fake adapter can propose → authorize → invoke → verify a plan.
-3. A stale `baseRevision` is rejected without calling mutate.
+3. A stale `base_revision` is rejected without calling mutate.
 4. Review mode never mutates before `authorize`.
-5. Evidence writes cannot become project truth.
-6. SPDX / license text on runtime files is not GPL-3.0-only copied from Kdenlive files.
-7. This fork still builds and `bash scripts/vibecut-verify.sh` still passes.
-8. README still says Kdenlive is authoritative state.
+5. Approval binds the exact stored plan; the runtime cannot substitute tool/input after authorization.
+6. A legitimate approved mutation may advance `expected_revision`; unrelated revision drift stops remaining operations.
+7. Evidence writes cannot become project truth.
+8. SPDX / license text on runtime files is not GPL-3.0-only copied from Kdenlive files.
+9. This fork still builds and `bash scripts/vibecut-verify.sh` still passes.
+10. README still says Kdenlive is authoritative state.
 
-Until then, there is no licensed runtime. There is only this plan and the GPL layer in `src/vibecut/`.
+Until then, there is no licensed runtime. There is only this plan, public protocol/schema work, and the GPL layer in `src/vibecut/`.
 
 ---
 
