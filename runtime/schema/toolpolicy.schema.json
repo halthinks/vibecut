@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://halthinks.example/vibecut/runtime/schema/toolpolicy.schema.json",
+  "$comment": "SPDX-License-Identifier: Apache-2.0",
+  "title": "VibeCut Tool Policy v1",
+  "description": "Public serialization of VibeCutToolPolicy::toJson().",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["name", "risk", "reversible", "mutates_project", "async", "confirmation_required", "auto_allowed", "enabled"],
+  "properties": {
+    "name": {"type": "string", "minLength": 1, "maxLength": 1024},
+    "risk": {
+      "type": "string",
+      "enum": ["read_only", "reversible_edit", "major_edit", "external_side_effect", "irreversible"]
+    },
+    "reversible": {"type": "boolean"},
+    "mutates_project": {"type": "boolean"},
+    "async": {"type": "boolean"},
+    "confirmation_required": {"type": "boolean"},
+    "auto_allowed": {"type": "boolean"},
+    "enabled": {"type": "boolean"}
+  }
+}
