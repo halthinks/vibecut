@@ -107,10 +107,27 @@ void finalizeHybridChild(VibeCutJobManager *jobs,
         }
         const QString id = object.value(QStringLiteral("anchor_id")).toString();
         if (id.isEmpty() || !documents.contains(id)) continue;
+        const VibeCutMediaDocument document = documents.value(id);
+
+        // semantic_search_text already checks current anchor text. Hybrid adds
+        // the source identity/fingerprint check so an old vector cannot remain
+        // authoritative merely because a replaced source produced identical
+        // text under the same anchor id.
+        const QString storedSourceId = object.value(QStringLiteral("source_id")).toString();
+        const QString storedFingerprint = object.value(QStringLiteral("source_fingerprint")).toString();
+        if (!storedSourceId.isEmpty() || !storedFingerprint.isEmpty()) {
+            const QString currentSourceId = document.metadata.value(QStringLiteral("source_id")).toString();
+            const QString currentFingerprint = document.metadata.value(QStringLiteral("source_fingerprint")).toString();
+            if (storedSourceId.isEmpty() || storedFingerprint.isEmpty() ||
+                currentSourceId != storedSourceId || currentFingerprint != storedFingerprint) {
+                ++staleSemanticSkipped;
+                continue;
+            }
+        }
+
         const double similarity = object.value(QStringLiteral("similarity")).toDouble(-1.0);
         if (!std::isfinite(similarity)) continue;
         RankedHit item = byId.value(id);
-        const VibeCutMediaDocument document = documents.value(id);
         item.id = id;
         item.kind = document.kind;
         item.text = document.text;
@@ -223,9 +240,6 @@ QJsonObject startHybrid(VibeCutTools *tools, VibeCutToolSurface *surface, const 
         jobs->requestCancel(childId);
     });
 
-    // A child can fail or complete extremely quickly (for example a missing
-    // local runtime). Process its current state immediately as well as through
-    // jobChanged so the parent can never be stranded by a connect-after-finish race.
     finalizeHybridChild(jobs, surface, parentId, childId, baseRevision, query, limit, minScore, lexicalHits, documents);
 
     return QJsonObject{{QStringLiteral("ok"), true},
@@ -279,7 +293,7 @@ bool registerVibeCutHybridSearchTools(VibeCutToolSurface &surface, QString *erro
     searchPolicy.risk = VibeCutToolRisk::ReadOnly;
     searchPolicy.asynchronous = true;
     if (!surface.registerTool(QJsonObject{{QStringLiteral("name"), searchPolicy.name},
-                                          {QStringLiteral("description"), QStringLiteral("Fuse the current canonical lexical media index with the pinned MiniLM semantic ranking. Semantic hits whose source/text anchors are no longer current are excluded before fusion. Returns a job id and an explicitly non-probabilistic derived ranking.")},
+                                          {QStringLiteral("description"), QStringLiteral("Fuse the current canonical lexical media index with the pinned MiniLM semantic ranking. Semantic hits whose text/source fingerprint anchors are no longer current are excluded before fusion. Returns a job id and an explicitly non-probabilistic derived ranking.")},
                                           {QStringLiteral("input_schema"), input}},
                               searchPolicy, [tools, surfacePtr](const QJsonObject &args) { return startHybrid(tools, surfacePtr, args); }, error)) return false;
 
