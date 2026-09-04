@@ -6,6 +6,7 @@
 #include "core.h"
 #include "vibecuttoolsurface.h"
 
+#include <QFileInfo>
 #include <QJsonArray>
 #include <QJsonObject>
 #include <QSet>
