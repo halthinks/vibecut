@@ -8,6 +8,7 @@
 #include "vibecutcrossmodaltools.h"
 #include "vibecutduplicatecandidates.h"
 #include "vibecutduplicatefusion.h"
+#include "vibecuthighlights.h"
 #include "vibecuthybridsearch.h"
 #include "vibecutjobmanager.h"
 #include "vibecutmediaevidence.h"
@@ -200,5 +201,6 @@ bool registerVibeCutSimilarityTools(VibeCutToolSurface &surface, QString *error)
     if (!registerVibeCutDuplicateCandidateTools(surface, error)) return false;
     if (!registerVibeCutRoughCutSynthesisTools(surface, error)) return false;
     if (!registerVibeCutRoughCutRelevanceTools(surface, error)) return false;
-    return registerVibeCutRoughCutAlternativeTools(surface, error);
+    if (!registerVibeCutRoughCutAlternativeTools(surface, error)) return false;
+    return registerVibeCutHighlightTools(surface, error);
 }
