@@ -32,11 +32,12 @@ No merge to `vibecut` until all of the following are green on a real Kdenlive de
 3. Live mutation smoke for `timeline_range_remove`, repeated-take execution, stale-plan refusal and exact Undo/Redo fidelity.
 4. Runtime/setup/cancellation/evidence smoke for pyannote, Tesseract, R128, AST, DETR and X-CLIP.
 5. Semantic setup/runtime smoke for MiniLM plus shared-vision SigLIP, including model acquisition, CPU/GPU paths, cancellation, stale-source behavior and bounded result handling.
-6. Hybrid lexical+MiniLM search smoke proving stale semantic anchors are excluded from final ranking.
+6. Hybrid lexical+MiniLM search smoke proving stale text and source-fingerprint semantic anchors are excluded from final ranking.
 7. Pairwise MPEG-7, fused duplicate scoring and bounded project-wide duplicate-candidate smoke.
-8. Debian package build plus clean-host install/uninstall/coexistence smoke.
-9. Hands-on editor plan → authorize → execute → verify/diff → Undo across major edit families.
-10. Review/Auto/Turbo and policy-override smoke, including non-waivable hard confirmation.
+8. Rough-cut context/objective-ranking/alternative-comparison smoke proving revision/context hash refusal and zero mutation authority.
+9. Debian package build plus clean-host install/uninstall/coexistence smoke.
+10. Hands-on editor plan → authorize → execute → verify/diff → Undo across major edit families.
+11. Review/Auto/Turbo and policy-override smoke, including non-waivable hard confirmation.
 
 Only after those gates pass may the integration branch merge to `vibecut`. An upstream PR remains optional.
 
@@ -87,7 +88,7 @@ Only after those gates pass may the integration branch merge to `vibecut`. An up
 - SigLIP (`google/siglip-base-patch16-224`, 768-D) provides exact sampled-frame visual embeddings and text→image cross-modal search through the isolated vision runtime.
 - Embedding spaces cannot be mixed accidentally: cosine search requires exact model revision and dimension compatibility.
 - MiniLM and SigLIP tool families are registered on the normal product surface; first-class schemas expose bounded intent, not arbitrary model/path/vector injection.
-- `media_search_hybrid` fuses the canonical lexical index with MiniLM ranking, excludes semantic hits whose anchor is no longer current, binds the result to project revision and labels its score as a derived ranking rather than probability.
+- `media_search_hybrid` fuses the canonical lexical index with MiniLM ranking, excludes semantic hits whose text **or source ID/fingerprint** is no longer current, binds the result to project revision and labels its score as a derived ranking rather than probability.
 - Hybrid parent/child cancellation and already-terminal child races are handled explicitly.
 
 ### Duplicate / near-duplicate understanding — SOURCE-LANDED
@@ -99,21 +100,48 @@ Only after those gates pass may the integration branch merge to `vibecut`. An up
 
 ### Retrieval/evidence work still open before autonomous synthesis consumes it by default
 - Quantitative retrieval precision/recall fixtures and duplicate-ranking fixtures on representative projects.
-- Harden raw MiniLM `semantic_search_text` to pre-filter stale source-backed vectors rather than merely annotate `anchor_current`; `media_search_hybrid` is already the preferred current-only path.
+- Raw `semantic_search_text` still annotates rather than pre-filters source-fingerprint staleness; `media_search_hybrid` is the preferred current-only path and now enforces both text and source identity.
 - Camera-motion, shot-scale and composition evidence where it demonstrably improves editorial decisions.
 - Runtime verification and quality/calibration fixtures for all learned providers.
 - Privacy-safe person/face evidence only if a governed identity boundary and product need justify it.
 
-## Phase 5 — editorial synthesis — NOW THE ACTIVE PRODUCT EDGE
+## Phase 5 — editorial synthesis — FIRST PROPOSAL PIPELINE LANDED IN SOURCE
 
-Next source sequence:
+### Rough-cut proposal context — LANDED
+- `rough_cut_context` builds a bounded canonical candidate universe from current transcript/subtitle documents only.
+- Duplicate transcript representations at the same range/text are collapsed, preferring source-backed `transcript_segment` evidence over subtitle-track duplicates.
+- Context is project-revision bound and SHA-256 identified.
+- Candidate previews are bounded, but each candidate also carries `text_sha256` over the **full normalized transcript**, so changes beyond the preview cutoff invalidate the context.
+- Candidates expose stable IDs and authoritative ranges/provenance from VibeCut; execution authority is explicitly `none`.
 
-1. **Rough-cut synthesis contract:** revision-bound candidate context → proposal-only ordered candidate IDs → deterministic validation. No raw path/range invention and no direct mutation.
-2. Rough-cut alternatives and scoring over current evidence/retrieval.
-3. Highlights/shorts extraction with explicit objective/rubric and source-range provenance.
-4. B-roll opportunity detection, candidate retrieval and reviewable placement plan.
-5. Pacing, section/narrative and continuity analysis.
-6. Only after proposal/evaluation quality is measurable: governed execution resolving to existing native edit primitives with normal plan authorization, verification and Undo.
+### Rough-cut proposal validation — LANDED
+- `rough_cut_proposal_validate` accepts only context identity, objective, ordered candidate IDs and optional duration budget.
+- Caller cannot submit raw source paths, frame ranges or edit operations.
+- Unknown/duplicate IDs, stale revision/context, context tamper and duration-budget overflow fail closed.
+- Exact ranges/provenance are resolved from the canonical context.
+- Result authority remains `proposal`, with `executable=false` and `mutation_authority=none`.
+
+### Objective relevance — LANDED
+- `rough_cut_objective_rank` delegates only to current-only `media_search_hybrid` and filters results back into the exact rough-cut candidate universe.
+- Hybrid kind/range/source-fingerprint provenance must match the canonical candidate.
+- Parent/child cancellation and already-terminal child races are handled.
+- On child completion the candidate context is rebuilt and re-hashed, so transcript/evidence changes are refused even if timeline revision did not move.
+- Output is `derived_ranking` with `current_hybrid_relevance_not_probability`, never an edit or quality probability.
+
+### Alternative comparison — LANDED
+- `rough_cut_alternatives_compare` compares 2–5 candidate-ID alternatives only after a completed exact-context objective-ranking job.
+- Every alternative is revalidated through the canonical proposal validator before scoring.
+- Fixed disclosed rubric: objective relevance 0.60, retrieval coverage 0.15, chronology 0.10, overlap cleanliness 0.10, provenance coverage 0.05.
+- Missing relevance is represented separately as retrieval coverage rather than silently becoming zero-valued evidence.
+- Weights are code-defined and not caller-adjustable.
+- `top_ranked_alternative_id` means top under the declared rubric only; output authority is `derived_comparison`, `executable=false`, `mutation_authority=none`.
+
+### Next source sequence
+1. Highlights/shorts candidate contract with explicit objective/rubric and source-range provenance.
+2. B-roll opportunity detection, candidate retrieval and reviewable placement proposal.
+3. Pacing, section/narrative and continuity analysis.
+4. Quantitative editorial-quality fixtures for rough-cut/highlight alternatives.
+5. **Only after proposal/evaluation quality is measurable:** translate an explicitly approved synthesis proposal into the existing governed `EditPlan`/native mutation path with normal authorization, verification and Undo. Do not create a parallel synthesis mutation path.
 
 ## Distribution and README lineage
 
@@ -127,5 +155,5 @@ The repository preserves three documentation layers: halthinks/VibeCut capabilit
 - OCR/object extraction over sampled frames does not observe unsampled frames.
 - Diarization clusters are not identities.
 - AudioSet/DETR/X-CLIP outputs are model predictions, not facts.
-- Temporal tracks, room-tone/subject/duplicate candidates and hybrid rankings are derived inference, not promoted observations or probabilities.
+- Temporal tracks, room-tone/subject/duplicate candidates, hybrid rankings and synthesis comparison scores are derived inference, not promoted observations or probabilities.
 - A synthesis feature is not complete because a model can suggest it. Execution is complete only when its native mutation, verification and Undo story are real and quantitatively evaluated.
