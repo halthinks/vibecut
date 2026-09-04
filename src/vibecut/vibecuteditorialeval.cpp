@@ -1,6 +1,8 @@
 /* SPDX-License-Identifier: GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL */
 #include "vibecuteditorialeval.h"
 
+#include "vibecuttoolsurface.h"
+
 #include <QHash>
 #include <QJsonArray>
 #include <QSet>
@@ -38,7 +40,24 @@ QSet<QString> toSet(const QStringList &ids)
     for (const QString &id : ids) result.insert(id);
     return result;
 }
+
+QJsonObject toolHandler(const QJsonObject &input)
+{
+    const QJsonValue expectedValue = input.value(QStringLiteral("expected_candidate_ids"));
+    const QJsonValue actualValue = input.value(QStringLiteral("actual_candidate_ids"));
+    if (!expectedValue.isArray() || !actualValue.isArray()) {
+        return QJsonObject{{QStringLiteral("ok"), false},
+                           {QStringLiteral("error"), QStringLiteral("expected_candidate_ids and actual_candidate_ids must be arrays.")}};
+    }
+    QString error;
+    QJsonObject result = evaluateVibeCutEditorialSelection(expectedValue.toArray(), actualValue.toArray(), &error);
+    if (!error.isEmpty()) {
+        return QJsonObject{{QStringLiteral("ok"), false}, {QStringLiteral("error"), error}};
+    }
+    result.insert(QStringLiteral("ok"), true);
+    return result;
 }
+} // namespace
 
 QJsonObject evaluateVibeCutEditorialSelection(const QJsonArray &expectedCandidateIds,
                                               const QJsonArray &actualCandidateIds,
@@ -109,4 +128,26 @@ QJsonObject evaluateVibeCutEditorialSelection(const QJsonArray &expectedCandidat
                        {QStringLiteral("missed_candidate_ids"), missedJson},
                        {QStringLiteral("unexpected_candidate_ids"), unexpectedJson},
                        {QStringLiteral("quality_claim"), false}};
+}
+
+bool registerVibeCutEditorialEvalTools(VibeCutToolSurface &surface, QString *error)
+{
+    const QJsonObject candidateArray{{QStringLiteral("type"), QStringLiteral("array")},
+                                     {QStringLiteral("maxItems"), 100},
+                                     {QStringLiteral("items"), QJsonObject{{QStringLiteral("type"), QStringLiteral("string")},
+                                                                           {QStringLiteral("minLength"), 1},
+                                                                           {QStringLiteral("maxLength"), 1024}}}};
+    const QJsonObject input{{QStringLiteral("type"), QStringLiteral("object")},
+                            {QStringLiteral("properties"), QJsonObject{
+                                {QStringLiteral("expected_candidate_ids"), candidateArray},
+                                {QStringLiteral("actual_candidate_ids"), candidateArray}}},
+                            {QStringLiteral("required"), QJsonArray{QStringLiteral("expected_candidate_ids"), QStringLiteral("actual_candidate_ids")}},
+                            {QStringLiteral("additionalProperties"), false}};
+    VibeCutToolPolicy policy;
+    policy.name = QStringLiteral("editorial_selection_evaluate");
+    policy.risk = VibeCutToolRisk::ReadOnly;
+    return surface.registerTool(QJsonObject{{QStringLiteral("name"), policy.name},
+                                            {QStringLiteral("description"), QStringLiteral("Compare an actual candidate-ID selection/order with an explicit human/golden reference using precision, recall, F1, exact-set/order and relative-order agreement metrics. This measures agreement only and never claims intrinsic editorial quality.")},
+                                            {QStringLiteral("input_schema"), input}},
+                                policy, toolHandler, error);
 }
