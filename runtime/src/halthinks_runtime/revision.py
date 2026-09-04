@@ -9,7 +9,11 @@ from .contracts import MAX_EXACT_JSON_INTEGER
 
 
 class RevisionError(RuntimeError):
-    """Raised when adapter revision state violates an authorized plan session."""
+    """Raised when adapter revision state violates the runtime contract."""
+
+
+class StaleRevisionError(RevisionError):
+    """Raised when a valid revision token no longer matches authorized state."""
 
 
 @dataclass
@@ -33,7 +37,7 @@ class RevisionGate:
     def authorize(self, current_revision: int) -> int:
         _validate_revision(current_revision, "current_revision")
         if current_revision != self.base_revision:
-            raise RevisionError(
+            raise StaleRevisionError(
                 f"plan was created for revision {self.base_revision} but current revision is {current_revision}"
             )
         self.expected_revision = current_revision
@@ -45,7 +49,7 @@ class RevisionGate:
         if not self.authorized or self.expected_revision is None:
             raise RevisionError("plan has not been authorized")
         if current_revision != self.expected_revision:
-            raise RevisionError(
+            raise StaleRevisionError(
                 f"expected revision {self.expected_revision} but adapter reports {current_revision}"
             )
         return current_revision
