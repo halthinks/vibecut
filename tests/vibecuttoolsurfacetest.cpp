@@ -8,6 +8,8 @@
 #include "vibecut/vibecuttools.h"
 #include "vibecut/vibecuttoolsurface.h"
 
+#include <QSet>
+
 TEST_CASE("canonical VibeCut surface includes governed editing and delivery capabilities", "[vibecut][tools]")
 {
     VibeCutTools base;
@@ -82,4 +84,36 @@ TEST_CASE("tool surface rejects duplicate and ungoverned registrations", "[vibec
     QJsonObject newSchema = schema;
     newSchema.insert(QStringLiteral("name"), QStringLiteral("new_tool"));
     CHECK_FALSE(surface.registerTool(newSchema, policy, [](const QJsonObject &) { return QJsonObject{}; }, &error));
+}
+
+TEST_CASE("runtime contract snapshot pairs every advertised schema with its effective policy", "[vibecut][tools][runtime-contract]")
+{
+    VibeCutTools base;
+    VibeCutToolSurface surface(&base);
+
+    const QJsonObject snapshot = surface.runtimeContractSnapshot();
+    CHECK(snapshot.value(QStringLiteral("protocol_version")).toInt() == 1);
+    CHECK(snapshot.value(QStringLiteral("editor_id")).toString() == QStringLiteral("kdenlive"));
+    CHECK(snapshot.value(QStringLiteral("adapter_id")).toString() == QStringLiteral("halthinks-vibecut-adapter"));
+    CHECK(snapshot.value(QStringLiteral("project_revision")).toVariant().toULongLong() == surface.projectRevision());
+
+    const QJsonArray advertised = surface.schemas();
+    const QJsonArray tools = snapshot.value(QStringLiteral("tools")).toArray();
+    REQUIRE(snapshot.value(QStringLiteral("tool_count")).toInt() == tools.size());
+    REQUIRE(tools.size() == advertised.size());
+
+    QSet<QString> seen;
+    for (int i = 0; i < tools.size(); ++i) {
+        const QJsonObject entry = tools.at(i).toObject();
+        const QJsonObject schema = entry.value(QStringLiteral("schema")).toObject();
+        const QJsonObject policy = entry.value(QStringLiteral("policy")).toObject();
+        const QString name = schema.value(QStringLiteral("name")).toString();
+        INFO(name.toStdString());
+        REQUIRE_FALSE(name.isEmpty());
+        CHECK(policy.value(QStringLiteral("name")).toString() == name);
+        CHECK(policy.value(QStringLiteral("enabled")).toBool(false));
+        CHECK_FALSE(seen.contains(name));
+        seen.insert(name);
+        CHECK(schema == advertised.at(i).toObject());
+    }
 }
