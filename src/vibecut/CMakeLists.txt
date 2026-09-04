@@ -28,6 +28,7 @@ set(kdenlive_SRCS
   vibecut/vibecutduplicatecandidates.cpp
   vibecut/vibecutduplicatefusion.cpp
   vibecut/vibecutedittools.cpp
+  vibecut/vibecuteditorialcase.cpp
   vibecut/vibecuteditorialeval.cpp
   vibecut/vibecuteditorialreview.cpp
   vibecut/vibecuteffectgrouptools.cpp
