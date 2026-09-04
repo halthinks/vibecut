@@ -38,9 +38,15 @@ QString sha256Object(const QJsonObject &object)
                                                          QCryptographicHash::Sha256).toHex());
 }
 
+QString sha256Text(const QString &text)
+{
+    return QString::fromLatin1(QCryptographicHash::hash(text.toUtf8(), QCryptographicHash::Sha256).toHex());
+}
+
 QJsonObject contextWithoutHash(QJsonObject context)
 {
     context.remove(QStringLiteral("context_sha256"));
+    context.remove(QStringLiteral("ok")); // tool envelope field is not part of the canonical context identity
     return context;
 }
 
@@ -165,6 +171,7 @@ QJsonObject buildVibeCutRoughCutContext(const QList<VibeCutMediaDocument> &docum
                               {QStringLiteral("end_frame"), document.endFrame},
                               {QStringLiteral("duration_frames"), document.endFrame - document.startFrame},
                               {QStringLiteral("text"), text.left(maxTextChars)},
+                              {QStringLiteral("text_sha256"), sha256Text(text)},
                               {QStringLiteral("text_truncated"), text.size() > maxTextChars}};
         const QString sourceId = document.metadata.value(QStringLiteral("source_id")).toString();
         const QString sourceFingerprint = document.metadata.value(QStringLiteral("source_fingerprint")).toString();
@@ -355,7 +362,7 @@ bool registerVibeCutRoughCutSynthesisTools(VibeCutToolSurface &surface, QString 
     contextPolicy.name = QStringLiteral("rough_cut_context");
     contextPolicy.risk = VibeCutToolRisk::ReadOnly;
     if (!surface.registerTool(QJsonObject{{QStringLiteral("name"), contextPolicy.name},
-                                          {QStringLiteral("description"), QStringLiteral("Build a bounded revision-bound rough-cut candidate context from current canonical transcript/subtitle documents. Candidates expose stable IDs and authoritative ranges/provenance only; this tool grants no edit authority.")},
+                                          {QStringLiteral("description"), QStringLiteral("Build a bounded revision-bound rough-cut candidate context from current canonical transcript/subtitle documents. Candidates expose stable IDs and authoritative ranges/provenance only; full normalized transcript text is SHA-256-bound even when the displayed preview is truncated. This tool grants no edit authority.")},
                                           {QStringLiteral("input_schema"), contextInput}},
                               contextPolicy, [surfacePtr](const QJsonObject &input) { return contextTool(surfacePtr, input); }, error)) return false;
 
