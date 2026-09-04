@@ -11,7 +11,7 @@ from halthinks_runtime.session import RuntimeSession
 
 
 def main() -> int:
-    client = ChildStdioAdapterClient(response_timeout=5.0, event_timeout=5.0)
+    client = ChildStdioAdapterClient()
     try:
         session = RuntimeSession()
         hello = session.accept_hello(client.read_hello())
