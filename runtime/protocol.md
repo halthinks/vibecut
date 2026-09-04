@@ -52,7 +52,29 @@ Protocol authority is deliberately split:
 
 A runtime request cannot self-elevate from proposal authority into mutation authority. Consequential editor changes happen only through adapter-exposed native tools after authorization.
 
-## 4. Required message types
+## 4. Revision and authorization model
+
+Version 1 distinguishes two revision values:
+
+- `base_revision` — immutable provenance captured when the plan is proposed. It binds the plan to the state it was reasoned from.
+- `expected_revision` — moving execution token. It starts at the adapter revision when authorization is granted and is replaced by each successful adapter response/event that legitimately advances project state.
+
+This distinction mirrors the current integrated `VibeCutPlanRuntime`: an approved plan is stale if the project changes before execution, but operation 1 may legitimately advance the revision before operation 2.
+
+Rules:
+
+1. Adapter stores the exact accepted `propose_plan` object immutably for the pending authorization.
+2. `authorize` binds a fresh opaque `authorization_id` to that stored plan and its approved operation ids.
+3. `invoke` references only `plan_id`, `authorization_id`, `operation_id`, and `expected_revision`.
+4. The adapter resolves the tool name/input from the stored approved plan. The runtime may **not** substitute a new tool or new JSON input after approval.
+5. Before each invoke, adapter requires current project revision == `expected_revision`.
+6. A successful response returns `revision_before` and `revision_after`; runtime uses `revision_after` as the next `expected_revision`.
+7. If an external-only asynchronous job is running and project state changes before remaining operations, the remaining plan is stale and must stop.
+8. A rejected/stale authorization id cannot be reused.
+
+This prevents both stale-plan execution and post-approval plan substitution.
+
+## 5. Required message types
 
 ### `hello`
 
@@ -92,24 +114,26 @@ Payload names an inspection operation and JSON input. The adapter returns curren
 
 Direction: runtime → adapter request/event for review.
 
-Payload contains one object conforming to `schema/editplan.schema.json`. `base_revision` binds the plan to inspected state.
+Payload contains one object conforming to `schema/editplan.schema.json`. `base_revision` binds the plan to inspected state. The adapter stores the accepted object immutably for the pending authorization and refuses a conflicting reuse of the same plan id.
 
 ### `authorize`
 
 Direction: adapter/human → runtime response/event.
 
-Minimum payload:
+Approved response payload:
 
 ```json
 {
   "plan_id": "plan-...",
   "decision": "approved",
   "trust_mode": "off",
+  "authorization_id": "auth-...",
+  "expected_revision": 42,
   "approved_operation_ids": ["op-1"]
 }
 ```
 
-`decision` is `approved` or `rejected`. A later protocol version may add scoped approval, but v1 must never infer approval from silence.
+Rejected response omits `authorization_id` and contains a reason. Version 1 never infers approval from silence.
 
 ### `invoke`
 
@@ -118,14 +142,27 @@ Direction: runtime → adapter request.
 ```json
 {
   "plan_id": "plan-...",
+  "authorization_id": "auth-...",
   "operation_id": "op-1",
-  "base_revision": 42,
-  "tool": "clip_move",
-  "input": {}
+  "expected_revision": 42
 }
 ```
 
-The adapter rechecks current revision, tool availability, policy, authorization, and native preconditions at execution time. Runtime validation is not a substitute for adapter validation.
+The adapter resolves `tool` and `input` from the exact stored approved plan; neither is caller-overridable at invoke time.
+
+Successful synchronous response includes:
+
+```json
+{
+  "plan_id": "plan-...",
+  "operation_id": "op-1",
+  "revision_before": 42,
+  "revision_after": 43,
+  "result": {"ok": true}
+}
+```
+
+For asynchronous work, response additionally exposes `started: true` and a trackable `job_id`. Adapter rechecks authorization, moving expected revision, effective policy, dependencies, and native preconditions at execution time.
 
 ### `verify`
 
@@ -134,7 +171,9 @@ Direction: runtime → adapter request.
 ```json
 {
   "plan_id": "plan-...",
+  "authorization_id": "auth-...",
   "operation_id": "op-1",
+  "expected_revision": 43,
   "expected_postconditions": ["..."],
   "inspection": "project_snapshot"
 }
@@ -146,7 +185,7 @@ The adapter returns measured/native postcondition evidence. `ok: true` without s
 
 Direction: adapter → runtime event.
 
-Payload mirrors the public job schema and may be emitted for queued/running/cancel-requested/terminal state changes.
+Payload mirrors the public job schema and includes current `project_revision` when revision-sensitive plan continuation is possible. Successful terminal events may carry bounded structured result data.
 
 ### `revision`
 
@@ -156,7 +195,7 @@ Direction: adapter → runtime event.
 {"project_revision":43,"reason":"undo_stack_changed"}
 ```
 
-Revision tokens are opaque monotonic adapter state. A stale `base_revision` must be refused before mutation.
+Revision tokens are opaque monotonic adapter state. Runtime-owned successful operations advance the moving expected token; unrelated changes invalidate remaining work.
 
 ### `evidence_put`
 
@@ -179,7 +218,7 @@ Minimum payload:
 ```json
 {
   "code": "stale_revision",
-  "message": "Plan base_revision no longer matches current project revision.",
+  "message": "expected_revision no longer matches current project revision.",
   "retryable": false,
   "details": {}
 }
@@ -187,7 +226,7 @@ Minimum payload:
 
 Errors never masquerade as successful responses.
 
-## 5. Plan contract
+## 6. Plan contract
 
 The canonical serialized plan field names mirror current `VibeCutEditPlan::toJson()` / `VibeCutPlanOperation::toJson()`:
 
@@ -203,9 +242,11 @@ JSON Schema validates shape. Semantic validation additionally requires:
 - every dependency references a known operation;
 - no self-dependency;
 - dependency graph is acyclic;
-- plan `base_revision` equals current adapter revision at authorization/execution time.
+- every tool is advertised and governed by the active adapter snapshot;
+- plan `base_revision` equals adapter revision when authorization is granted;
+- after authorization, moving `expected_revision` — not immutable `base_revision` — guards each operation.
 
-## 6. Trust/policy contract
+## 7. Trust/policy contract
 
 The public policy serialization mirrors `VibeCutToolPolicy::toJson()` exactly:
 
@@ -226,7 +267,7 @@ Trust modes map current C++ names as:
 
 Code/adapter-defined hard confirmation remains a lower bound. Runtime or project policy must not waive `confirmation_required=true` or irreversible confirmation.
 
-## 7. Job contract
+## 8. Job contract
 
 Job states mirror the current JobManager state machine:
 
@@ -236,7 +277,7 @@ with `cancel_requested` as an explicit intermediate state for cancelable jobs.
 
 Fields are defined in `schema/job.schema.json`. Structured successful results remain bounded. Failed/cancelled jobs do not claim a successful result.
 
-## 8. Evidence contract
+## 9. Evidence contract
 
 The public record shape mirrors `VibeCutMediaEvidenceRecord::toJson()` exactly. See `schema/evidence.schema.json`.
 
@@ -248,14 +289,14 @@ Important invariants:
 - frame ranges use `-1` for unavailable, otherwise non-negative coordinates with end ≥ start;
 - evidence is provenance-bound and does not become project truth automatically.
 
-## 9. Compatibility/versioning
+## 10. Compatibility/versioning
 
 - Additive optional fields may be introduced only when old peers can safely ignore them.
 - Renaming/removing fields or changing semantics requires a new protocol/schema version.
 - Adapter `hello` advertises supported versions.
 - No side may silently downgrade security/authority semantics to achieve compatibility.
 
-## 10. Initial extraction acceptance
+## 11. Initial extraction acceptance
 
 The first extracted runtime is protocol-valid only when a fake adapter can demonstrate:
 
@@ -263,8 +304,11 @@ The first extracted runtime is protocol-valid only when a fake adapter can demon
 2. inspect current revision;
 3. propose and validate an EditPlan;
 4. require authorization according to policy;
-5. reject stale revision before invoke;
-6. invoke only advertised tools;
-7. verify postconditions from adapter state;
-8. receive job lifecycle events;
-9. persist/retrieve evidence without converting it into editor truth.
+5. reject stale `base_revision` before authorization;
+6. issue an authorization id bound to the exact stored plan;
+7. reject post-approval tool/input substitution by resolving operation content adapter-side;
+8. reject unexpected revision changes while accepting revision changes caused by prior approved operations;
+9. invoke only advertised and approved tools;
+10. verify postconditions from adapter state;
+11. receive job lifecycle events and stop remaining work when an external-only job observes project drift;
+12. persist/retrieve evidence without converting it into editor truth.
