@@ -34,6 +34,29 @@ bool boundedString(const QJsonObject &object, const QString &key, int maxLength,
     return true;
 }
 
+bool sha256Field(const QJsonObject &object, const QString &key, QString &value, QString *error)
+{
+    if (!object.value(key).isString()) {
+        if (error) *error = QStringLiteral("%1 must be a SHA-256 hex string.").arg(key);
+        return false;
+    }
+    value = object.value(key).toString().trimmed().toLower();
+    if (value.size() != 64) {
+        if (error) *error = QStringLiteral("%1 must contain exactly 64 hexadecimal characters.").arg(key);
+        return false;
+    }
+    for (const QChar ch : value) {
+        const ushort code = ch.unicode();
+        const bool digit = code >= '0' && code <= '9';
+        const bool lowerHex = code >= 'a' && code <= 'f';
+        if (!digit && !lowerHex) {
+            if (error) *error = QStringLiteral("%1 must contain hexadecimal characters only.").arg(key);
+            return false;
+        }
+    }
+    return true;
+}
+
 bool scoreValue(const QJsonObject &scores, const QString &criterion, int &score, QString *error)
 {
     const QJsonValue value = scores.value(criterion);
@@ -128,10 +151,14 @@ QJsonObject validateVibeCutEditorialReview(const QJsonObject &review, QString *e
     QString candidateId;
     QString reviewerId;
     QString taskType;
+    QString contextSha;
+    QString proposalId;
     if (!boundedString(review, QStringLiteral("case_id"), 128, caseId, error) ||
         !boundedString(review, QStringLiteral("candidate_id"), 128, candidateId, error) ||
         !boundedString(review, QStringLiteral("reviewer_id"), 128, reviewerId, error) ||
-        !boundedString(review, QStringLiteral("task_type"), 32, taskType, error)) return {};
+        !boundedString(review, QStringLiteral("task_type"), 32, taskType, error) ||
+        !sha256Field(review, QStringLiteral("context_sha256"), contextSha, error) ||
+        !sha256Field(review, QStringLiteral("proposal_id"), proposalId, error)) return {};
     if (!supportedTask(taskType)) {
         if (error) *error = QStringLiteral("task_type must be rough_cut, highlight, or broll.");
         return {};
@@ -170,12 +197,14 @@ QJsonObject validateVibeCutEditorialReview(const QJsonObject &review, QString *e
     QJsonObject normalized{{QStringLiteral("schema_version"), 1},
                            {QStringLiteral("rubric_id"), kRubric},
                            {QStringLiteral("authority"), QStringLiteral("human_review")},
-                           {QStringLiteral("review_semantics"), QStringLiteral("subjective_blinded_editorial_rating_not_ground_truth")},
+                           {QStringLiteral("review_semantics"), QStringLiteral("subjective_blinded_editorial_rating_bound_to_exact_proposal_not_ground_truth")},
                            {QStringLiteral("blind"), true},
                            {QStringLiteral("case_id"), caseId},
                            {QStringLiteral("candidate_id"), candidateId},
                            {QStringLiteral("reviewer_id"), reviewerId},
                            {QStringLiteral("task_type"), taskType},
+                           {QStringLiteral("context_sha256"), contextSha},
+                           {QStringLiteral("proposal_id"), proposalId},
                            {QStringLiteral("scores"), normalizedScores},
                            {QStringLiteral("quality_ground_truth"), false},
                            {QStringLiteral("mutation_authority"), QStringLiteral("none")}};
@@ -194,6 +223,8 @@ QJsonObject aggregateVibeCutEditorialReviews(const QJsonArray &reviews, QString 
     QString caseId;
     QString candidateId;
     QString taskType;
+    QString contextSha;
+    QString proposalId;
     QSet<QString> reviewerIds;
     QHash<QString, QList<int>> values;
     QJsonArray normalized;
@@ -211,13 +242,18 @@ QJsonObject aggregateVibeCutEditorialReviews(const QJsonArray &reviews, QString 
         const QString thisCase = review.value(QStringLiteral("case_id")).toString();
         const QString thisCandidate = review.value(QStringLiteral("candidate_id")).toString();
         const QString thisTask = review.value(QStringLiteral("task_type")).toString();
+        const QString thisContext = review.value(QStringLiteral("context_sha256")).toString();
+        const QString thisProposal = review.value(QStringLiteral("proposal_id")).toString();
         const QString reviewer = review.value(QStringLiteral("reviewer_id")).toString();
         if (caseId.isEmpty()) {
             caseId = thisCase;
             candidateId = thisCandidate;
             taskType = thisTask;
-        } else if (caseId != thisCase || candidateId != thisCandidate || taskType != thisTask) {
-            if (error) *error = QStringLiteral("All reviews in one aggregate must target the same case_id, candidate_id and task_type.");
+            contextSha = thisContext;
+            proposalId = thisProposal;
+        } else if (caseId != thisCase || candidateId != thisCandidate || taskType != thisTask ||
+                   contextSha != thisContext || proposalId != thisProposal) {
+            if (error) *error = QStringLiteral("All reviews in one aggregate must target the same case, candidate, task, context_sha256 and proposal_id.");
             return {};
         }
         if (reviewerIds.contains(reviewer)) {
@@ -235,10 +271,12 @@ QJsonObject aggregateVibeCutEditorialReviews(const QJsonArray &reviews, QString 
     return QJsonObject{{QStringLiteral("schema_version"), 1},
                        {QStringLiteral("rubric_id"), kRubric},
                        {QStringLiteral("authority"), QStringLiteral("human_review_aggregate")},
-                       {QStringLiteral("aggregate_semantics"), QStringLiteral("subjective_blinded_editorial_review_summary_not_ground_truth_or_automatic_gate")},
+                       {QStringLiteral("aggregate_semantics"), QStringLiteral("subjective_blinded_editorial_review_summary_bound_to_exact_proposal_not_ground_truth_or_automatic_gate")},
                        {QStringLiteral("case_id"), caseId},
                        {QStringLiteral("candidate_id"), candidateId},
                        {QStringLiteral("task_type"), taskType},
+                       {QStringLiteral("context_sha256"), contextSha},
+                       {QStringLiteral("proposal_id"), proposalId},
                        {QStringLiteral("review_count"), normalized.size()},
                        {QStringLiteral("criteria"), QJsonArray::fromStringList(kCriteria)},
                        {QStringLiteral("metrics"), metrics},
@@ -257,6 +295,9 @@ bool registerVibeCutEditorialReviewTools(VibeCutToolSurface &surface, QString *e
         {QStringLiteral("source_fidelity"), QJsonObject{{QStringLiteral("type"), QStringLiteral("integer")}, {QStringLiteral("minimum"), 1}, {QStringLiteral("maximum"), 5}}},
         {QStringLiteral("overall_preference"), QJsonObject{{QStringLiteral("type"), QStringLiteral("integer")}, {QStringLiteral("minimum"), 1}, {QStringLiteral("maximum"), 5}}},
     };
+    const QJsonObject shaSchema{{QStringLiteral("type"), QStringLiteral("string")},
+                                {QStringLiteral("minLength"), 64}, {QStringLiteral("maxLength"), 64},
+                                {QStringLiteral("pattern"), QStringLiteral("^[0-9A-Fa-f]{64}$")}};
     const QJsonObject reviewSchema{{QStringLiteral("type"), QStringLiteral("object")},
                                    {QStringLiteral("properties"), QJsonObject{
                                        {QStringLiteral("schema_version"), QJsonObject{{QStringLiteral("type"), QStringLiteral("integer")}, {QStringLiteral("const"), 1}}},
@@ -266,6 +307,8 @@ bool registerVibeCutEditorialReviewTools(VibeCutToolSurface &surface, QString *e
                                        {QStringLiteral("candidate_id"), QJsonObject{{QStringLiteral("type"), QStringLiteral("string")}, {QStringLiteral("minLength"), 1}, {QStringLiteral("maxLength"), 128}}},
                                        {QStringLiteral("reviewer_id"), QJsonObject{{QStringLiteral("type"), QStringLiteral("string")}, {QStringLiteral("minLength"), 1}, {QStringLiteral("maxLength"), 128}}},
                                        {QStringLiteral("task_type"), QJsonObject{{QStringLiteral("type"), QStringLiteral("string")}, {QStringLiteral("enum"), QJsonArray{QStringLiteral("rough_cut"), QStringLiteral("highlight"), QStringLiteral("broll")}}}},
+                                       {QStringLiteral("context_sha256"), shaSchema},
+                                       {QStringLiteral("proposal_id"), shaSchema},
                                        {QStringLiteral("scores"), QJsonObject{{QStringLiteral("type"), QStringLiteral("object")},
                                                                               {QStringLiteral("properties"), scoreProperties},
                                                                               {QStringLiteral("required"), QJsonArray::fromStringList(kCriteria)},
@@ -273,14 +316,15 @@ bool registerVibeCutEditorialReviewTools(VibeCutToolSurface &surface, QString *e
                                        {QStringLiteral("notes"), QJsonObject{{QStringLiteral("type"), QStringLiteral("string")}, {QStringLiteral("maxLength"), 2000}}}}},
                                    {QStringLiteral("required"), QJsonArray{QStringLiteral("schema_version"), QStringLiteral("rubric_id"), QStringLiteral("blind"),
                                                                            QStringLiteral("case_id"), QStringLiteral("candidate_id"), QStringLiteral("reviewer_id"),
-                                                                           QStringLiteral("task_type"), QStringLiteral("scores")}},
+                                                                           QStringLiteral("task_type"), QStringLiteral("context_sha256"), QStringLiteral("proposal_id"),
+                                                                           QStringLiteral("scores")}},
                                    {QStringLiteral("additionalProperties"), false}};
 
     VibeCutToolPolicy validatePolicy;
     validatePolicy.name = QStringLiteral("editorial_review_validate");
     validatePolicy.risk = VibeCutToolRisk::ReadOnly;
     if (!surface.registerTool(QJsonObject{{QStringLiteral("name"), validatePolicy.name},
-                                          {QStringLiteral("description"), QStringLiteral("Validate one blinded VibeCutEditorialReview-v1 human review record. Ratings are subjective review evidence, not ground truth and not execution authority.")},
+                                          {QStringLiteral("description"), QStringLiteral("Validate one blinded VibeCutEditorialReview-v1 human review record bound to an exact context SHA-256 and proposal ID. Ratings are subjective review evidence, not ground truth and not execution authority.")},
                                           {QStringLiteral("input_schema"), QJsonObject{{QStringLiteral("type"), QStringLiteral("object")},
                                                                                        {QStringLiteral("properties"), QJsonObject{{QStringLiteral("review"), reviewSchema}}},
                                                                                        {QStringLiteral("required"), QJsonArray{QStringLiteral("review")}},
@@ -291,7 +335,7 @@ bool registerVibeCutEditorialReviewTools(VibeCutToolSurface &surface, QString *e
     aggregatePolicy.name = QStringLiteral("editorial_review_aggregate");
     aggregatePolicy.risk = VibeCutToolRisk::ReadOnly;
     return surface.registerTool(QJsonObject{{QStringLiteral("name"), aggregatePolicy.name},
-                                            {QStringLiteral("description"), QStringLiteral("Aggregate 1..50 blinded reviews for one case/candidate under the fixed VibeCutEditorialReview-v1 rubric, reporting means and disagreement without pass/fail or automatic execution authority.")},
+                                            {QStringLiteral("description"), QStringLiteral("Aggregate 1..50 blinded reviews for one exact proposal/context under VibeCutEditorialReview-v1, reporting means and disagreement without pass/fail or automatic execution authority.")},
                                             {QStringLiteral("input_schema"), QJsonObject{{QStringLiteral("type"), QStringLiteral("object")},
                                                                                          {QStringLiteral("properties"), QJsonObject{{QStringLiteral("reviews"), QJsonObject{{QStringLiteral("type"), QStringLiteral("array")}, {QStringLiteral("minItems"), 1}, {QStringLiteral("maxItems"), 50}, {QStringLiteral("items"), reviewSchema}}}}},
                                                                                          {QStringLiteral("required"), QJsonArray{QStringLiteral("reviews")}},
