@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import collections
+import os
 import queue
 import sys
 import threading
@@ -27,6 +28,11 @@ class ChildStdioAdapterClient(AdapterClient):
         proprietary diagnostics -> stderr    (never protocol)
 
     The client never imports editor types and never launches Kdenlive itself.
+
+    For inherited process stdio, this client owns duplicated *unbuffered* file
+    descriptors rather than blocking a daemon thread on ``sys.stdin.buffer``.
+    That keeps Python's global buffered streams out of the protocol reader and
+    prevents interpreter-finalization crashes after a successful plan.
     """
 
     def __init__(
@@ -39,15 +45,23 @@ class ChildStdioAdapterClient(AdapterClient):
     ) -> None:
         if response_timeout <= 0 or event_timeout <= 0:
             raise ChildStdioError("stdio timeouts must be positive")
-        self._reader = reader or sys.stdin.buffer
-        self._writer = writer or sys.stdout.buffer
+
+        self._owns_reader = reader is None
+        self._owns_writer = writer is None
+        try:
+            self._reader = reader or os.fdopen(os.dup(sys.stdin.fileno()), "rb", buffering=0)
+            self._writer = writer or os.fdopen(os.dup(sys.stdout.fileno()), "wb", buffering=0)
+        except (OSError, ValueError) as exc:
+            raise ChildStdioError(f"could not duplicate inherited protocol stdio: {exc}") from exc
+
         self._response_timeout = float(response_timeout)
         self._event_timeout = float(event_timeout)
         self._inbox: queue.Queue[Envelope | BaseException | None] = queue.Queue()
         self._events: collections.deque[Envelope] = collections.deque()
         self._exchange_lock = threading.Lock()
         self._write_lock = threading.Lock()
-        self._closed = False
+        self._close_lock = threading.Lock()
+        self._closed = threading.Event()
         self._thread = threading.Thread(target=self._reader_loop, name="vibecut-parent-adapter-stdin", daemon=True)
         self._thread.start()
 
@@ -105,11 +119,39 @@ class ChildStdioAdapterClient(AdapterClient):
                 f"unexpected unsolicited {incoming.kind}/{incoming.type} while waiting for event"
             )
 
-    def close(self) -> None:
-        self._closed = True
+    def close(self, *, join_timeout: float = 0.25) -> None:
+        """Release owned protocol descriptors without touching Python globals.
+
+        A raw pipe read may remain blocked until the parent closes its end on
+        some platforms. The reader is therefore daemonized, but it blocks only
+        on this client's private unbuffered descriptor; interpreter shutdown no
+        longer needs a lock held by that thread on ``sys.stdin.buffer``.
+        """
+        with self._close_lock:
+            if self._closed.is_set():
+                return
+            self._closed.set()
+            if self._owns_writer:
+                try:
+                    self._writer.close()
+                except OSError:
+                    pass
+            if self._owns_reader:
+                try:
+                    self._reader.close()
+                except OSError:
+                    pass
+        if join_timeout > 0 and self._thread is not threading.current_thread():
+            self._thread.join(timeout=join_timeout)
+
+    def __enter__(self) -> "ChildStdioAdapterClient":
+        return self
+
+    def __exit__(self, exc_type, exc, tb) -> None:
+        self.close()
 
     def _write(self, message: Envelope) -> None:
-        if self._closed:
+        if self._closed.is_set():
             raise ChildStdioError("child stdio protocol client is closed")
         payload = message.encode_line()
         with self._write_lock:
@@ -123,19 +165,24 @@ class ChildStdioAdapterClient(AdapterClient):
         try:
             item = self._inbox.get(timeout=timeout)
         except queue.Empty as exc:
+            if self._closed.is_set():
+                raise ChildStdioError("child stdio protocol client is closed") from exc
             raise ChildStdioError("GPL adapter protocol receive timed out") from exc
         if item is None:
             raise ChildStdioError("GPL adapter parent closed runtime stdin protocol pipe")
         if isinstance(item, BaseException):
+            if self._closed.is_set() and isinstance(item, (OSError, ValueError)):
+                raise ChildStdioError("child stdio protocol client is closed") from item
             raise ChildStdioError(f"GPL adapter protocol reader failed: {item}") from item
         return item
 
     def _reader_loop(self) -> None:
         try:
-            while not self._closed:
+            while not self._closed.is_set():
                 raw = self._reader.readline()
                 if raw == b"":
-                    self._inbox.put(None)
+                    if not self._closed.is_set():
+                        self._inbox.put(None)
                     return
                 if not raw.endswith(b"\n"):
                     self._inbox.put(ChildStdioError("adapter protocol record ended without newline"))
@@ -145,5 +192,8 @@ class ChildStdioAdapterClient(AdapterClient):
                 except BaseException as exc:
                     self._inbox.put(exc)
                     return
+        except (OSError, ValueError) as exc:
+            if not self._closed.is_set():
+                self._inbox.put(exc)
         except BaseException as exc:
             self._inbox.put(exc)
