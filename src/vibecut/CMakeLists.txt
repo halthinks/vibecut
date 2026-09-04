@@ -97,6 +97,7 @@ set(kdenlive_SRCS
   vibecut/vibecutscript.cpp
   vibecut/vibecutsecretstore.cpp
   vibecut/vibecutselectiontools.cpp
+  vibecut/vibecutsemanticcurrent.cpp
   vibecut/vibecutsemanticruntime.cpp
   vibecut/vibecutsemantictools.cpp
   vibecut/vibecutsequencetools.cpp
