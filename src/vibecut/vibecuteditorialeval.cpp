@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL */
 #include "vibecuteditorialeval.h"
 
+#include "vibecuteditorialcase.h"
 #include "vibecuteditorialreview.h"
 #include "vibecuttoolsurface.h"
 
@@ -151,5 +152,6 @@ bool registerVibeCutEditorialEvalTools(VibeCutToolSurface &surface, QString *err
                                           {QStringLiteral("description"), QStringLiteral("Compare an actual candidate-ID selection/order with an explicit human/golden reference using precision, recall, F1, exact-set/order and relative-order agreement metrics. This measures agreement only and never claims intrinsic editorial quality.")},
                                           {QStringLiteral("input_schema"), input}},
                               policy, toolHandler, error)) return false;
-    return registerVibeCutEditorialReviewTools(surface, error);
+    if (!registerVibeCutEditorialReviewTools(surface, error)) return false;
+    return registerVibeCutEditorialCaseTools(surface, error);
 }
