@@ -86,6 +86,7 @@ set(kdenlive_SRCS
   vibecut/vibecutrenderrecommendtools.cpp
   vibecut/vibecutrendertools.cpp
   vibecut/vibecutrepeatedtaketools.cpp
+  vibecut/vibecutretrievaleval.cpp
   vibecut/vibecutroomtone.cpp
   vibecut/vibecutroughcutalternatives.cpp
   vibecut/vibecutroughcutrelevance.cpp
