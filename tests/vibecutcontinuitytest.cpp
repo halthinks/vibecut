@@ -31,18 +31,19 @@ QJsonObject schemaByName(const VibeCutToolSurface &surface, const QString &name)
 }
 }
 
-TEST_CASE("rough-cut continuity reports structural review candidates without quality judgment", "[vibecut][continuity]")
+TEST_CASE("rough-cut continuity compares frame structure only inside one proven domain", "[vibecut][continuity]")
 {
     const QList<VibeCutMediaDocument> documents{
         doc(QStringLiteral("a"), 0, 20, QStringLiteral("Same statement"), QStringLiteral("source-1"), QStringLiteral("fp-1")),
-        doc(QStringLiteral("c"), 15, 35, QStringLiteral("Same statement"), QStringLiteral("source-2"), QStringLiteral("fp-2")),
-        doc(QStringLiteral("d"), 30, 60, QStringLiteral("Closing thought"), QStringLiteral("source-2"), QStringLiteral("fp-2")),
+        doc(QStringLiteral("c"), 15, 35, QStringLiteral("Same statement"), QStringLiteral("source-1"), QStringLiteral("fp-1")),
+        doc(QStringLiteral("e"), 0, 20, QStringLiteral("Different source"), QStringLiteral("source-2"), QStringLiteral("fp-2")),
+        doc(QStringLiteral("d"), 30, 60, QStringLiteral("Closing thought"), QStringLiteral("source-1"), QStringLiteral("fp-1")),
         doc(QStringLiteral("b"), 50, 70, QStringLiteral("Middle thought"), QStringLiteral("source-1"), QStringLiteral("fp-1")),
     };
     QString error;
     const QJsonObject context = buildVibeCutRoughCutContext(documents, 9, 20, 600, &error);
     REQUIRE(error.isEmpty());
-    const QJsonArray selected{QStringLiteral("a"), QStringLiteral("b"), QStringLiteral("c"), QStringLiteral("d")};
+    const QJsonArray selected{QStringLiteral("a"), QStringLiteral("b"), QStringLiteral("c"), QStringLiteral("d"), QStringLiteral("e")};
     const QJsonObject result = analyzeVibeCutRoughCutContinuity(context, selected, 9, &error);
     REQUIRE(error.isEmpty());
     CHECK(result.value(QStringLiteral("authority")).toString() == QStringLiteral("derived_analysis"));
@@ -50,6 +51,8 @@ TEST_CASE("rough-cut continuity reports structural review candidates without qua
     CHECK(result.value(QStringLiteral("overlapping_range_count")).toInt() == 1);
     CHECK(result.value(QStringLiteral("repeated_transcript_content_count")).toInt() == 1);
     CHECK(result.value(QStringLiteral("source_provenance_change_count")).toInt() == 1);
+    CHECK(result.value(QStringLiteral("frame_comparison_skipped_due_to_domain_count")).toInt() == 1);
+    CHECK(result.value(QStringLiteral("frame_domain_semantics")).toString().contains(QStringLiteral("same_provenance_coordinate_domain")));
     CHECK_FALSE(result.value(QStringLiteral("normative_thresholds_applied")).toBool(true));
     CHECK_FALSE(result.value(QStringLiteral("quality_claim")).toBool(true));
     CHECK_FALSE(result.value(QStringLiteral("executable")).toBool(true));
