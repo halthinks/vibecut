@@ -31,6 +31,11 @@ public:
     void stop(const QString &reason = QStringLiteral("Runtime transport stopped by adapter."));
     bool running() const;
 
+    /** Validate/store an exact GPL-host-created EditPlan in the adapter and
+     * hand that same immutable plan to the proprietary child for orchestration.
+     * This performs no mutation and never lets the child replace tool/input. */
+    bool handoffPlan(const QJsonObject &plan, QString *error = nullptr);
+
     /** Send a human/adapter authorization decision to the connected runtime. */
     bool sendAuthorization(VibeCutTrustMode mode, bool humanApproved,
                            bool humanDecisionPresent = true,
@@ -39,6 +44,9 @@ public:
 Q_SIGNALS:
     void diagnostic(const QString &message);
     void stopped(int exitCode, int exitStatus);
+    /** Emitted after the child completes/aborts the staged plan and adapter-side
+     * checkpoint handling has finished. */
+    void hostedPlanFinished(const QString &planId, bool success, const QString &summary, const QJsonObject &result);
 
 private Q_SLOTS:
     void readRuntimeStdout();
