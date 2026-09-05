@@ -61,6 +61,26 @@
         }
       ]
     },
+    "planHandoff": {
+      "allOf": [
+        {"$ref": "#/$defs/base"},
+        {
+          "properties": {
+            "kind": {"const": "event"},
+            "type": {"const": "plan_handoff"},
+            "payload": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["plan", "project_revision"],
+              "properties": {
+                "plan": {"$ref": "editplan.schema.json"},
+                "project_revision": {"$ref": "#/$defs/revision"}
+              }
+            }
+          }
+        }
+      ]
+    },
     "inspect": {
       "allOf": [
         {"$ref": "#/$defs/base"},
@@ -324,6 +344,7 @@
   },
   "oneOf": [
     {"$ref": "#/$defs/hello"},
+    {"$ref": "#/$defs/planHandoff"},
     {"$ref": "#/$defs/inspect"},
     {"$ref": "#/$defs/proposePlan"},
     {"$ref": "#/$defs/authorizeApproved"},
