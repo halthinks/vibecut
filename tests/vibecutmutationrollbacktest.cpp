@@ -29,7 +29,17 @@ QJsonObject rollbackProposal()
                                                {QStringLiteral("expected_postconditions"),
                                                 QJsonArray{QStringLiteral("failure restores the checkpoint")}}}}}};
 }
-} // namespace
+
+QJsonObject failBeforeMutationToolSchema()
+{
+    return QJsonObject{{QStringLiteral("name"), QStringLiteral("test_fail_before_mutation")},
+                       {QStringLiteral("description"), QStringLiteral("Test-only mutating-policy tool that refuses before pushing any undo command")},
+                       {QStringLiteral("input_schema"),
+                        QJsonObject{{QStringLiteral("type"), QStringLiteral("object")},
+                                    {QStringLiteral("properties"), QJsonObject{}},
+                                    {QStringLiteral("additionalProperties"), false}}}};
+}
+}
 
 TEST_CASE("plan runtime rollback restores exact live mutation state", "[vibecut][plan-runtime][eval][mutation][live]")
 {
@@ -69,8 +79,6 @@ TEST_CASE("plan runtime rollback restores exact live mutation state", "[vibecut]
                                          return QJsonObject{{QStringLiteral("ok"), false},
                                                             {QStringLiteral("error"), QStringLiteral("test mutation could not be applied")}};
                                      }
-                                     // Deliberately report failure after a real Kdenlive mutation. The plan runtime
-                                     // must close and Undo the checkpoint macro rather than leaking this move.
                                      return QJsonObject{{QStringLiteral("ok"), false},
                                                         {QStringLiteral("error"), QStringLiteral("intentional failure after mutation")}};
                                  }));
@@ -120,4 +128,63 @@ TEST_CASE("plan runtime rollback restores exact live mutation state", "[vibecut]
     CHECK(score.verifiedSuccess == Approx(1.0));
     CHECK(score.contractViolations == 0);
     CHECK(score.pass);
+}
+
+TEST_CASE("plan failure before native mutation never undoes the previous unrelated command", "[vibecut][plan-runtime][rollback][empty-checkpoint][live]")
+{
+    auto binModel = pCore->projectItemModel();
+    binModel->clean();
+    std::shared_ptr<DocUndoStack> undoStack = std::make_shared<DocUndoStack>(nullptr);
+
+    pCore->setCurrentProfile(QStringLiteral("dv_pal"));
+    KdenliveDoc document(undoStack, {1, 3});
+    pCore->projectManager()->testSetDocument(&document);
+    KdenliveTests::updateTimeline(false, QString(), QString(), QDateTime::currentDateTime(), false);
+    const std::shared_ptr<TimelineItemModel> timeline = document.getTimeline(document.uuid());
+    REQUIRE(timeline);
+    pCore->projectManager()->testSetActiveTimeline(timeline);
+
+    const QString binId = KdenliveTests::createProducer(pCore->getProjectProfile(), "blue", binModel, 20);
+    const int trackId = timeline->getTrackIndexFromPosition(3);
+    REQUIRE(timeline->isTrack(trackId));
+    const int clipId = ClipModel::construct(timeline, binId, -1, PlaylistState::VideoOnly);
+    KdenliveTests::makeFiniteClipEnd(timeline, clipId);
+    REQUIRE(timeline->requestClipMove(clipId, trackId, 0));
+    REQUIRE(timeline->checkConsistency());
+
+    // Establish a real pre-existing undoable command that is unrelated to the
+    // plan. The old blind endMacro()+undo() rollback could undo this command if
+    // the next mutating-policy tool failed before pushing anything.
+    const int priorIndex = undoStack->index();
+    REQUIRE(priorIndex > 0);
+    const QJsonObject preState = VibeCutProjectSnapshot::mutationStateV1(timeline);
+
+    VibeCutTools base;
+    VibeCutToolSurface surface(&base);
+    VibeCutToolPolicy policy;
+    policy.name = QStringLiteral("test_fail_before_mutation");
+    policy.risk = VibeCutToolRisk::ReversibleEdit;
+    policy.reversible = true;
+    policy.mutatesProject = true;
+    REQUIRE(surface.registerTool(failBeforeMutationToolSchema(), policy,
+                                 [](const QJsonObject &) {
+                                     return QJsonObject{{QStringLiteral("ok"), false},
+                                                        {QStringLiteral("error"), QStringLiteral("intentional refusal before mutation")}};
+                                 }));
+
+    VibeCutPlanRuntime runtime(&surface);
+    runtime.setTrustMode(VibeCutTrustMode::Turbo);
+    const QJsonObject proposed = runtime.propose(
+        QJsonObject{{QStringLiteral("objective"), QStringLiteral("Refuse without touching prior undo history")},
+                    {QStringLiteral("operations"), QJsonArray{
+                        QJsonObject{{QStringLiteral("id"), QStringLiteral("fail" )},
+                                    {QStringLiteral("tool"), QStringLiteral("test_fail_before_mutation")},
+                                    {QStringLiteral("input"), QJsonObject{}},
+                                    {QStringLiteral("expected_postconditions"), QJsonArray()}}}}});
+    REQUIRE(proposed.value(QStringLiteral("ok")).toBool());
+    runtime.approvePendingPlan();
+
+    CHECK(undoStack->index() == priorIndex);
+    CHECK(VibeCutProjectSnapshot::mutationStateV1(timeline) == preState);
+    REQUIRE(timeline->checkConsistency());
 }
