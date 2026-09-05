@@ -5,32 +5,42 @@
 
 #include "vibecutplangate.h"
 
+#include <QHash>
 #include <QSet>
+
+#include <algorithm>
 
 namespace {
 QStringList orderedOperations(const VibeCutEditPlan &plan)
 {
+    QHash<QString, QStringList> dependencies;
+    QSet<QString> remaining;
+    for (const VibeCutPlanOperation &operation : plan.operations) {
+        dependencies.insert(operation.id, operation.dependsOn);
+        remaining.insert(operation.id);
+    }
+
     QStringList result;
     QSet<QString> complete;
-
-    while (result.size() < plan.operations.size()) {
-        bool progressed = false;
-        for (const VibeCutPlanOperation &operation : plan.operations) {
-            if (complete.contains(operation.id)) continue;
+    while (!remaining.isEmpty()) {
+        QStringList ready;
+        for (const QString &operationId : remaining) {
             bool dependenciesComplete = true;
-            for (const QString &dependency : operation.dependsOn) {
+            for (const QString &dependency : dependencies.value(operationId)) {
                 if (!complete.contains(dependency)) {
                     dependenciesComplete = false;
                     break;
                 }
             }
-            if (dependenciesComplete) {
-                result.append(operation.id);
-                complete.insert(operation.id);
-                progressed = true;
-            }
+            if (dependenciesComplete) ready.append(operationId);
         }
-        if (!progressed) return QStringList();
+        if (ready.isEmpty()) return QStringList();
+        std::sort(ready.begin(), ready.end());
+        for (const QString &operationId : ready) {
+            result.append(operationId);
+            complete.insert(operationId);
+            remaining.remove(operationId);
+        }
     }
     return result;
 }
