@@ -3,6 +3,7 @@
 
 #include "vibecutcontracts.h"
 #include "vibecutruntimecheckpoint.h"
+#include "vibecutruntimeprotocoladapter.h"
 
 #include <QByteArray>
 #include <QJsonObject>
@@ -10,7 +11,6 @@
 #include <QStringList>
 
 class QProcess;
-class VibeCutRuntimeProtocolAdapter;
 
 /** NDJSON transport to an out-of-process runtime. The transport has no editor
  * authority of its own; every inbound request passes through
@@ -28,6 +28,9 @@ public:
     bool start(const QString &program, const QStringList &arguments = QStringList(),
                VibeCutTrustMode helloMode = VibeCutTrustMode::Off,
                QString *error = nullptr);
+    /** Wait until QProcess is actually Running. This closes the Starting->handoff
+     * race without making the whole protocol synchronous. */
+    bool waitUntilReady(int timeoutMs = 3000, QString *error = nullptr);
     void stop(const QString &reason = QStringLiteral("Runtime transport stopped by adapter."));
     bool running() const;
 
