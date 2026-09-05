@@ -29,6 +29,10 @@ public:
 
     QJsonObject helloEnvelope(const QString &messageId, VibeCutTrustMode mode = VibeCutTrustMode::Off) const;
     QJsonObject handleRequest(const QJsonObject &envelope);
+    /** Stage an exact plan produced by the GPL host for orchestration by the
+     * proprietary child. Validation/storage is identical to runtime-originated
+     * propose_plan admission; no mutation occurs. */
+    QJsonObject stageHostPlan(const QJsonObject &plan);
 
     /** Produce the adapter/human authorization response for the current stored
      * plan. When confirmation is not required by the effective policy/mode,
