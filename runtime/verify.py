@@ -48,6 +48,7 @@ REQUIRED_RUNTIME_FILES = {
     "revision.py",
     "session.py",
     "stdio.py",
+    "worker.py",
 }
 REQUIRED_TEST_FILES = {
     "fake_adapter.py",
@@ -59,6 +60,7 @@ REQUIRED_TEST_FILES = {
     "test_providers.py",
     "test_session.py",
     "test_stdio.py",
+    "test_worker.py",
 }
 
 
@@ -68,6 +70,7 @@ def main() -> int:
     failures.extend(check_required_files())
     failures.extend(check_schemas())
     failures.extend(check_clean_room_boundary())
+    failures.extend(check_runtime_entrypoint())
     if not compileall.compile_dir(str(SRC), quiet=1, force=True):
         failures.append("runtime/src failed Python bytecode compilation")
     failures.extend(run_tests())
@@ -76,7 +79,7 @@ def main() -> int:
         for failure in failures:
             print("  -", failure, file=sys.stderr)
         return 1
-    print("[runtime-verify] PASS: required files, schemas, clean-room boundary, compile, and fake-adapter/process tests")
+    print("[runtime-verify] PASS: required files, schemas, clean-room boundary, entrypoint, compile, and fake-adapter/process tests")
     return 0
 
 
@@ -118,6 +121,16 @@ def check_schemas() -> list[str]:
         comment = value.get("$comment", "") if isinstance(value, dict) else ""
         if "Apache-2.0" not in str(comment) and "CC0" not in str(comment):
             failures.append(f"schema {path.name} lacks an open SPDX marker")
+    try:
+        envelope = json.loads((SCHEMA / "envelope.schema.json").read_text(encoding="utf-8"))
+        message_types = envelope["properties"]["type"]["enum"]
+        if "plan_handoff" not in message_types:
+            failures.append("public envelope schema does not advertise plan_handoff")
+        messages_text = (SCHEMA / "messages.schema.json").read_text(encoding="utf-8")
+        if '"planHandoff"' not in messages_text or '"plan_handoff"' not in messages_text:
+            failures.append("typed messages schema does not define plan_handoff")
+    except (OSError, KeyError, TypeError, json.JSONDecodeError) as exc:
+        failures.append(f"could not verify hosted plan_handoff schema coverage: {exc}")
     return failures
 
 
@@ -155,6 +168,17 @@ def check_clean_room_boundary() -> list[str]:
             failures.append(f"forbidden editor/GPL dependency marker {token!r} in runtime/pyproject.toml")
     if "LicenseRef-halthinks-Proprietary" not in pyproject:
         failures.append("runtime/pyproject.toml does not declare the proprietary runtime license reference")
+    return failures
+
+
+def check_runtime_entrypoint() -> list[str]:
+    failures: list[str] = []
+    try:
+        pyproject = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
+    except OSError as exc:
+        return [f"could not read runtime/pyproject.toml for entrypoint verification: {exc}"]
+    if 'halthinks-vibecut-runtime = "halthinks_runtime.worker:main"' not in pyproject:
+        failures.append("runtime/pyproject.toml does not expose the hosted worker entrypoint")
     return failures
 
 
