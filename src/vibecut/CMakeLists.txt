@@ -73,6 +73,7 @@ set(kdenlive_SRCS
   vibecut/vibecutpacing.cpp
   vibecut/vibecutplangate.cpp
   vibecut/vibecutplanruntime.cpp
+  vibecut/vibecutplanruntimeexternal.cpp
   vibecut/vibecutplantools.cpp
   vibecut/vibecutpolicyoverrides.cpp
   vibecut/vibecutpreflighttools.cpp
