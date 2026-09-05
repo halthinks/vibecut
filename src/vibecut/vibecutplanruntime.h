@@ -65,6 +65,7 @@ private:
     bool m_hasPending = false;
     bool m_executing = false;
     bool m_macroOpen = false;
+    int m_macroStartIndex = -1;
     bool m_planMutatesProject = false;
     QStringList m_executionOrder;
     int m_executionIndex = 0;
