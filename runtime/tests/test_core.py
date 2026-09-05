@@ -106,7 +106,15 @@ class JobTests(unittest.TestCase):
 
 class EvidenceTests(unittest.TestCase):
     @staticmethod
-    def record(*, text: str, fingerprint: str = "fp", extractor: str = "e") -> EvidenceRecord:
+    def record(
+        *,
+        text: str,
+        fingerprint: str = "fp",
+        extractor: str = "e",
+        start_frame: int = 0,
+        end_frame: int = 10,
+        confidence: float = 1.0,
+    ) -> EvidenceRecord:
         return EvidenceRecord.from_json(
             {
                 "source_id": "bin:1",
@@ -114,10 +122,10 @@ class EvidenceTests(unittest.TestCase):
                 "extractor_id": extractor,
                 "extractor_version": "1",
                 "kind": "transcript_segment",
-                "start_frame": 0,
-                "end_frame": 10,
+                "start_frame": start_frame,
+                "end_frame": end_frame,
                 "text": text,
-                "confidence": 1.0,
+                "confidence": confidence,
                 "metadata": {"authority": "observation"},
             }
         )
@@ -144,6 +152,30 @@ class EvidenceTests(unittest.TestCase):
         store = EvidenceStore()
         with self.assertRaises(EvidenceError):
             store.replace_slice([self.record(text="a"), self.record(text="b", extractor="other")])
+
+    def test_confidence_is_exactly_unknown_or_normalized(self) -> None:
+        unknown = self.record(text="unknown", confidence=-1.0)
+        self.assertEqual(unknown.confidence, -1.0)
+        with self.assertRaisesRegex(EvidenceError, "confidence"):
+            self.record(text="invalid", confidence=-0.5)
+        with self.assertRaisesRegex(EvidenceError, "confidence"):
+            self.record(text="invalid", confidence=1.1)
+
+    def test_bounded_frame_query_excludes_unknown_range_evidence(self) -> None:
+        store = EvidenceStore()
+        known = self.record(text="known", start_frame=100, end_frame=120)
+        unknown = self.record(text="unknown", fingerprint="fp-unknown", start_frame=-1, end_frame=-1)
+        store.replace_slice([known])
+        store.replace_slice([unknown])
+        self.assertEqual(store.query(start_frame=110, end_frame=115), (known,))
+
+    def test_query_frame_bounds_fail_closed(self) -> None:
+        store = EvidenceStore()
+        store.replace_slice([self.record(text="known")])
+        with self.assertRaises(EvidenceError):
+            store.query(start_frame=-1)
+        with self.assertRaises(EvidenceError):
+            store.query(start_frame=20, end_frame=10)
 
     def test_store_exposes_no_project_truth_mutator(self) -> None:
         store = EvidenceStore()
