@@ -15,6 +15,7 @@ from typing import Any, Iterable, Mapping
 
 MAX_RECORDS = 100_000
 MAX_BYTES = 64 * 1024 * 1024
+MAX_FRAME = 2_147_483_647
 
 
 class EvidenceError(ValueError):
@@ -50,6 +51,8 @@ class EvidenceRecord:
             record_id = str(uuid.uuid4())
         if not isinstance(record_id, str) or not record_id.strip():
             raise EvidenceError("evidence id must be a non-empty string")
+        if len(record_id.strip()) > 1024:
+            raise EvidenceError("evidence id exceeds 1024 characters")
         start_frame = _frame(value.get("start_frame", -1), "start_frame")
         end_frame = _frame(value.get("end_frame", -1), "end_frame")
         if start_frame >= 0 and end_frame >= 0 and end_frame < start_frame:
@@ -58,14 +61,16 @@ class EvidenceRecord:
         if isinstance(confidence, bool) or not isinstance(confidence, (int, float)):
             raise EvidenceError("evidence confidence must be numeric")
         confidence = float(confidence)
-        if not math.isfinite(confidence) or confidence < -1.0 or confidence > 1.0:
-            raise EvidenceError("evidence confidence must be -1 or in 0..1")
+        if not math.isfinite(confidence) or not (confidence == -1.0 or 0.0 <= confidence <= 1.0):
+            raise EvidenceError("evidence confidence must be -1 (unknown) or between 0 and 1")
         text = value.get("text", "")
         if not isinstance(text, str):
             raise EvidenceError("evidence text must be a string")
+        if len(text) > 1_048_576:
+            raise EvidenceError("evidence text exceeds the 1 Mi-character bound")
         produced_utc = value.get("produced_utc") or datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
-        if not isinstance(produced_utc, str) or not produced_utc.strip():
-            raise EvidenceError("produced_utc must be a string")
+        if not isinstance(produced_utc, str) or not produced_utc.strip() or len(produced_utc.strip()) > 128:
+            raise EvidenceError("produced_utc must be a non-empty string up to 128 characters")
         metadata = value.get("metadata", {})
         if not isinstance(metadata, dict):
             raise EvidenceError("evidence metadata must be an object")
@@ -165,6 +170,13 @@ class EvidenceStore:
     ) -> tuple[EvidenceRecord, ...]:
         if isinstance(limit, bool) or not isinstance(limit, int) or limit < 1 or limit > 10_000:
             raise EvidenceError("query limit must be an integer in 1..10000")
+        if start_frame is not None:
+            start_frame = _query_frame(start_frame, "start_frame")
+        if end_frame is not None:
+            end_frame = _query_frame(end_frame, "end_frame")
+        if start_frame is not None and end_frame is not None and end_frame < start_frame:
+            raise EvidenceError("query end_frame must be >= start_frame")
+
         result: list[EvidenceRecord] = []
         for record in self._records:
             if source_id is not None and record.source_id != source_id:
@@ -177,9 +189,11 @@ class EvidenceStore:
                 continue
             if kind is not None and record.kind != kind:
                 continue
-            if start_frame is not None and record.end_frame >= 0 and record.end_frame < start_frame:
+            # Match the GPL adapter's evidence_get semantics exactly: a bounded
+            # frame query cannot claim an unknown-range record intersects it.
+            if start_frame is not None and (record.end_frame < 0 or record.end_frame < start_frame):
                 continue
-            if end_frame is not None and record.start_frame >= 0 and record.start_frame > end_frame:
+            if end_frame is not None and (record.start_frame < 0 or record.start_frame > end_frame):
                 continue
             result.append(record)
             if len(result) >= limit:
@@ -233,10 +247,20 @@ def _required_string(value: Mapping[str, Any], key: str) -> str:
     raw = value.get(key)
     if not isinstance(raw, str) or not raw.strip():
         raise EvidenceError(f"evidence {key} is required")
-    return raw.strip()
+    result = raw.strip()
+    maximum = 4096 if key in {"source_id", "source_fingerprint"} else 1024
+    if len(result) > maximum:
+        raise EvidenceError(f"evidence {key} exceeds {maximum} characters")
+    return result
 
 
 def _frame(raw: Any, label: str) -> int:
-    if isinstance(raw, bool) or not isinstance(raw, int) or raw < -1:
-        raise EvidenceError(f"{label} must be an integer >= -1")
+    if isinstance(raw, bool) or not isinstance(raw, int) or raw < -1 or raw > MAX_FRAME:
+        raise EvidenceError(f"{label} must be an integer in -1..{MAX_FRAME}")
+    return raw
+
+
+def _query_frame(raw: Any, label: str) -> int:
+    if isinstance(raw, bool) or not isinstance(raw, int) or raw < 0 or raw > MAX_FRAME:
+        raise EvidenceError(f"query {label} must be an integer in 0..{MAX_FRAME}")
     return raw
