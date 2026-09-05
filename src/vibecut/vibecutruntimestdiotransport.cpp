@@ -157,12 +157,15 @@ QJsonObject VibeCutRuntimeStdioTransport::dispatchRequest(const QJsonObject &req
     const QString type = request.value(QStringLiteral("type")).toString();
 
     if (type == QLatin1String("invoke")) {
-        const QString operationId = request.value(QStringLiteral("payload")).toObject()
-                                        .value(QStringLiteral("operation_id")).toString().trimmed();
         VibeCutToolPolicy policy;
-        QString policyError;
-        const bool hasApprovedPolicy = m_adapter->approvedOperationPolicy(operationId, policy, &policyError);
-        if (hasApprovedPolicy && policy.mutatesProject) {
+        QString preflightCode;
+        QString preflightError;
+        if (!m_adapter->preflightInvoke(request, policy, &preflightCode, &preflightError)) {
+            return transportError(request,
+                                  preflightCode.isEmpty() ? QStringLiteral("invoke_preflight_failed") : preflightCode,
+                                  preflightError.isEmpty() ? QStringLiteral("Invoke request failed adapter-side preflight.") : preflightError);
+        }
+        if (policy.mutatesProject) {
             QString beginError;
             if (!m_checkpoint.beginForMutation(m_adapter->activePlanObjective(), &beginError)) {
                 return transportError(request, QStringLiteral("checkpoint_begin_failed"), beginError);
@@ -171,6 +174,10 @@ QJsonObject VibeCutRuntimeStdioTransport::dispatchRequest(const QJsonObject &req
 
         QJsonObject response = m_adapter->handleRequest(request);
         if (response.value(QStringLiteral("type")).toString() == QLatin1String("error")) {
+            // Preflight succeeded, but handleRequest deliberately repeats every
+            // check immediately before native invocation. If that second check
+            // loses a race, close an empty/current macro rather than exposing
+            // a dangling Kdenlive checkpoint.
             if (m_checkpoint.macroOpen()) {
                 QString commitError;
                 if (!m_checkpoint.commitForCompletion(&commitError)) {
