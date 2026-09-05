@@ -163,10 +163,29 @@ void VibeCutAgent::approvePendingPlanInternal(bool humanDecisionPresent, bool hu
             return;
         }
         if (!m_externalRuntimeTransport->sendAuthorization(trustMode(), humanApproved, humanDecisionPresent, &error)) {
-            Q_EMIT errorOccurred(QStringLiteral("External runtime authorization failed: %1").arg(error));
+            Q_EMIT errorOccurred(QStringLiteral("External runtime authorization delivery failed: %1").arg(error));
             return;
         }
-        if (humanApproved || !humanDecisionPresent) {
+
+        const bool shouldExecute = humanApproved || !humanDecisionPresent;
+        if (shouldExecute && !m_externalProtocolAdapter->hasAuthorization()) {
+            // Delivery success is not authorization success: authorizePending()
+            // may have produced a structured error event (stale revision,
+            // confirmation requirement, changed policy, etc.). Stop the child to
+            // force adapter-side abort/cleanup, keep the local review plan, and
+            // require a fresh handoff before any retry.
+            const QString authorizationError = QStringLiteral("Adapter did not grant an external runtime authorization. The plan remains unexecuted.");
+            m_externalPlanExecuting = false;
+            m_externalPlanId.clear();
+            m_externalRuntimeError = authorizationError;
+            if (m_externalRuntimeTransport->running()) {
+                m_externalRuntimeTransport->stop(QStringLiteral("External runtime authorization was not granted."));
+            }
+            Q_EMIT errorOccurred(authorizationError);
+            return;
+        }
+
+        if (shouldExecute) {
             m_externalPlanExecuting = true;
             Q_EMIT planProgress(QStringLiteral("External runtime authorized for plan %1.").arg(m_externalPlanId));
             Q_EMIT statusChanged(QStringLiteral("Executing approved plan in external runtime…"));
