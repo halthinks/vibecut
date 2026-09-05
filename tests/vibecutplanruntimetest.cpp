@@ -93,8 +93,6 @@ TEST_CASE("plan runtime pauses on a tracked async checkpoint and resumes on succ
     CHECK(runtime.hasPendingPlan());
     REQUIRE_FALSE(asyncJobId.isEmpty());
 
-    // jobChanged is a same-thread direct signal here, so success immediately
-    // drives the runtime through its remaining checkpoints.
     REQUIRE(base.jobManager()->markSucceeded(asyncJobId, QStringLiteral("done")));
     CHECK_FALSE(runtime.executing());
     CHECK_FALSE(runtime.hasPendingPlan());
@@ -123,5 +121,63 @@ TEST_CASE("direct model mutation calls can be converted into a pending review pl
     const QJsonObject result = runtime.proposeDirectToolCalls(blocks);
     CHECK(result.value(QStringLiteral("ok")).toBool());
     CHECK(runtime.hasPendingPlan());
+    CHECK(calls == 0);
+}
+
+TEST_CASE("external runtime resolves only the exact pending plan without local mutation", "[vibecut][plan-runtime][external-runtime]")
+{
+    VibeCutTools base;
+    VibeCutToolSurface surface(&base);
+    int calls = 0;
+
+    VibeCutToolPolicy policy;
+    policy.name = QStringLiteral("external_edit");
+    policy.risk = VibeCutToolRisk::ReversibleEdit;
+    policy.reversible = true;
+    policy.mutatesProject = true;
+    REQUIRE(surface.registerTool(noArgSchema(policy.name), policy,
+                                 [&calls](const QJsonObject &) {
+                                     ++calls;
+                                     return QJsonObject{{QStringLiteral("ok"), true}};
+                                 }));
+
+    VibeCutPlanRuntime runtime(&surface);
+    REQUIRE(runtime.propose(proposalFor(policy.name)).value(QStringLiteral("ok")).toBool());
+    REQUIRE(runtime.hasPendingPlan());
+    const QString planId = runtime.pendingPlanId();
+    REQUIRE_FALSE(planId.isEmpty());
+
+    bool finished = false;
+    bool success = false;
+    QString finishedId;
+    QJsonArray results;
+    QObject::connect(&runtime, &VibeCutPlanRuntime::planFinished,
+                     [&finished, &success, &finishedId, &results](const QString &id, bool ok, const QString &, const QJsonArray &value) {
+        finished = true;
+        success = ok;
+        finishedId = id;
+        results = value;
+    });
+
+    const QJsonObject mismatch = runtime.resolvePendingPlanExternally(
+        QStringLiteral("different-plan"), true, QStringLiteral("wrong"), QJsonObject{{QStringLiteral("ok"), true}});
+    CHECK_FALSE(mismatch.value(QStringLiteral("ok")).toBool(true));
+    CHECK(runtime.hasPendingPlan());
+    CHECK_FALSE(finished);
+    CHECK(calls == 0);
+
+    const QJsonObject externalResult{{QStringLiteral("project_revision"), 11},
+                                     {QStringLiteral("checkpoint_rollback_parity"), true}};
+    const QJsonObject resolved = runtime.resolvePendingPlanExternally(
+        planId, true, QStringLiteral("External runtime completed."), externalResult);
+    CHECK(resolved.value(QStringLiteral("ok")).toBool(false));
+    CHECK_FALSE(runtime.hasPendingPlan());
+    CHECK_FALSE(runtime.executing());
+    CHECK(finished);
+    CHECK(success);
+    CHECK(finishedId == planId);
+    REQUIRE(results.size() == 1);
+    CHECK(results.first().toObject().value(QStringLiteral("kind")).toString() == QStringLiteral("external_runtime_result"));
+    CHECK(results.first().toObject().value(QStringLiteral("result")).toObject() == externalResult);
     CHECK(calls == 0);
 }
