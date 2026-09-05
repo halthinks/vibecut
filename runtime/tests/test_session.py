@@ -8,6 +8,7 @@ import unittest
 from fake_adapter import FakeAdapter
 from halthinks_runtime.policy import TrustMode
 from halthinks_runtime.protocol import Envelope
+from halthinks_runtime.revision import RevisionError
 from halthinks_runtime.session import RuntimeSession, SessionError
 
 
@@ -170,7 +171,7 @@ class RuntimeSessionTests(unittest.TestCase):
         )
         session.submit_plan(adapter)
         session.accept_authorization(adapter.authorize(TrustMode.OFF, human_approved=True))
-        with self.assertRaises(SessionError):
+        with self.assertRaises(RevisionError):
             session.execute_authorized(adapter)
 
     def test_external_revision_drift_refuses_remaining_operation(self) -> None:
