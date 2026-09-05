@@ -28,3 +28,15 @@ QString VibeCutRuntimeProtocolAdapter::activePlanObjective() const
 {
     return m_hasPlan ? m_plan.objective : QString();
 }
+
+quint64 VibeCutRuntimeProtocolAdapter::protocolProjectRevision() const
+{
+    return currentRevision();
+}
+
+quint64 VibeCutRuntimeProtocolAdapter::synchronizeExpectedRevision()
+{
+    const quint64 revision = currentRevision();
+    if (m_hasPlan && !m_authorizationId.isEmpty()) m_expectedRevision = revision;
+    return revision;
+}
