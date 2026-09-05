@@ -13,6 +13,7 @@
 #include "vibecutplanruntime.h"
 #include "vibecutplantools.h"
 #include "vibecutprojectrules.h"
+#include "vibecutruntimestdiotransport.h"
 #include "vibecutsubtitletools.h"
 #include "vibecuttools.h"
 #include "vibecuttoolsurface.h"
@@ -112,11 +113,18 @@ VibeCutAgent::VibeCutAgent(VibeCutTools *tools, QObject *parent)
         qWarning().noquote() << QStringLiteral("[VibeCut] media tools unavailable: %1").arg(extensionError);
     }
 
+    // Start the optional child only after all normal tool families have been
+    // registered so its hello snapshot is the same governed surface the model
+    // and integrated runtime see.
+    initializeExternalRuntime();
+
     m_hooks->registerContextProvider(QStringLiteral("vibecut_runtime"), [this]() {
         return QJsonObject{{QStringLiteral("provider"), modelProviderId()},
                            {QStringLiteral("trust_mode"), trustName(trustMode())},
                            {QStringLiteral("project_revision"), static_cast<qint64>(m_toolSurface ? m_toolSurface->projectRevision() : 0)},
-                           {QStringLiteral("pending_plan"), hasPendingPlan()}};
+                           {QStringLiteral("pending_plan"), hasPendingPlan()},
+                           {QStringLiteral("execution_runtime"), externalRuntimeRequested() ? QStringLiteral("external_process") : QStringLiteral("integrated_gpl")},
+                           {QStringLiteral("external_runtime_running"), m_externalRuntimeTransport && m_externalRuntimeTransport->running()}};
     });
 
     if (m_tools && m_tools->jobManager()) {
@@ -138,7 +146,17 @@ VibeCutAgent::VibeCutAgent(VibeCutTools *tools, QObject *parent)
     connect(m_planRuntime, &VibeCutPlanRuntime::planProposed, this, [this](const QString &planId, const QString &summary) {
         m_hooks->publish(QStringLiteral("plan.proposed"), QJsonObject{{QStringLiteral("plan_id"), planId},
                                                                        {QStringLiteral("summary"), summary},
-                                                                       {QStringLiteral("requires_confirmation"), m_planRuntime->pendingRequiresConfirmation()}});
+                                                                       {QStringLiteral("requires_confirmation"), m_planRuntime->pendingRequiresConfirmation()},
+                                                                       {QStringLiteral("execution_runtime"), externalRuntimeRequested() ? QStringLiteral("external_process") : QStringLiteral("integrated_gpl")}});
+
+        if (externalRuntimeRequested()) {
+            QString handoffError;
+            if (!handoffPendingPlanToExternalRuntime(&handoffError)) {
+                m_externalRuntimeError = handoffError;
+                Q_EMIT errorOccurred(QStringLiteral("External runtime plan handoff failed; in-process execution is disabled for this configured mode: %1").arg(handoffError));
+            }
+        }
+
         if (m_planRuntime->pendingRequiresConfirmation()) {
             Q_EMIT planProposed(planId, summary);
             Q_EMIT statusChanged(QStringLiteral("Awaiting plan approval"));
@@ -150,12 +168,14 @@ VibeCutAgent::VibeCutAgent(VibeCutTools *tools, QObject *parent)
     });
     connect(m_planRuntime, &VibeCutPlanRuntime::planApproved, this, [this](const QString &planId) {
         m_hooks->publish(QStringLiteral("plan.approved"), QJsonObject{{QStringLiteral("plan_id"), planId},
-                                                                       {QStringLiteral("trust_mode"), trustName(trustMode())}});
+                                                                       {QStringLiteral("trust_mode"), trustName(trustMode())},
+                                                                       {QStringLiteral("execution_runtime"), QStringLiteral("integrated_gpl")}});
     });
     connect(m_planRuntime, &VibeCutPlanRuntime::planProgress, this, [this](const QString &message) {
         m_hooks->publish(QStringLiteral("plan.progress"), QJsonObject{{QStringLiteral("message"), message}});
         Q_EMIT planProgress(message);
-        Q_EMIT statusChanged(QStringLiteral("Executing approved plan…"));
+        Q_EMIT statusChanged(externalPlanExecuting() ? QStringLiteral("Executing approved plan in external runtime…")
+                                                     : QStringLiteral("Executing approved plan…"));
     });
     connect(m_planRuntime, &VibeCutPlanRuntime::planFinished, this,
             [this](const QString &planId, bool success, const QString &summary, const QJsonArray &results) {
@@ -173,6 +193,18 @@ VibeCutAgent::VibeCutAgent(VibeCutTools *tools, QObject *parent)
 
 VibeCutAgent::~VibeCutAgent()
 {
+    // External transport may call back into the protocol adapter while stopping,
+    // so tear both down before deleting their shared VibeCutToolSurface.
+    if (m_externalRuntimeTransport) {
+        disconnect(m_externalRuntimeTransport, nullptr, this, nullptr);
+        if (m_externalRuntimeTransport->running()) m_externalRuntimeTransport->stop(QStringLiteral("VibeCut agent is shutting down."));
+        delete m_externalRuntimeTransport;
+        m_externalRuntimeTransport = nullptr;
+    }
+    if (m_externalProtocolAdapter) {
+        delete m_externalProtocolAdapter;
+        m_externalProtocolAdapter = nullptr;
+    }
     delete m_planRuntime;
     delete m_toolSurface;
 }
@@ -184,7 +216,7 @@ bool VibeCutAgent::hasApiKey() const
 
 bool VibeCutAgent::busy() const
 {
-    return m_reply != nullptr || (m_planRuntime && m_planRuntime->executing());
+    return m_reply != nullptr || externalPlanExecuting() || (m_planRuntime && m_planRuntime->executing());
 }
 
 bool VibeCutAgent::hasPendingPlan() const
@@ -204,7 +236,7 @@ VibeCutTrustMode VibeCutAgent::trustMode() const
 
 void VibeCutAgent::setTrustMode(VibeCutTrustMode mode)
 {
-    if (!m_planRuntime || (m_planRuntime->hasPendingPlan() || m_planRuntime->executing())) {
+    if (!m_planRuntime || externalPlanExecuting() || m_planRuntime->hasPendingPlan() || m_planRuntime->executing()) {
         Q_EMIT errorOccurred(QStringLiteral("Trust mode cannot change while a plan is pending or executing."));
         return;
     }
@@ -216,7 +248,7 @@ void VibeCutAgent::setTrustMode(VibeCutTrustMode mode)
 
 void VibeCutAgent::sendUserMessage(const QString &text)
 {
-    if (m_planRuntime && (m_planRuntime->hasPendingPlan() || m_planRuntime->executing())) {
+    if (externalPlanExecuting() || (m_planRuntime && (m_planRuntime->hasPendingPlan() || m_planRuntime->executing()))) {
         Q_EMIT errorOccurred(QStringLiteral("Review or finish the current VibeCut plan before starting another request."));
         return;
     }
@@ -240,11 +272,12 @@ void VibeCutAgent::sendUserMessage(const QString &text)
 
 void VibeCutAgent::resetConversation()
 {
-    if (m_planRuntime && m_planRuntime->executing()) {
-        Q_EMIT errorOccurred(QStringLiteral("An approved plan is still executing; wait for its current checkpoint to finish."));
+    if (externalPlanExecuting() || (m_planRuntime && m_planRuntime->executing())) {
+        Q_EMIT errorOccurred(QStringLiteral("An approved plan is still executing; cancel or finish its current checkpoint first."));
         return;
     }
-    if (m_planRuntime && m_planRuntime->hasPendingPlan()) m_planRuntime->cancelPendingPlan();
+    if (m_planRuntime && m_planRuntime->hasPendingPlan()) cancelPendingPlan();
+    if (m_planRuntime && m_planRuntime->hasPendingPlan()) return;
     if (m_reply) {
         QNetworkReply *reply = m_reply;
         m_reply = nullptr;
@@ -263,25 +296,35 @@ void VibeCutAgent::resetConversation()
 
 void VibeCutAgent::approvePendingPlan()
 {
-    if (!m_planRuntime || !m_planRuntime->hasPendingPlan() || m_planRuntime->executing()) {
-        Q_EMIT errorOccurred(QStringLiteral("There is no plan awaiting approval."));
-        return;
-    }
-    if (m_reply) {
-        Q_EMIT errorOccurred(QStringLiteral("The model request is still finishing; approval cannot start yet."));
-        return;
-    }
     m_autoApprovePending = false;
-    const QJsonObject result = m_planRuntime->approvePendingPlan();
-    if (!result.value(QStringLiteral("ok")).toBool()) {
-        Q_EMIT errorOccurred(result.value(QStringLiteral("error")).toString(QStringLiteral("Plan approval failed.")));
-    }
+    approvePendingPlanInternal(true, true);
 }
 
 void VibeCutAgent::cancelPendingPlan()
 {
     m_autoApprovePending = false;
-    if (!m_planRuntime) return;
+    if (!m_planRuntime || !m_planRuntime->hasPendingPlan()) return;
+
+    if (externalRuntimeRequested() && m_externalPlanId == m_planRuntime->pendingPlanId()) {
+        if (m_externalPlanExecuting) {
+            if (!m_externalRuntimeTransport || !m_externalRuntimeTransport->running()) {
+                Q_EMIT errorOccurred(QStringLiteral("External runtime execution is active but its transport is unavailable."));
+                return;
+            }
+            m_externalRuntimeTransport->stop(QStringLiteral("User cancelled the externally executed VibeCut plan."));
+            return;
+        }
+
+        if (m_externalRuntimeTransport && m_externalRuntimeTransport->running()) {
+            QString rejectionError;
+            if (!m_externalRuntimeTransport->sendAuthorization(trustMode(), false, true, &rejectionError)) {
+                Q_EMIT errorOccurred(QStringLiteral("Could not reject the staged external plan: %1").arg(rejectionError));
+                return;
+            }
+        }
+        m_externalPlanId.clear();
+    }
+
     const QJsonObject result = m_planRuntime->cancelPendingPlan();
     if (!result.value(QStringLiteral("ok")).toBool()) {
         Q_EMIT errorOccurred(result.value(QStringLiteral("error")).toString(QStringLiteral("Plan cancellation failed.")));
@@ -302,7 +345,7 @@ void VibeCutAgent::resetStreamState()
 
 void VibeCutAgent::startRequest()
 {
-    if (!m_provider || hasPendingPlan() || (m_planRuntime && m_planRuntime->executing())) return;
+    if (!m_provider || hasPendingPlan() || externalPlanExecuting() || (m_planRuntime && m_planRuntime->executing())) return;
     resetStreamState();
 
     const int previousMessageCount = m_messages.size();
@@ -356,9 +399,6 @@ void VibeCutAgent::handleEvent(const SseParser::Event &event)
     }
     const QJsonObject object = m_provider->normalizeStreamEvent(event.data);
     if (object.isEmpty()) {
-        // Providers may intentionally normalize transport-only events (for
-        // example keep-alives) to an empty object. Ignore those rather than
-        // teaching the core loop provider-specific event names.
         return;
     }
     const QString type = object.value(QStringLiteral("type")).toString();
@@ -422,7 +462,7 @@ void VibeCutAgent::onFinished()
 
     if (m_autoApprovePending && m_planRuntime && m_planRuntime->hasPendingPlan() && !m_planRuntime->executing()) {
         m_autoApprovePending = false;
-        approvePendingPlan();
+        approvePendingPlanInternal(false, false);
     }
 }
 
