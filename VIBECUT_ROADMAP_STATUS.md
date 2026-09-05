@@ -2,10 +2,10 @@
 
 **Branch:** `agent/vibecut-architecture-slices`  
 **Release authority:** do not merge to `vibecut` or make a release-ready claim until compile/tests/package and hands-on smoke gates pass.  
-**Verification:** local `scripts/vibecut-verify.sh` is authoritative; source-landed tests and static audits do not replace that gate.  
-**Distribution:** a halthinks-specific Debian package is produced only after successful verification.
+**Verification:** local `scripts/vibecut-verify.sh` is authoritative for the editor; `python3 runtime/verify.py` is authoritative for the extracted runtime boundary once run against the exact current tree. Source-landed tests/static audits do not replace either gate.  
+**Distribution:** a halthinks-specific Debian package is produced only after successful verification. A proprietary runtime SKU is **not** release-qualified until `EXTRACT_AND_LICENSE.md` Section 10 passes.
 
-This is the concise live-state ledger. The full dependency/product roadmap remains in `TODO.md`.
+This is the concise live-state ledger. The full dependency/product roadmap remains in `TODO.md`; the commercial-runtime split is governed by `EXTRACT_AND_LICENSE.md`.
 
 ## R0 — governed agent kernel — LANDED IN SOURCE
 
@@ -14,6 +14,7 @@ This is the concise live-state ledger. The full dependency/product roadmap remai
 - Code-defined `confirmationRequired=true` is a non-waivable lower bound; project `auto_allow` cannot clear it.
 - Shared cancellable `JobManager`, project rules/memory, provider registry/hooks, KWallet secret storage and VibeScript plan-only sandbox.
 - Repository-local verification gate exists; merge/release authority remains withheld until it passes.
+- Integrated checkpoint rollback now records the undo-stack origin and never blindly undoes a pre-existing command when a mutating-policy tool fails before pushing an edit.
 
 ## Phase 1 — native professional editing vocabulary — STRONG SOURCE BASELINE
 
@@ -23,28 +24,71 @@ This is the concise live-state ledger. The full dependency/product roadmap remai
 - Effects/groups/keyframes/stack copy, transitions/compositions, same-track mix baseline, titles, tracks/routing, bin/project resilience, relink/proxy/preflight and render/export baseline.
 - **Open by design:** mixer gain/pan/solo and mix type/parameter editing only where Kdenlive exposes a stable safe backend seam; richer title shapes/images/templates/brand packs remain downstream work.
 
-## Phase 2 — hard release/merge gate — ACTIVE BLOCKER
+## Phase 2 — hard editor release/merge gate — ACTIVE BLOCKER
 
 No merge to `vibecut` until all of the following are green on a real Kdenlive development host:
 
 1. `bash scripts/vibecut-verify.sh` from a clean build tree.
 2. CMake configure, full compile/link and every `vibecut*` test.
 3. Live mutation smoke for `timeline_range_remove`, repeated-take execution, stale-plan refusal and exact Undo/Redo fidelity.
-4. Runtime/setup/cancellation/evidence smoke for pyannote, Tesseract, R128, AST, DETR and X-CLIP.
-5. Semantic setup/runtime smoke for MiniLM plus shared-vision SigLIP, including model acquisition, CPU/GPU paths, cancellation, stale-source behavior and bounded result handling.
-6. Hybrid lexical+MiniLM search smoke proving stale text and source-fingerprint semantic anchors are excluded from final ranking.
-7. Pairwise MPEG-7, fused duplicate scoring and bounded project-wide duplicate-candidate smoke.
-8. Rough-cut context/objective-ranking/alternative-comparison smoke proving revision/context hash refusal and zero mutation authority.
-9. Highlight/short proposal smoke proving exact integer budgets, objective/context provenance, overlap rejection and zero mutation authority.
-10. B-roll opportunity → SigLIP candidate retrieval → placement-proposal smoke, including cancellation, context-change refusal and proof that sampled visual frames are not silently promoted into invented source excerpts.
-11. Pacing/narrative/continuity analysis smoke proving exact source/context freshness, semantic fallback behavior and zero normative/edit authority.
-12. Editorial agreement + frozen-case + blinded-review smoke proving explicit-reference semantics, exact proposal/context binding, duplicate-reviewer refusal and zero automatic execution gate.
-13. Retrieval/duplicate evaluation smoke proving deterministic top-k metrics, order-independent duplicate-pair identity and zero semantic/duplicate-truth claim.
-14. Debian package build plus clean-host install/uninstall/coexistence smoke.
-15. Hands-on editor plan → authorize → execute → verify/diff → Undo across major edit families.
-16. Review/Auto/Turbo and policy-override smoke, including non-waivable hard confirmation.
+4. Failure-before-mutation regression proving rollback never undoes an unrelated previous command.
+5. Runtime/setup/cancellation/evidence smoke for pyannote, Tesseract, R128, AST, DETR and X-CLIP.
+6. Semantic setup/runtime smoke for MiniLM plus shared-vision SigLIP, including model acquisition, CPU/GPU paths, cancellation, stale-source behavior and bounded result handling.
+7. Hybrid lexical+MiniLM and raw MiniLM current-only search smoke proving stale text/source/fingerprint embeddings are excluded before final ranking.
+8. Pairwise MPEG-7, fused duplicate scoring and bounded project-wide duplicate-candidate smoke.
+9. Rough-cut context/objective-ranking/alternative-comparison smoke proving revision/context hash refusal and zero mutation authority.
+10. Highlight/short proposal smoke proving exact integer budgets, objective/context provenance, overlap rejection and zero mutation authority.
+11. B-roll opportunity → SigLIP candidate retrieval → placement-proposal smoke, including cancellation, context-change refusal and proof that sampled visual frames are not silently promoted into invented source excerpts.
+12. Pacing/narrative/continuity analysis smoke proving exact source/context freshness, semantic fallback behavior and zero normative/edit authority.
+13. Editorial agreement + frozen-case + blinded-review smoke proving explicit-reference semantics, exact proposal/context binding, duplicate-reviewer refusal and zero automatic execution gate.
+14. Retrieval/duplicate evaluation smoke proving deterministic top-k metrics, order-independent duplicate-pair identity and zero semantic/duplicate-truth claim.
+15. GPL runtime-protocol adapter compile/link and process smoke: hello → inspect → propose → authorize → invoke → verify → complete/abort.
+16. Out-of-process checkpoint smoke: consecutive sync mutations, failure rollback, async boundary, post-macro revision resync, runtime disconnect and user Undo/Redo.
+17. Protocol-owned job containment: unrelated editor jobs never cross to the proprietary child.
+18. Debian package build plus clean-host install/uninstall/coexistence smoke.
+19. Hands-on editor plan → authorize → execute → verify/diff → Undo across major edit families.
+20. Review/Auto/Turbo and policy-override smoke, including non-waivable hard confirmation.
 
 Only after those gates pass may the integration branch merge to `vibecut`. An upstream PR remains optional.
+
+## Commercial runtime extraction / licensing seam — SUBSTANTIAL SOURCE FOUNDATION; COMMERCIAL GATE CLOSED
+
+`EXTRACT_AND_LICENSE.md` is the plan of record. The GPL editor and proprietary runtime are now separated in source by a versioned process protocol, but the runtime is **not yet a release-qualified commercial SKU**.
+
+### Open public contract — SOURCE-LANDED
+- `runtime/protocol.md` defines v1 authority, production topology and lifecycle.
+- Apache-2.0 schemas cover EditPlan, tool policy, evidence, jobs, envelopes and type-specific messages.
+- Live/effective tool schema+policy export comes from `VibeCutToolSurface::runtimeContractSnapshot()`; the runtime does not hand-invent the Kdenlive capability table.
+- v1 NDJSON record bound is exactly 2 MiB on GPL and proprietary sides.
+- Evidence confidence is exactly `-1` unknown or `[0,1]`; bounded frame queries do not treat unknown-range evidence as intersecting.
+
+### GPL Kdenlive adapter — SOURCE-LANDED; HOST VERIFICATION OPEN
+- Production topology is **Kdenlive/VibeCut GPL parent → proprietary runtime child** through `QProcess`; live Kdenlive state never moves into a standalone proprietary helper.
+- Adapter stores the exact plan, issues opaque authorization IDs, resolves approved tool/input itself, and rejects post-approval substitution.
+- `base_revision` is immutable provenance; `expected_revision` is the moving execution token.
+- GPL-only invoke preflight validates authorization/revision/order/dependencies/policy **before** the transport opens a Kdenlive Undo checkpoint; native dispatch repeats all checks.
+- Async `job_update` crosses the boundary only when its job ID belongs to the active protocol plan.
+- Consecutive synchronous project mutations share one adapter-side Undo macro; current macro commits before async and on successful completion.
+- Rollback restores the exact captured undo-stack index, so an empty failed checkpoint cannot undo the previous unrelated user command.
+- Already committed checkpoints before async are not falsely claimed as rolled back.
+- Post-macro moving revision is resynchronized from editor-authoritative state.
+- C++ checkpoint/protocol/access regressions are source-registered; authoritative build/runtime execution remains open.
+
+### Clean-room proprietary runtime — SOURCE-LANDED; EXACT-TREE GATE OPEN
+- `runtime/src/halthinks_runtime/` implements contracts, policy, moving revision, jobs, evidence, protocol, provider client, session orchestration and two stdio topologies without editor imports.
+- Production child stdio is synchronous/thread-free after a real shutdown-race defect was found during subprocess testing.
+- Runtime supports read-only inspect-driven revision refresh before planning.
+- Default remote provider transport requires HTTPS; cleartext HTTP is loopback-only and URL-embedded credentials/fragments are rejected.
+- `runtime/verify.py` checks required modules/tests/schemas, proprietary SPDX markers, forbidden GPL/editor imports/markers, Python compilation and all standalone fake-adapter/process tests.
+- Prior reconstructed tests drove real fixes, but **`python3 runtime/verify.py` has not yet been executed against an exact current branch checkout in this environment**.
+
+### Commercial acceptance still open
+- Exact-tree `python3 runtime/verify.py` pass.
+- Full Kdenlive compile/link/test pass for the GPL adapter/checkpoint seam.
+- Production child process smoke inside Kdenlive.
+- Live Undo/Redo/checkpoint/disconnect parity.
+- Clean package/install smoke.
+- Final SPDX/license review and pre-sale counsel review.
 
 ## Phase 3 — persistent media evidence and deterministic analysis — LANDED IN SOURCE
 
@@ -53,6 +97,7 @@ Only after those gates pass may the integration branch merge to `vibecut`. An up
 - Deterministic source metadata, silence, loudness, EBU-R128, shot, black, freeze and blur extractors.
 - Whisper transcript evidence, pairwise MPEG-7 similarity evidence and stale-only `media_analyze_refresh` orchestration.
 - Provider-neutral extractor registry and one shared authoritative dispatch path: live source normalization → provider → `JobManager` → capability-specific admission contract → bounded persistence.
+- GPL evidence parser/public schema/clean-room evidence store now share the exact confidence and field-bound contract.
 
 ## Phase 4 — rich media intelligence + retrieval — STRONG SOURCE FOUNDATION
 
@@ -60,6 +105,7 @@ Only after those gates pass may the integration branch merge to `vibecut`. An up
 - `VibeCutEvaluator::evaluateMutation` measures verified success plus canonical Undo/Redo fidelity.
 - `vibecut_mutation_state_v1` is revision-independent canonical editable state.
 - Source fixtures cover ripple removal, locked refusal, partial-failure rollback, stale-plan refusal, repeated-take overlap refusal and successful repeated-take execution as one Undo command.
+- Failure-before-mutation source fixture now protects pre-existing undo history from empty-checkpoint rollback.
 - **Still gated:** authoritative host execution.
 
 ### Speaker diarization and governed naming
@@ -93,7 +139,8 @@ Only after those gates pass may the integration branch merge to `vibecut`. An up
 - SigLIP (`google/siglip-base-patch16-224`, 768-D) provides exact sampled-frame visual embeddings and text→image cross-modal search through the isolated vision runtime.
 - Embedding spaces cannot be mixed accidentally: cosine search requires exact model revision and dimension compatibility.
 - MiniLM and SigLIP tool families are registered on the normal product surface; first-class schemas expose bounded intent, not arbitrary model/path/vector injection.
-- `media_search_hybrid` fuses the canonical lexical index with MiniLM ranking, excludes semantic hits whose text **or source ID/fingerprint** is no longer current, binds the result to project revision and labels its score as a derived ranking rather than probability.
+- `semantic_search_text` now pre-filters stored MiniLM records against current producer/model/anchor/range/source ID/source fingerprint/full-text SHA **before cosine ranking** and reloads store/index again when the async query completes.
+- `media_search_hybrid` fuses the canonical lexical index with MiniLM ranking, excludes stale text/source semantic anchors, binds the result to project revision and labels its score as a derived ranking rather than probability.
 - Hybrid parent/child cancellation and already-terminal child races are handled explicitly.
 
 ### Duplicate / near-duplicate understanding — SOURCE-LANDED
@@ -105,6 +152,7 @@ Only after those gates pass may the integration branch merge to `vibecut`. An up
 
 ### Retrieval and duplicate evaluation — SOURCE FOUNDATION LANDED
 - `retrieval_ranking_evaluate` measures explicit-reference precision@k, recall@k, AP@k, binary nDCG@k, reciprocal rank and full-list recall.
+- Evaluation supports the full legal 2,000-pair project duplicate scan bound.
 - `tests/dataset/vibecut/retrieval_ranking_cases.json` provides synthetic deterministic metric-regression fixtures.
 - `duplicate_ranking_evaluate` canonicalizes each unordered asset pair to one SHA-256 identity, so `(A,B)` and `(B,A)` cannot count twice.
 - Duplicate evaluation reuses retrieval ranking metrics and separately reports fusion classification/evidence-coverage diagnostics; it explicitly makes no duplicate-truth claim.
@@ -113,7 +161,6 @@ Only after those gates pass may the integration branch merge to `vibecut`. An up
 
 ### Retrieval/evidence work still open before autonomous synthesis consumes it by default
 - Quantitative retrieval precision/recall and duplicate-ranking evaluation on representative projects using the now-landed evaluator contracts.
-- Raw `semantic_search_text` still annotates rather than pre-filters source-fingerprint staleness; `media_search_hybrid` is the preferred current-only path and now enforces both text and source identity.
 - Camera-motion, shot-scale and composition evidence where it demonstrably improves editorial decisions.
 - Runtime verification and quality/calibration fixtures for all learned providers.
 - Privacy-safe person/face evidence only if a governed identity boundary and product need justify it.
@@ -180,6 +227,7 @@ Only after those gates pass may the integration branch merge to `vibecut`. An up
 ### Structural continuity warnings — SOURCE FOUNDATION LANDED
 - `rough_cut_continuity_analyze` revalidates the exact current candidate sequence through the canonical rough-cut proposal contract.
 - Reports source chronology reversals, overlapping authoritative ranges, repeated full normalized transcript hashes and source/provenance changes as explicit review candidates.
+- Frame chronology/overlap/gap comparisons run only when adjacent candidates share the same source/fingerprint coordinate domain; cross-source edges report provenance change instead of comparing unrelated frame numbers.
 - Positive source gaps are ranked only relative to one another; no gap threshold is applied.
 - Findings are `derived_analysis`, `quality_claim=false`, `executable=false`, `mutation_authority=none`.
 
@@ -209,15 +257,16 @@ The architecture needed to measure proposal agreement and collect blinded human 
 - the authoritative Kdenlive compile/test/smoke gate has not run.
 
 ### Next source sequence
-1. Build representative rough-cut/highlight/B-roll evaluation cases and collect blinded reviews bound to exact proposal IDs.
-2. Build representative retrieval and duplicate-reference datasets, then score them with `retrieval_ranking_evaluate` / `duplicate_ranking_evaluate`.
-3. Compare proposal versions/providers using agreement metrics plus human-review distributions; do **not** collapse subjective review into an automatic pass/fail score.
-4. Richer highlight/B-roll ranking may incorporate measured audiovisual quality only where calibration is demonstrated.
-5. **Only after evaluation evidence justifies it:** design an explicit approved-proposal → existing governed `EditPlan` translation with normal authorization, verification and Undo. Do not create a parallel synthesis mutation path.
+1. Run the exact-tree commercial runtime verifier and the real Kdenlive editor/protocol gate; repair every failure before commercial or merge claims.
+2. Build representative rough-cut/highlight/B-roll evaluation cases and collect blinded reviews bound to exact proposal IDs.
+3. Build representative retrieval and duplicate-reference datasets, then score them with `retrieval_ranking_evaluate` / `duplicate_ranking_evaluate`.
+4. Compare proposal versions/providers using agreement metrics plus human-review distributions; do **not** collapse subjective review into an automatic pass/fail score.
+5. Richer highlight/B-roll ranking may incorporate measured audiovisual quality only where calibration is demonstrated.
+6. **Only after evaluation evidence justifies it:** design an explicit approved-proposal → existing governed `EditPlan` translation with normal authorization, verification and Undo. Do not create a parallel synthesis mutation path.
 
 ## Distribution and README lineage
 
-The repository preserves three documentation layers: halthinks/VibeCut capability-expanded fork → original VibeCut → Kdenlive. `packaging/vibecut/build-deb.sh` produces the separate `vibecut-halthinks` distribution under `/opt/vibecut-halthinks`; large ML environments/models remain governed setup-time assets.
+The repository preserves three documentation layers: halthinks/VibeCut capability-expanded fork → original VibeCut → Kdenlive. `packaging/vibecut/build-deb.sh` produces the separate `vibecut-halthinks` distribution under `/opt/vibecut-halthinks`; large ML environments/models remain governed setup-time assets. The proprietary runtime, if/when release-qualified, is a separate SKU/process and does not relicense the editor.
 
 ## Current engineering rules
 
@@ -232,4 +281,6 @@ The repository preserves three documentation layers: halthinks/VibeCut capabilit
 - Agreement with a reference is not intrinsic editorial quality; subjective human review is not ground truth.
 - Human-review records must bind to the exact proposal/context that was actually reviewed.
 - Duplicate-pair benchmark identity is order-independent; reversed pair ordering cannot create a second judgment.
+- Runtime proposal authority never controls Kdenlive tool/input resolution, checkpoint/Undo, live revision or authorization state.
+- Evidence persistence is not project truth.
 - A synthesis feature is not complete because a model can suggest it. Execution is complete only when its native mutation, verification and Undo story are real and quantitatively evaluated.
