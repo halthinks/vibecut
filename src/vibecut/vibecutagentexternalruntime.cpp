@@ -69,9 +69,6 @@ void VibeCutAgent::initializeExternalRuntime()
             [this](int exitCode, int exitStatus) {
         Q_UNUSED(exitStatus)
         if (!m_externalPlanExecuting) return;
-        // A pending protocol plan is normally resolved by transport abort before
-        // this signal. Preserve a useful diagnostic if process termination races
-        // with that lifecycle event.
         m_externalRuntimeError = QStringLiteral("External runtime process stopped with exit code %1.").arg(exitCode);
     });
 
@@ -95,14 +92,22 @@ bool VibeCutAgent::ensureExternalRuntimeReady(QString *error)
                                 : m_externalRuntimeError;
         return false;
     }
-    if (m_externalRuntimeTransport->running()) return true;
 
-    QString startError;
-    if (!m_externalRuntimeTransport->start(m_externalRuntimeProgram, m_externalRuntimeArguments, trustMode(), &startError)) {
-        m_externalRuntimeError = startError;
-        if (error) *error = startError;
+    QString readyError;
+    if (!m_externalRuntimeTransport->running()) {
+        QString startError;
+        if (!m_externalRuntimeTransport->start(m_externalRuntimeProgram, m_externalRuntimeArguments, trustMode(), &startError)) {
+            m_externalRuntimeError = startError;
+            if (error) *error = startError;
+            return false;
+        }
+    }
+    if (!m_externalRuntimeTransport->waitUntilReady(3000, &readyError)) {
+        m_externalRuntimeError = readyError;
+        if (error) *error = readyError;
         return false;
     }
+
     m_externalRuntimeError.clear();
     return true;
 }
