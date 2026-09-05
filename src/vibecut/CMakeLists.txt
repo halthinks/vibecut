@@ -100,6 +100,7 @@ set(kdenlive_SRCS
   vibecut/vibecutruntimecontract.cpp
   vibecut/vibecutruntimeprotocolaccess.cpp
   vibecut/vibecutruntimeprotocoladapter.cpp
+  vibecut/vibecutruntimestdioready.cpp
   vibecut/vibecutruntimestdiotransport.cpp
   vibecut/vibecutscript.cpp
   vibecut/vibecutsecretstore.cpp
