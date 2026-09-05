@@ -48,6 +48,12 @@ public:
      * from the exact stored approved plan and its authorization-time policy. */
     bool approvedOperationPolicy(const QString &operationId, VibeCutToolPolicy &policy,
                                  QString *error = nullptr) const;
+    /** Validate an invoke envelope without executing it. This lets the GPL
+     * transport open an Undo checkpoint only after the request is known to be
+     * the exact next authorized/current operation. handleRequest() still
+     * repeats all checks before native invocation. */
+    bool preflightInvoke(const QJsonObject &request, VibeCutToolPolicy &policy,
+                         QString *errorCode = nullptr, QString *error = nullptr) const;
     QString activePlanObjective() const;
     /** Return the editor-authoritative project revision. */
     quint64 protocolProjectRevision() const;
