@@ -10,6 +10,9 @@ requires-python = ">=3.10"
 authors = [{name = "halthinks"}]
 license = {text = "LicenseRef-halthinks-Proprietary"}
 
+[project.scripts]
+halthinks-vibecut-runtime = "halthinks_runtime.worker:main"
+
 [tool.setuptools]
 package-dir = {"" = "src"}
 
