@@ -98,8 +98,6 @@ TEST_CASE("protocol checkpoint revision resync is editor authoritative", "[vibec
     adapter.authorizePending(VibeCutTrustMode::Off, true, true);
     REQUIRE(adapter.expectedRevision() == 12);
 
-    // Simulate Kdenlive publishing a new undo-stack revision when the GPL
-    // transport closes its checkpoint macro. Runtime input is not involved.
     revision = 13;
     CHECK(adapter.synchronizeExpectedRevision() == 13);
     CHECK(adapter.expectedRevision() == 13);
@@ -164,4 +162,45 @@ TEST_CASE("invoke preflight refuses stale or substituted requests before native 
     CHECK_FALSE(adapter.preflightInvoke(validInvoke, preflightPolicy, &code, &error));
     CHECK(code == QStringLiteral("stale_revision"));
     CHECK(mutationCalls == 0);
+}
+
+TEST_CASE("host may discard only an unapproved staged protocol plan", "[vibecut][runtime-protocol][host-discard]")
+{
+    VibeCutTools base;
+    VibeCutToolSurface surface(&base);
+    quint64 revision = 31;
+
+    const QJsonObject schema{{QStringLiteral("name"), QStringLiteral("protocol_host_discard")},
+                             {QStringLiteral("description"), QStringLiteral("host discard fixture")},
+                             {QStringLiteral("input_schema"), QJsonObject{{QStringLiteral("type"), QStringLiteral("object")}}}};
+    VibeCutToolPolicy policy;
+    policy.name = QStringLiteral("protocol_host_discard");
+    policy.risk = VibeCutToolRisk::ReversibleEdit;
+    policy.reversible = true;
+    policy.mutatesProject = true;
+    QString error;
+    REQUIRE(surface.registerTool(schema, policy, [](const QJsonObject &) {
+        return QJsonObject{{QStringLiteral("ok"), true}};
+    }, &error));
+    REQUIRE(error.isEmpty());
+
+    VibeCutRuntimeProtocolAdapter adapter(&surface, [&revision]() { return revision; });
+    const QJsonObject staged = adapter.stageHostPlan(singleOperationPlan(revision, policy.name));
+    REQUIRE(staged.value(QStringLiteral("type")).toString() == QStringLiteral("propose_plan"));
+    REQUIRE(adapter.hasPendingPlan());
+    CHECK_FALSE(adapter.hasAuthorization());
+
+    error.clear();
+    CHECK(adapter.discardUnapprovedHostPlan(&error));
+    CHECK(error.isEmpty());
+    CHECK_FALSE(adapter.hasPendingPlan());
+
+    REQUIRE(adapter.stageHostPlan(singleOperationPlan(revision, policy.name)).value(QStringLiteral("type")).toString() == QStringLiteral("propose_plan"));
+    REQUIRE(adapter.authorizePending(VibeCutTrustMode::Off, true, true).value(QStringLiteral("type")).toString() == QStringLiteral("authorize"));
+    REQUIRE(adapter.hasAuthorization());
+    error.clear();
+    CHECK_FALSE(adapter.discardUnapprovedHostPlan(&error));
+    CHECK(error.contains(QStringLiteral("after authorization")));
+    CHECK(adapter.hasPendingPlan());
+    CHECK(adapter.hasAuthorization());
 }
