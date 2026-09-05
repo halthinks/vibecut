@@ -33,6 +33,10 @@ public:
      * proprietary child. Validation/storage is identical to runtime-originated
      * propose_plan admission; no mutation occurs. */
     QJsonObject stageHostPlan(const QJsonObject &plan);
+    /** Drop only an unapproved, non-running staged host plan. This exists so a
+     * failed authorization attempt can reset the protocol child without emitting
+     * a hosted abort/completion for the still-reviewable local UI plan. */
+    bool discardUnapprovedHostPlan(QString *error = nullptr);
 
     /** Produce the adapter/human authorization response for the current stored
      * plan. When confirmation is not required by the effective policy/mode,
