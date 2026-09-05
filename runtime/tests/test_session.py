@@ -7,6 +7,7 @@ import unittest
 
 from fake_adapter import FakeAdapter
 from halthinks_runtime.policy import TrustMode
+from halthinks_runtime.protocol import Envelope
 from halthinks_runtime.session import RuntimeSession, SessionError
 
 
@@ -79,9 +80,6 @@ class RuntimeSessionTests(unittest.TestCase):
         )
         session.submit_plan(adapter)
         session.accept_authorization(adapter.authorize(TrustMode.OFF, human_approved=True))
-        # PlanOperation is frozen, but its JSON input is intentionally a normal
-        # mapping. Even if compromised caller code mutates the runtime copy now,
-        # invoke sends only operation_id and the adapter executes its stored copy.
         assert session.plan is not None
         session.plan.operations[0].input["value"] = 999
         result = session.execute_authorized(adapter)
@@ -113,13 +111,67 @@ class RuntimeSessionTests(unittest.TestCase):
                 ],
             )
         )
-        # async_set has a hard confirmation requirement even in Turbo.
         self.assertTrue(session.requires_confirmation(TrustMode.TURBO))
         session.submit_plan(adapter)
         session.accept_authorization(adapter.authorize(TrustMode.TURBO, human_approved=True))
         result = session.execute_authorized(adapter)
         self.assertEqual(result.final_revision, 14)
         self.assertEqual(adapter.value, 45)
+
+    def test_adapter_checkpoint_commit_may_publish_new_final_revision(self) -> None:
+        class CheckpointCommitAdapter(FakeAdapter):
+            def _complete(self, message):  # type: ignore[override]
+                response = super()._complete(message)
+                if response.type == "error":
+                    return response
+                self.revision += 1
+                payload = dict(response.payload)
+                payload["project_revision"] = self.revision
+                payload["checkpoint_committed"] = True
+                payload["checkpoint_rollback_parity"] = True
+                return Envelope(response.v, response.id, response.kind, response.type, payload)
+
+        adapter = CheckpointCommitAdapter(revision=30)
+        session = RuntimeSession()
+        session.accept_hello(adapter.hello())
+        session.prepare_plan(
+            plan(
+                30,
+                [{"id": "op-1", "tool": "set_value", "input": {"value": 6}, "depends_on": [], "expected_postconditions": []}],
+            )
+        )
+        session.submit_plan(adapter)
+        session.accept_authorization(adapter.authorize(TrustMode.OFF, human_approved=True))
+        result = session.execute_authorized(adapter)
+        self.assertEqual(result.final_revision, 32)
+        self.assertTrue(result.completion["checkpoint_committed"])
+
+    def test_unexplained_completion_revision_jump_fails_closed(self) -> None:
+        class UnexplainedCommitAdapter(FakeAdapter):
+            def _complete(self, message):  # type: ignore[override]
+                response = super()._complete(message)
+                if response.type == "error":
+                    return response
+                self.revision += 1
+                payload = dict(response.payload)
+                payload["project_revision"] = self.revision
+                payload["checkpoint_committed"] = False
+                payload["checkpoint_rollback_parity"] = True
+                return Envelope(response.v, response.id, response.kind, response.type, payload)
+
+        adapter = UnexplainedCommitAdapter(revision=40)
+        session = RuntimeSession()
+        session.accept_hello(adapter.hello())
+        session.prepare_plan(
+            plan(
+                40,
+                [{"id": "op-1", "tool": "set_value", "input": {"value": 7}, "depends_on": [], "expected_postconditions": []}],
+            )
+        )
+        session.submit_plan(adapter)
+        session.accept_authorization(adapter.authorize(TrustMode.OFF, human_approved=True))
+        with self.assertRaises(SessionError):
+            session.execute_authorized(adapter)
 
     def test_external_revision_drift_refuses_remaining_operation(self) -> None:
         class DriftAfterFirstInvoke(FakeAdapter):
