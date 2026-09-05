@@ -2,85 +2,113 @@
 
 SPDX-License-Identifier: Apache-2.0
 
-This document defines the editor-agnostic protocol seam described by `EXTRACT_AND_LICENSE.md`.
+This document defines the editor-agnostic process seam described by `EXTRACT_AND_LICENSE.md`.
 
-The protocol is intentionally usable without linking the runtime implementation into Kdenlive, MLT, KF6, or the GPL VibeCut adapter. Kdenlive remains authoritative editor/project state. The runtime may inspect, reason, propose, govern, and orchestrate; it does not become a second editor database.
+Kdenlive remains authoritative editor/project state. The proprietary runtime may inspect, reason, propose, govern and orchestrate, but it does not link into Kdenlive and does not become a second editor database.
 
-## 1. Transport
+## 1. Production topology and transport
 
-Version 1 transport is newline-delimited JSON (NDJSON) over stdin/stdout.
+The first production topology is:
 
+```text
+GPL Kdenlive / VibeCut adapter (parent process)
+        │
+        │ launches
+        ▼
+proprietary halthinks runtime (child process)
+```
+
+The GPL editor owns live Kdenlive state, `VibeCutToolSurface`, native commands, `DocUndoStack`, job state and human authorization UI. The proprietary child owns editor-agnostic planning/policy/protocol orchestration only.
+
+Version 1 uses newline-delimited JSON (NDJSON) over inherited stdin/stdout:
+
+- GPL parent → runtime child stdin: `hello`, responses and authorized adapter events;
+- runtime child → GPL parent: protocol requests only;
+- runtime diagnostics go to stderr, never stdout;
 - one UTF-8 JSON object per line;
 - no multi-line JSON objects;
-- stdout is protocol-only;
-- diagnostics go to stderr;
-- implementations must impose bounded message sizes;
-- local Unix sockets / named pipes may carry the same envelopes later without changing the message model.
+- **maximum encoded JSON record size is 2 MiB**, excluding the terminating newline, on both sides;
+- malformed/oversized protocol output fails closed and invalidates active plan authority;
+- the editor launches the runtime directly; no shell is used.
+
+`StdioAdapterClient` also supports the reverse topology (runtime launches a fake/OEM adapter process) for testing and non-Kdenlive hosts. A standalone helper process is **not** the production owner of live Kdenlive state.
+
+Local Unix sockets / named pipes may carry the same envelopes later without changing v1 authority semantics.
 
 ## 2. Envelope
 
-Every protocol message uses this envelope:
+Every message uses:
 
 ```json
 {
   "v": 1,
   "id": "msg-...",
   "kind": "request",
-  "type": "hello",
+  "type": "inspect",
   "payload": {}
 }
 ```
 
-Fields:
-
-- `v` — protocol version. Version 1 is required by this document.
-- `id` — caller-generated message/correlation id. Responses reuse the request id.
+- `v` — protocol version; v1 only here.
+- `id` — bounded correlation id. Responses reuse the request id.
 - `kind` — `request`, `response`, or `event`.
-- `type` — message type from the catalog below.
-- `payload` — type-specific JSON object.
+- `type` — message type below.
+- `payload` — type-specific object.
 
-Unknown protocol versions fail closed. Unknown required message types fail with a structured `error` response.
+Unknown versions/types fail closed. Public schemas live under `runtime/schema/`.
 
 ## 3. Authority model
 
-Protocol authority is deliberately split:
+1. **GPL adapter / Kdenlive authority** — live project state, current revision, available tools/policies, native mutation result, Undo/Redo checkpoint behavior, jobs and editor verification.
+2. **Runtime authority** — public-contract validation, planning, orchestration, moving revision bookkeeping, evidence bookkeeping and provider-neutral model requests.
+3. **Human authority** — authorization where effective policy/trust mode requires it.
+4. **Evidence authority** — provenance-bound observation/measurement/prediction/representation/derived evidence only. Evidence persistence never mutates Kdenlive project truth.
 
-1. **Adapter / Kdenlive authority** — current project state, current revision, native tool availability, native mutation result, Undo/Redo behavior, render/job state.
-2. **Runtime authority** — contract validation, planning, orchestration, trust-policy evaluation, evidence bookkeeping, provider-neutral model requests.
-3. **Human authority** — authorization when required by tool policy/trust mode.
-4. **Evidence authority** — evidence records are observations, measurements, predictions, representations, or derived candidates according to their own provenance. Repetition or confidence never promotes evidence into editor truth.
+Runtime proposal authority can never self-elevate into mutation authority.
 
-A runtime request cannot self-elevate from proposal authority into mutation authority. Consequential editor changes happen only through adapter-exposed native tools after authorization.
+## 4. Revision, authorization and exact-plan binding
 
-## 4. Revision and authorization model
+V1 distinguishes:
 
-Version 1 distinguishes two revision values:
-
-- `base_revision` — immutable provenance captured when the plan is proposed. It binds the plan to the state it was reasoned from.
-- `expected_revision` — moving execution token. It starts at the adapter revision when authorization is granted and is replaced by each successful adapter response/event that legitimately advances project state.
-
-This distinction mirrors the current integrated `VibeCutPlanRuntime`: an approved plan is stale if the project changes before execution, but operation 1 may legitimately advance the revision before operation 2.
+- `base_revision` — immutable plan provenance captured from inspected state;
+- `expected_revision` — moving execution token after authorization.
 
 Rules:
 
-1. Adapter stores the exact accepted `propose_plan` object immutably for the pending authorization.
-2. `authorize` binds a fresh opaque `authorization_id` to that stored plan and its approved operation ids.
-3. `invoke` references only `plan_id`, `authorization_id`, `operation_id`, and `expected_revision`.
-4. The adapter resolves the tool name/input from the stored approved plan. The runtime may **not** substitute a new tool or new JSON input after approval.
-5. Before each invoke, adapter requires current project revision == `expected_revision`.
-6. A successful response returns `revision_before` and `revision_after`; runtime uses `revision_after` as the next `expected_revision`.
-7. If an external-only asynchronous job is running and project state changes before remaining operations, the remaining plan is stale and must stop.
-8. `complete_plan` explicitly releases a successful authorization after all approved operations have completed and the expected revision still matches.
-9. `abort_plan` explicitly stops a pending/authorized plan. Initial shim behavior invalidates authorization; Step 4 adds plan-wide checkpoint rollback parity.
-10. A rejected/stale/completed/aborted authorization id cannot be reused.
+1. GPL adapter stores the exact accepted `propose_plan` object.
+2. Authorization binds a fresh opaque `authorization_id` to that exact plan and exact operation set.
+3. `invoke` carries only `plan_id`, `authorization_id`, `operation_id`, `expected_revision`.
+4. `invoke` **must not contain `tool` or `input`**. The GPL adapter resolves both from the stored approved plan.
+5. Before opening a Kdenlive Undo checkpoint, the GPL transport performs adapter-side preflight: authorization, moving revision, dependency order, duplicate/completed state and authorization-time/current policy equality.
+6. The actual adapter repeats the full validation immediately before native invocation.
+7. A successful operation returns `revision_before` / `revision_after`; runtime advances its moving token.
+8. When the GPL checkpoint layer closes an Undo macro and Kdenlive publishes the resulting revision, the adapter resynchronizes `expected_revision` from editor-authoritative state.
+9. External-only async work cannot absorb unrelated project drift. If project state changes while such a job is active and plan work remains, the plan becomes stale.
+10. Rejected, stale, completed or aborted authorizations are not reusable.
 
-This prevents stale-plan execution, post-approval plan substitution, and ambiguous authorization lifetime.
+This prevents stale execution, post-approval substitution and ambiguous authorization lifetime.
 
-## 5. Required message types
+## 5. Adapter-side Undo/checkpoint semantics
+
+Out-of-process execution intentionally mirrors the existing integrated `VibeCutPlanRuntime` scope; it does **not** claim stronger all-plan atomic rollback.
+
+- consecutive synchronous `mutates_project=true` operations share one open Kdenlive Undo macro;
+- read-only verification may occur while that macro remains open;
+- the macro is committed before an asynchronous operation begins;
+- later synchronous mutations after async open a new checkpoint;
+- a failed synchronous native mutation rolls back the **currently open synchronous macro only**;
+- `abort_plan` rolls back the currently open synchronous macro if one exists;
+- already committed checkpoints (for example those closed before async) are not retroactively claimed as rolled back;
+- successful `complete_plan` commits any currently open macro;
+- post-commit revision is re-read from Kdenlive before it is returned as authoritative completion state.
+
+Source support exists in the GPL adapter/transport (`VibeCutRuntimeCheckpoint` + stdio transport), but release-quality parity remains gated on the real Kdenlive compile/runtime/Undo smoke suite.
+
+## 6. Message catalog
 
 ### `hello`
 
-Direction: adapter → runtime event/request during session initialization.
+Adapter → runtime initialization event.
 
 Minimum payload:
 
@@ -94,35 +122,44 @@ Minimum payload:
   "tools": [
     {
       "schema": {"name": "clip_move", "description": "...", "input_schema": {}},
-      "policy": {"name": "clip_move", "risk": "reversible_edit", "reversible": true, "mutates_project": true, "async": false, "confirmation_required": false, "auto_allowed": false, "enabled": true}
+      "policy": {
+        "name": "clip_move",
+        "risk": "reversible_edit",
+        "reversible": true,
+        "mutates_project": true,
+        "async": false,
+        "confirmation_required": false,
+        "auto_allowed": false,
+        "enabled": true
+      }
     }
   ]
 }
 ```
 
-The tool table is authoritative for that adapter session. The runtime must not invent unavailable tool names.
+The table comes from the live effective `VibeCutToolSurface` snapshot. Runtime must not invent absent tools.
 
 ### `inspect`
 
-Direction: runtime → adapter request.
-
-Payload names a read-only advertised tool and JSON input. The adapter returns current editor-derived state plus the revision token used for the inspection.
+Runtime → adapter read-only request:
 
 ```json
 {"operation":"project_snapshot","input":{}}
 ```
 
+`operation` must be an advertised effective `read_only` tool. Response includes the editor revision measured with that inspection. The clean-room runtime can refresh its planning revision from this result; inspection is refused during active authorization.
+
 ### `propose_plan`
 
-Direction: runtime → adapter request/event for review.
+Runtime → adapter request containing `schema/editplan.schema.json`.
 
-Payload contains one object conforming to `schema/editplan.schema.json`. `base_revision` binds the plan to inspected state. The adapter stores the accepted object immutably for the pending authorization and refuses a conflicting reuse of the same plan id.
+The adapter requires current revision == `base_revision`, validates tools/dependencies, stores the accepted plan immutably and refuses a second simultaneous protocol plan.
 
 ### `authorize`
 
-Direction: adapter/human → runtime response/event.
+Adapter/human → runtime event/response.
 
-Approved response payload:
+Approved payload:
 
 ```json
 {
@@ -135,11 +172,11 @@ Approved response payload:
 }
 ```
 
-Rejected response omits `authorization_id` and contains a reason. Version 1 never infers approval from silence where policy requires a human decision.
+Human approval is never inferred when effective policy requires confirmation. Code-defined hard confirmation remains non-waivable even in Turbo.
 
 ### `invoke`
 
-Direction: runtime → adapter request.
+Runtime → adapter:
 
 ```json
 {
@@ -150,25 +187,13 @@ Direction: runtime → adapter request.
 }
 ```
 
-The adapter resolves `tool` and `input` from the exact stored approved plan; neither is caller-overridable at invoke time.
+No runtime-supplied tool/input is accepted. Adapter resolves exact operation content.
 
-Successful synchronous response includes:
-
-```json
-{
-  "plan_id": "plan-...",
-  "operation_id": "op-1",
-  "revision_before": 42,
-  "revision_after": 43,
-  "result": {"ok": true}
-}
-```
-
-For asynchronous work, response additionally exposes `started: true` and a trackable `job_id`. Adapter rechecks authorization, moving expected revision, effective policy, dependencies, and native preconditions at execution time.
+A synchronous successful response includes structured native result plus revisions. Async start additionally includes `started: true` + `job_id`. For a mutating operation the GPL transport owns checkpoint begin/commit/rollback; runtime never controls that metadata.
 
 ### `verify`
 
-Direction: runtime → adapter request.
+Runtime → adapter:
 
 ```json
 {
@@ -182,11 +207,11 @@ Direction: runtime → adapter request.
 }
 ```
 
-`inspection` must name an advertised read-only adapter tool. The adapter returns its measured/native state together with the expected-postcondition strings. Generic strings are not magically interpreted as truth by the adapter. `ok: true` without supporting state/evidence is not sufficient verification.
+`inspection` must be an advertised read-only tool. Returned editor state is verification evidence; free-form postcondition strings are not automatically converted into truth.
 
 ### `complete_plan`
 
-Direction: runtime → adapter request.
+Runtime → adapter after every approved operation is terminal-successful and no tracked job remains:
 
 ```json
 {
@@ -196,55 +221,55 @@ Direction: runtime → adapter request.
 }
 ```
 
-The adapter accepts completion only when every approved operation is terminal-successful, no tracked background operation remains, and current revision equals `expected_revision`. It then invalidates the authorization. Step 4 uses this lifecycle boundary to close a plan-wide Undo checkpoint/macro.
+Production GPL transport commits any open synchronous checkpoint, returns editor-authoritative post-commit revision and invalidates plan authorization.
 
 ### `abort_plan`
 
-Direction: runtime → adapter request.
+Runtime → adapter:
 
 ```json
 {
   "plan_id": "plan-...",
   "authorization_id": "auth-...",
-  "reason": "runtime stopped after failed verification"
+  "reason": "failed verification"
 }
 ```
 
-A pending plan may omit `authorization_id`. Abort invalidates pending/authorization state. Initial Step-2 shim does not claim plan-wide rollback parity; Step 4 adds adapter-side checkpoint rollback at this boundary.
+A pending unapproved plan may omit `authorization_id`. Production transport requests cancellation of tracked cancellable jobs and rolls back only the currently open synchronous checkpoint, matching integrated runtime scope.
 
 ### `job_update`
 
-Direction: adapter → runtime event.
+Adapter → runtime event for a job **owned by the active protocol plan only**.
 
-Payload mirrors the public job schema and includes current `project_revision` when revision-sensitive plan continuation is possible. Successful terminal events may carry bounded structured result data.
+Unrelated Kdenlive/Whisper/render/model/editor jobs are filtered at the process boundary and are not exported to the proprietary child. Payload mirrors `schema/job.schema.json` plus current project revision.
 
 ### `revision`
 
-Direction: adapter → runtime event.
+Adapter → runtime event:
 
 ```json
 {"project_revision":43,"reason":"undo_stack_changed"}
 ```
 
-Revision tokens are opaque monotonic adapter state. Runtime-owned successful operations advance the moving expected token; unrelated changes invalidate remaining work.
+A generic revision event is not automatically attributable to an active job; unrelated drift fails the moving revision gate.
 
-### `evidence_put`
+### `evidence_put` / `evidence_get`
 
-Direction: runtime/adapter → evidence-store owner request.
+Evidence records follow `schema/evidence.schema.json`.
 
-Payload contains one or more records conforming to `schema/evidence.schema.json`. Version 1 adapter persistence may require all records in one put to share the same source id/fingerprint/extractor id/version so replacement remains one canonical evidence slice. Evidence persistence never mutates Kdenlive project truth by itself.
+V1 confidence semantics are exact:
 
-### `evidence_get`
+- `-1` = unknown;
+- otherwise value is in `[0,1]`;
+- values such as `-0.5` are invalid.
 
-Direction: runtime → evidence-store owner request.
+Frame range is `-1/-1` when unavailable, otherwise non-negative and `end_frame >= start_frame`. A bounded frame query does not claim an unknown-range record intersects the requested range.
 
-Payload contains bounded filters such as source id/fingerprint, extractor id/version, kind, and frame range. Results preserve original provenance.
+Evidence persistence is not editor mutation and cannot become project truth by repetition/confidence.
 
 ### `error`
 
-Direction: either side → response/event.
-
-Minimum payload:
+Structured failure:
 
 ```json
 {
@@ -255,31 +280,20 @@ Minimum payload:
 }
 ```
 
-Errors never masquerade as successful responses.
+Errors never masquerade as success.
 
-## 6. Plan contract
+## 7. EditPlan contract
 
-The canonical serialized plan field names mirror current `VibeCutEditPlan::toJson()` / `VibeCutPlanOperation::toJson()`:
+Serialized names remain exactly:
 
 - plan: `id`, `base_revision`, `objective`, `operations`;
 - operation: `id`, `tool`, `input`, `depends_on`, `expected_postconditions`.
 
-JSON Schema validates shape. Semantic validation additionally requires:
+Semantic validation requires non-empty unique ids/tool names, known dependencies, no self-dependency/cycles, advertised effective tools, and correct revision authority.
 
-- non-empty plan id/objective;
-- at least one operation;
-- unique non-empty operation ids;
-- non-empty tool names;
-- every dependency references a known operation;
-- no self-dependency;
-- dependency graph is acyclic;
-- every tool is advertised and governed by the active adapter snapshot;
-- plan `base_revision` equals adapter revision when authorization is granted;
-- after authorization, moving `expected_revision` — not immutable `base_revision` — guards each operation.
+## 8. Tool policy / trust contract
 
-## 7. Trust/policy contract
-
-The public policy serialization mirrors `VibeCutToolPolicy::toJson()` exactly:
+Public policy fields:
 
 - `name`
 - `risk`: `read_only | reversible_edit | major_edit | external_side_effect | irreversible`
@@ -290,58 +304,48 @@ The public policy serialization mirrors `VibeCutToolPolicy::toJson()` exactly:
 - `auto_allowed`
 - `enabled`
 
-Trust modes map current C++ names as:
+Trust modes:
 
-- C++ `Off` → protocol `off` (Review behavior)
-- C++ `Auto` → protocol `auto`
-- C++ `Turbo` → protocol `turbo`
+- C++ `Off` → protocol `off` (Review)
+- `Auto` → `auto`
+- `Turbo` → `turbo`
 
-Code/adapter-defined hard confirmation remains a lower bound. Runtime or project policy must not waive `confirmation_required=true` or irreversible confirmation.
+Hard confirmation and irreversible confirmation remain adapter-enforced lower bounds.
 
-## 8. Job contract
+## 9. Job contract
 
-Job states mirror the current JobManager state machine:
+States:
 
 `queued → running → {succeeded | failed | cancelled}`
 
-with `cancel_requested` as an explicit intermediate state for cancelable jobs.
+with `cancel_requested` as explicit intermediate state. Successful structured results remain bounded. Failed/cancelled jobs do not retain a claimed successful result.
 
-Fields are defined in `schema/job.schema.json`. Structured successful results remain bounded. Failed/cancelled jobs do not claim a successful result.
+## 10. Model-provider transport boundary
 
-## 9. Evidence contract
+The clean-room runtime provider client is editor-independent. Default remote provider requests require HTTPS; cleartext HTTP is permitted only for loopback/local development endpoints. URL-embedded credentials and URL fragments are rejected before transport. Provider events/request bodies are independently bounded.
 
-The public record shape mirrors `VibeCutMediaEvidenceRecord::toJson()` exactly. See `schema/evidence.schema.json`.
+## 11. Compatibility/versioning
 
-Important invariants:
+- Additive optional fields require old peers to safely ignore them.
+- Rename/removal/semantic changes require a protocol version bump.
+- `hello` advertises supported versions.
+- Security/authority semantics are never silently downgraded for compatibility.
 
-- source identity and source fingerprint are distinct and both required;
-- extractor id/version are required;
-- confidence is `-1` for unknown or within `[0,1]`;
-- frame ranges use `-1` for unavailable, otherwise non-negative coordinates with end ≥ start;
-- evidence is provenance-bound and does not become project truth automatically.
+## 12. Current acceptance gate
 
-## 10. Compatibility/versioning
+The runtime is not commercially release-qualified until all of these are true:
 
-- Additive optional fields may be introduced only when old peers can safely ignore them.
-- Renaming/removing fields or changing semantics requires a new protocol/schema version.
-- Adapter `hello` advertises supported versions.
-- No side may silently downgrade security/authority semantics to achieve compatibility.
+1. `python3 runtime/verify.py` passes from the exact source tree;
+2. runtime source passes the executable clean-room boundary scan and has no Kdenlive/MLT/KF6/Qt/GPL implementation dependency;
+3. fake/OEM subprocess tests pass;
+4. production-direction test passes with GPL-style parent and proprietary runtime child over inherited stdio;
+5. hello → read-only inspect → plan → authorize → invoke → verify → complete passes;
+6. stale base/moving revision and post-approval substitution fail before native mutation;
+7. async job events are exported only for protocol-owned jobs;
+8. evidence-store parity and non-project-truth semantics pass;
+9. GPL adapter compiles/links in Kdenlive;
+10. live Kdenlive checkpoint/Undo/rollback parity passes, including synchronous failure, async boundary and runtime disconnect;
+11. `bash scripts/vibecut-verify.sh` passes from a clean Kdenlive build tree;
+12. licensing/SPDX review and pre-sale legal review are complete.
 
-## 11. Initial extraction acceptance
-
-The first extracted runtime is protocol-valid only when a fake adapter can demonstrate:
-
-1. hello/tool discovery;
-2. inspect current revision;
-3. propose and validate an EditPlan;
-4. require authorization according to policy;
-5. reject stale `base_revision` before authorization;
-6. issue an authorization id bound to the exact stored plan;
-7. reject post-approval tool/input substitution by resolving operation content adapter-side;
-8. reject unexpected revision changes while accepting revision changes caused by prior approved operations;
-9. invoke only advertised and approved tools;
-10. verify postconditions from adapter state;
-11. complete an all-success plan and invalidate its authorization;
-12. abort a pending/authorized plan and invalidate its authorization;
-13. receive job lifecycle events and stop remaining work when an external-only job observes project drift;
-14. persist/retrieve evidence without converting it into editor truth.
+Source implementation for much of this gate now exists. That is not the same as verified commercial release authority.
