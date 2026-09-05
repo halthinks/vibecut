@@ -30,6 +30,13 @@ public:
     QJsonObject proposeDirectToolCalls(const QJsonArray &toolUseBlocks, const QString &objective = QString());
     QJsonObject approvePendingPlan();
     QJsonObject cancelPendingPlan();
+    /** Resolve a still-pending, non-executing plan after an external governed
+     * runtime has completed/aborted it through the GPL protocol adapter. This
+     * clears only the local review placeholder and emits the normal planFinished
+     * signal; it never performs editor mutations itself. */
+    QJsonObject resolvePendingPlanExternally(const QString &planId, bool success,
+                                             const QString &summary,
+                                             const QJsonObject &externalResult = QJsonObject());
 
     void setTrustMode(VibeCutTrustMode mode) { m_trustMode = mode; }
     VibeCutTrustMode trustMode() const { return m_trustMode; }
