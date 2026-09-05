@@ -12,6 +12,8 @@
 #include <QSaveFile>
 #include <QUuid>
 
+#include <cmath>
+
 namespace {
 QString pathFor(const QUrl &projectUrl)
 {
@@ -52,7 +54,12 @@ bool saveForProjectUrl(const QUrl &projectUrl, const QJsonArray &records, QStrin
     }
     return true;
 }
+
+bool bounded(const QString &value, int maximum)
+{
+    return value.size() <= maximum;
 }
+} // namespace
 
 QJsonObject VibeCutMediaEvidenceRecord::toJson() const
 {
@@ -67,6 +74,15 @@ QJsonObject VibeCutMediaEvidenceRecord::toJson() const
 bool VibeCutMediaEvidenceRecord::fromJson(const QJsonObject &object, VibeCutMediaEvidenceRecord &record, QString *error)
 {
     if (error) error->clear();
+    if (object.contains(QStringLiteral("confidence")) && !object.value(QStringLiteral("confidence")).isDouble()) {
+        if (error) *error = QStringLiteral("Media evidence confidence must be numeric.");
+        return false;
+    }
+    if (object.contains(QStringLiteral("metadata")) && !object.value(QStringLiteral("metadata")).isObject()) {
+        if (error) *error = QStringLiteral("Media evidence metadata must be an object.");
+        return false;
+    }
+
     record.id = object.value(QStringLiteral("id")).toString().trimmed();
     record.sourceId = object.value(QStringLiteral("source_id")).toString().trimmed();
     record.sourceFingerprint = object.value(QStringLiteral("source_fingerprint")).toString().trimmed();
@@ -79,15 +95,23 @@ bool VibeCutMediaEvidenceRecord::fromJson(const QJsonObject &object, VibeCutMedi
     record.confidence = object.value(QStringLiteral("confidence")).toDouble(-1.0);
     record.producedUtc = object.value(QStringLiteral("produced_utc")).toString().trimmed();
     record.metadata = object.value(QStringLiteral("metadata")).toObject();
+
     if (record.sourceId.isEmpty() || record.sourceFingerprint.isEmpty() || record.extractorId.isEmpty() || record.extractorVersion.isEmpty() || record.kind.isEmpty()) {
         if (error) *error = QStringLiteral("Media evidence requires source_id, source_fingerprint, extractor_id, extractor_version and kind.");
+        return false;
+    }
+    if ((!record.id.isEmpty() && !bounded(record.id, 1024)) || !bounded(record.sourceId, 4096) ||
+        !bounded(record.sourceFingerprint, 4096) || !bounded(record.extractorId, 1024) ||
+        !bounded(record.extractorVersion, 1024) || !bounded(record.kind, 1024) ||
+        !bounded(record.text, 1048576) || (!record.producedUtc.isEmpty() && !bounded(record.producedUtc, 128))) {
+        if (error) *error = QStringLiteral("Media evidence exceeds one or more public schema field bounds.");
         return false;
     }
     if (record.startFrame < -1 || record.endFrame < -1 || (record.startFrame >= 0 && record.endFrame >= 0 && record.endFrame < record.startFrame)) {
         if (error) *error = QStringLiteral("Media evidence has an invalid frame range.");
         return false;
     }
-    if (record.confidence < -1.0 || record.confidence > 1.0) {
+    if (!std::isfinite(record.confidence) || !(record.confidence == -1.0 || (record.confidence >= 0.0 && record.confidence <= 1.0))) {
         if (error) *error = QStringLiteral("Media evidence confidence must be -1 (unknown) or between 0 and 1.");
         return false;
     }
