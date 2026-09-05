@@ -3,6 +3,8 @@
 
 #include "vibecuttoolsurface.h"
 
+#include <QUuid>
+
 #include <cmath>
 
 namespace {
@@ -24,6 +26,16 @@ bool fail(QString *code, QString *error, const QString &errorCode, const QString
     return false;
 }
 } // namespace
+
+QJsonObject VibeCutRuntimeProtocolAdapter::stageHostPlan(const QJsonObject &plan)
+{
+    const QJsonObject request{{QStringLiteral("v"), 1},
+                              {QStringLiteral("id"), QStringLiteral("host-stage-%1").arg(QUuid::createUuid().toString(QUuid::WithoutBraces))},
+                              {QStringLiteral("kind"), QStringLiteral("request")},
+                              {QStringLiteral("type"), QStringLiteral("propose_plan")},
+                              {QStringLiteral("payload"), plan}};
+    return handleRequest(request);
+}
 
 bool VibeCutRuntimeProtocolAdapter::approvedOperationPolicy(const QString &operationId,
                                                             VibeCutToolPolicy &policy,
