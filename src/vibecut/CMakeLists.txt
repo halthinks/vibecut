@@ -5,6 +5,7 @@ set(kdenlive_SRCS
   ${kdenlive_SRCS}
   vibecut/vibecutactionsummary.cpp
   vibecut/vibecutagent.cpp
+  vibecut/vibecutagentexternalruntime.cpp
   vibecut/vibecutagentprovider.cpp
   vibecut/vibecutaudioeventsetuptools.cpp
   vibecut/vibecudaudioeventsummary.cpp
