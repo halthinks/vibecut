@@ -7,17 +7,18 @@
 
 /** Adapter-side synchronous checkpoint controller for out-of-process plans.
  *
- * Semantics intentionally mirror VibeCutPlanRuntime:
+ * Semantics mirror VibeCutPlanRuntime but rollback is index-contained:
  * - consecutive synchronous project mutations share one open Undo macro;
  * - the macro is committed before asynchronous work;
- * - a failed synchronous mutation rolls back only the currently open macro;
+ * - a failed synchronous mutation returns the stack to the exact index captured
+ *   before the macro opened, and never blindly undoes a pre-existing command;
  * - completion commits any open macro;
  * - abort rolls back an open macro but never claims already-committed macros
  *   were undone.
  *
  * The production constructor binds to Kdenlive's current DocUndoStack. The
- * callback constructor exists so these state transitions can be unit-tested
- * without an editor.
+ * callback constructor exists so state transitions can be unit-tested without
+ * an editor.
  */
 class VibeCutRuntimeCheckpoint
 {
@@ -37,6 +38,7 @@ public:
     bool macroOpen() const { return m_open; }
     int committedCheckpointCount() const { return m_committedCount; }
     int rolledBackCheckpointCount() const { return m_rolledBackCount; }
+    int capturedUndoIndex() const { return m_startIndex; }
 
     void reset();
 
@@ -44,7 +46,9 @@ private:
     BeginFn m_begin;
     EndFn m_end;
     RollbackFn m_rollback;
+    bool m_injectedCallbacks = false;
     bool m_open = false;
+    int m_startIndex = -1;
     int m_committedCount = 0;
     int m_rolledBackCount = 0;
 };
