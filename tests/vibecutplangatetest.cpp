@@ -69,6 +69,33 @@ TEST_CASE("plan gate requires approval for major edits in auto mode", "[vibecut]
     CHECK(approved.executionOrder.at(1) == QStringLiteral("subtitles"));
 }
 
+TEST_CASE("plan gate canonicalizes dependency-compatible sibling ordering", "[vibecut][plan][ordering]")
+{
+    VibeCutEditPlan plan;
+    plan.id = QStringLiteral("canonical-order");
+    plan.baseRevision = 9;
+    plan.objective = QStringLiteral("Canonical sibling ordering");
+
+    VibeCutPlanOperation b;
+    b.id = QStringLiteral("b");
+    b.toolName = QStringLiteral("effect_apply");
+    b.dependsOn = {QStringLiteral("a")};
+
+    VibeCutPlanOperation a;
+    a.id = QStringLiteral("a");
+    a.toolName = QStringLiteral("effect_apply");
+
+    VibeCutPlanOperation c;
+    c.id = QStringLiteral("c");
+    c.toolName = QStringLiteral("effect_apply");
+    c.dependsOn = {QStringLiteral("a")};
+
+    plan.operations = {b, a, c};
+    const auto result = VibeCutPlanGate::assess(plan, 9, samplePolicies(), VibeCutTrustMode::Turbo, true);
+    REQUIRE(result.ready());
+    CHECK(result.executionOrder == QStringList{QStringLiteral("a"), QStringLiteral("b"), QStringLiteral("c")});
+}
+
 TEST_CASE("plan gate fails closed on ungoverned tools", "[vibecut][plan]")
 {
     VibeCutEditPlan plan = samplePlan();
