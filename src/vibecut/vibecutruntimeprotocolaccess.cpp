@@ -40,3 +40,9 @@ quint64 VibeCutRuntimeProtocolAdapter::synchronizeExpectedRevision()
     if (m_hasPlan && !m_authorizationId.isEmpty()) m_expectedRevision = revision;
     return revision;
 }
+
+bool VibeCutRuntimeProtocolAdapter::ownsProtocolJob(const QString &jobId) const
+{
+    const QString id = jobId.trimmed();
+    return !id.isEmpty() && m_waitingJobs.contains(id);
+}
