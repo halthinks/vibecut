@@ -3,10 +3,12 @@
 
 from __future__ import annotations
 
+import ipaddress
 import json
+import urllib.parse
 import urllib.request
 from dataclasses import dataclass
-from typing import Any, Callable, Iterable, Mapping, Protocol
+from typing import Any, Callable, Iterable, Protocol
 
 MAX_EVENT_BYTES = 2 * 1024 * 1024
 MAX_BODY_BYTES = 16 * 1024 * 1024
@@ -54,8 +56,9 @@ class ProviderClient:
     """Provider-neutral model request/stream client.
 
     Transport is injectable so provider contracts can be tested without network
-    access. The default urllib transport is HTTP-only plumbing and carries no
-    editor/Kdenlive knowledge.
+    access. The default urllib transport is HTTP plumbing only and carries no
+    editor knowledge. Remote endpoints require HTTPS; cleartext HTTP is allowed
+    only for loopback/local development endpoints.
     """
 
     def __init__(self, transport: Transport | None = None) -> None:
@@ -97,7 +100,7 @@ def urllib_transport(request: ModelRequest, *, timeout: float = 120.0) -> Iterab
     headers.setdefault("Content-Type", "application/json")
     http_request = urllib.request.Request(request.endpoint, data=body, headers=headers, method="POST")
     try:
-        with urllib.request.urlopen(http_request, timeout=timeout) as response:  # nosec B310 - endpoint is provider-owned configuration
+        with urllib.request.urlopen(http_request, timeout=timeout) as response:  # nosec B310 - endpoint is validated below
             for line in response:
                 if len(line) > MAX_EVENT_BYTES:
                     raise ProviderError(f"provider event exceeds {MAX_EVENT_BYTES} bytes")
@@ -111,10 +114,32 @@ def urllib_transport(request: ModelRequest, *, timeout: float = 120.0) -> Iterab
 def _validate_request(request: ModelRequest) -> None:
     if not isinstance(request, ModelRequest):
         raise ProviderError("provider build_request must return ModelRequest")
-    if not isinstance(request.endpoint, str) or not request.endpoint.startswith(("https://", "http://")):
-        raise ProviderError("provider endpoint must be an http(s) URL")
+    if not isinstance(request.endpoint, str):
+        raise ProviderError("provider endpoint must be a URL string")
+    try:
+        parsed = urllib.parse.urlsplit(request.endpoint)
+    except ValueError as exc:
+        raise ProviderError("provider endpoint is malformed") from exc
+    if parsed.scheme not in {"https", "http"} or not parsed.hostname:
+        raise ProviderError("provider endpoint must be an http(s) URL with a host")
+    if parsed.username is not None or parsed.password is not None:
+        raise ProviderError("provider endpoint must not contain URL-embedded credentials")
+    if parsed.fragment:
+        raise ProviderError("provider endpoint must not contain a URL fragment")
+    if parsed.scheme == "http" and not _loopback_host(parsed.hostname):
+        raise ProviderError("remote provider endpoints require HTTPS; HTTP is allowed only for loopback")
     if not isinstance(request.headers, dict) or not all(isinstance(k, str) and isinstance(v, str) for k, v in request.headers.items()):
         raise ProviderError("provider headers must be a string mapping")
     if not isinstance(request.body, dict):
         raise ProviderError("provider body must be an object")
     request.encoded_body()
+
+
+def _loopback_host(host: str) -> bool:
+    normalized = host.rstrip(".").lower()
+    if normalized == "localhost" or normalized.endswith(".localhost"):
+        return True
+    try:
+        return ipaddress.ip_address(normalized).is_loopback
+    except ValueError:
+        return False
