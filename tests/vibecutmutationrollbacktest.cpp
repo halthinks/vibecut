@@ -8,6 +8,8 @@
 #include "vibecut/vibecuttools.h"
 #include "vibecut/vibecuttoolsurface.h"
 
+#include <QUndoCommand>
+
 namespace {
 QJsonObject rollbackToolSchema()
 {
@@ -152,9 +154,10 @@ TEST_CASE("plan failure before native mutation never undoes the previous unrelat
     REQUIRE(timeline->requestClipMove(clipId, trackId, 0));
     REQUIRE(timeline->checkConsistency());
 
-    // Establish a real pre-existing undoable command that is unrelated to the
-    // plan. The old blind endMacro()+undo() rollback could undo this command if
-    // the next mutating-policy tool failed before pushing anything.
+    // Push a deterministic unrelated undo entry. The old blind
+    // endMacro()+undo() rollback could pop this exact command if the next
+    // mutating-policy tool failed before pushing anything into its macro.
+    undoStack->push(new QUndoCommand(QStringLiteral("unrelated prior command")));
     const int priorIndex = undoStack->index();
     REQUIRE(priorIndex > 0);
     const QJsonObject preState = VibeCutProjectSnapshot::mutationStateV1(timeline);
@@ -177,7 +180,7 @@ TEST_CASE("plan failure before native mutation never undoes the previous unrelat
     const QJsonObject proposed = runtime.propose(
         QJsonObject{{QStringLiteral("objective"), QStringLiteral("Refuse without touching prior undo history")},
                     {QStringLiteral("operations"), QJsonArray{
-                        QJsonObject{{QStringLiteral("id"), QStringLiteral("fail" )},
+                        QJsonObject{{QStringLiteral("id"), QStringLiteral("fail")},
                                     {QStringLiteral("tool"), QStringLiteral("test_fail_before_mutation")},
                                     {QStringLiteral("input"), QJsonObject{}},
                                     {QStringLiteral("expected_postconditions"), QJsonArray()}}}}});
