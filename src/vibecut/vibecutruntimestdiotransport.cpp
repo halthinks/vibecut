@@ -15,6 +15,14 @@ bool protocolSuccess(const QJsonObject &response)
            response.value(QStringLiteral("kind")).toString() == QLatin1String("response") &&
            response.value(QStringLiteral("payload")).toObject().value(QStringLiteral("ok")).toBool(false);
 }
+
+QString protocolErrorMessage(const QJsonObject &response)
+{
+    const QJsonObject payload = response.value(QStringLiteral("payload")).toObject();
+    const QString message = payload.value(QStringLiteral("message")).toString().trimmed();
+    const QString error = payload.value(QStringLiteral("error")).toString().trimmed();
+    return !message.isEmpty() ? message : (!error.isEmpty() ? error : QStringLiteral("Protocol operation failed."));
+}
 }
 
 VibeCutRuntimeStdioTransport::VibeCutRuntimeStdioTransport(VibeCutRuntimeProtocolAdapter *adapter, QObject *parent)
@@ -101,6 +109,44 @@ bool VibeCutRuntimeStdioTransport::running() const
     return m_process && m_process->state() != QProcess::NotRunning;
 }
 
+bool VibeCutRuntimeStdioTransport::handoffPlan(const QJsonObject &plan, QString *error)
+{
+    if (error) error->clear();
+    if (!running()) {
+        if (error) *error = QStringLiteral("Runtime process is not connected.");
+        return false;
+    }
+    if (!m_adapter) {
+        if (error) *error = QStringLiteral("Protocol adapter is unavailable.");
+        return false;
+    }
+
+    const QJsonObject staged = m_adapter->stageHostPlan(plan);
+    if (!protocolSuccess(staged)) {
+        if (error) *error = protocolErrorMessage(staged);
+        return false;
+    }
+    const quint64 revision = m_adapter->protocolProjectRevision();
+    const QJsonObject event{{QStringLiteral("v"), 1},
+                            {QStringLiteral("id"), QUuid::createUuid().toString(QUuid::WithoutBraces)},
+                            {QStringLiteral("kind"), QStringLiteral("event")},
+                            {QStringLiteral("type"), QStringLiteral("plan_handoff")},
+                            {QStringLiteral("payload"), QJsonObject{{QStringLiteral("plan"), plan},
+                                                                    {QStringLiteral("project_revision"), static_cast<qint64>(revision)}}}};
+    QString writeError;
+    if (writeEnvelope(event, &writeError)) return true;
+
+    const QJsonObject abortRequest{{QStringLiteral("v"), 1},
+                                   {QStringLiteral("id"), QUuid::createUuid().toString(QUuid::WithoutBraces)},
+                                   {QStringLiteral("kind"), QStringLiteral("request")},
+                                   {QStringLiteral("type"), QStringLiteral("abort_plan")},
+                                   {QStringLiteral("payload"), QJsonObject{{QStringLiteral("plan_id"), plan.value(QStringLiteral("id"))},
+                                                                           {QStringLiteral("reason"), QStringLiteral("Could not deliver plan_handoff to runtime child.")}}}};
+    m_adapter->handleRequest(abortRequest);
+    if (error) *error = writeError;
+    return false;
+}
+
 bool VibeCutRuntimeStdioTransport::sendAuthorization(VibeCutTrustMode mode, bool humanApproved,
                                                      bool humanDecisionPresent, QString *error)
 {
@@ -174,10 +220,6 @@ QJsonObject VibeCutRuntimeStdioTransport::dispatchRequest(const QJsonObject &req
 
         QJsonObject response = m_adapter->handleRequest(request);
         if (response.value(QStringLiteral("type")).toString() == QLatin1String("error")) {
-            // Preflight succeeded, but handleRequest deliberately repeats every
-            // check immediately before native invocation. If that second check
-            // loses a race, close an empty/current macro rather than exposing
-            // a dangling Kdenlive checkpoint.
             if (m_checkpoint.macroOpen()) {
                 QString commitError;
                 if (!m_checkpoint.commitForCompletion(&commitError)) {
@@ -236,7 +278,9 @@ QJsonObject VibeCutRuntimeStdioTransport::dispatchRequest(const QJsonObject &req
         payload.insert(QStringLiteral("checkpoint_rollback_parity"), true);
         payload.insert(QStringLiteral("checkpoint_semantics"), QStringLiteral("same_current_synchronous_checkpoint_scope_as_integrated_VibeCutPlanRuntime"));
         response.insert(QStringLiteral("payload"), payload);
+        const QString planId = payload.value(QStringLiteral("plan_id")).toString();
         m_checkpoint.reset();
+        Q_EMIT hostedPlanFinished(planId, true, QStringLiteral("External runtime plan completed."), payload);
         return response;
     }
 
@@ -257,7 +301,10 @@ QJsonObject VibeCutRuntimeStdioTransport::dispatchRequest(const QJsonObject &req
         payload.insert(QStringLiteral("project_revision_after_abort"), static_cast<qint64>(m_adapter->protocolProjectRevision()));
         payload.insert(QStringLiteral("checkpoint_rollback_parity"), true);
         response.insert(QStringLiteral("payload"), payload);
+        const QString planId = payload.value(QStringLiteral("plan_id")).toString();
+        const QString reason = payload.value(QStringLiteral("reason")).toString(QStringLiteral("External runtime plan aborted."));
         m_checkpoint.reset();
+        Q_EMIT hostedPlanFinished(planId, false, reason, payload);
         return response;
     }
 
