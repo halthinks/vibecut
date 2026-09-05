@@ -221,6 +221,7 @@ void VibeCutPlanRuntime::beginCheckpointMacro()
     if (m_macroOpen) return;
     const std::shared_ptr<DocUndoStack> stack = currentUndoStack();
     if (!stack) return;
+    m_macroStartIndex = stack->index();
     stack->beginMacro(QStringLiteral("VibeCut: %1").arg(m_plan.objective.left(80)));
     m_macroOpen = true;
 }
@@ -231,6 +232,7 @@ void VibeCutPlanRuntime::closeCheckpointMacro()
     const std::shared_ptr<DocUndoStack> stack = currentUndoStack();
     if (stack) stack->endMacro();
     m_macroOpen = false;
+    m_macroStartIndex = -1;
 }
 
 void VibeCutPlanRuntime::rollbackCheckpointMacro()
@@ -239,11 +241,16 @@ void VibeCutPlanRuntime::rollbackCheckpointMacro()
     const std::shared_ptr<DocUndoStack> stack = currentUndoStack();
     if (!stack) {
         m_macroOpen = false;
+        m_macroStartIndex = -1;
         return;
     }
+    const int targetIndex = m_macroStartIndex;
     stack->endMacro();
     m_macroOpen = false;
-    if (stack->canUndo()) stack->undo();
+    m_macroStartIndex = -1;
+    if (targetIndex >= 0 && stack->index() >= targetIndex) {
+        while (stack->index() > targetIndex && stack->canUndo()) stack->undo();
+    }
     if (m_surface) m_expectedRevision = m_surface->projectRevision();
 }
 
@@ -356,6 +363,7 @@ void VibeCutPlanRuntime::finishExecution(bool success, const QString &summary)
     m_executing = false;
     m_hasPending = false;
     m_macroOpen = false;
+    m_macroStartIndex = -1;
     m_planMutatesProject = false;
     m_executionOrder.clear();
     m_executionIndex = 0;
