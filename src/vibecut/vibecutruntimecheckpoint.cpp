@@ -98,27 +98,35 @@ bool VibeCutRuntimeCheckpoint::rollbackOpen(QString *error)
             if (error) *error = QStringLiteral("Could not roll back the current adapter-side Kdenlive Undo checkpoint.");
             return false;
         }
-    } else {
-        const std::shared_ptr<DocUndoStack> stack = currentUndoStack();
-        if (!stack || m_startIndex < 0) {
-            if (error) *error = QStringLiteral("Could not roll back the current adapter-side Kdenlive Undo checkpoint: checkpoint origin is unavailable.");
-            return false;
-        }
-        const int targetIndex = m_startIndex;
-        stack->endMacro();
-        if (stack->index() < targetIndex) {
-            if (error) *error = QStringLiteral("Undo stack regressed below the checkpoint origin; refusing further rollback.");
-            return false;
-        }
-        while (stack->index() > targetIndex && stack->canUndo()) stack->undo();
-        if (stack->index() != targetIndex) {
-            if (error) *error = QStringLiteral("Could not restore the exact undo-stack index captured before the runtime checkpoint.");
-            return false;
-        }
+        m_open = false;
+        m_startIndex = -1;
+        ++m_rolledBackCount;
+        return true;
     }
 
+    const std::shared_ptr<DocUndoStack> stack = currentUndoStack();
+    if (!stack || m_startIndex < 0) {
+        if (error) *error = QStringLiteral("Could not roll back the current adapter-side Kdenlive Undo checkpoint: checkpoint origin is unavailable.");
+        return false;
+    }
+
+    const int targetIndex = m_startIndex;
+    stack->endMacro();
+    // The macro is now closed regardless of whether index restoration below
+    // succeeds. Never leave m_open=true and risk a second endMacro().
     m_open = false;
     m_startIndex = -1;
+
+    if (stack->index() < targetIndex) {
+        if (error) *error = QStringLiteral("Undo stack regressed below the checkpoint origin; refusing further rollback.");
+        return false;
+    }
+    while (stack->index() > targetIndex && stack->canUndo()) stack->undo();
+    if (stack->index() != targetIndex) {
+        if (error) *error = QStringLiteral("Could not restore the exact undo-stack index captured before the runtime checkpoint.");
+        return false;
+    }
+
     ++m_rolledBackCount;
     return true;
 }
