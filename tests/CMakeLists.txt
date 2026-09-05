@@ -92,6 +92,7 @@ set(KdenliveTest_SOURCES
     vibecutroughcutalternativestest.cpp
     vibecutroughcutrelevancetest.cpp
     vibecutroughcutsynthesistest.cpp
+    vibecutruntimecheckpointtest.cpp
     vibecutruntimeprotocoltest.cpp
     vibecutscripttest.cpp
     vibecutsemanticintegrationtest.cpp
