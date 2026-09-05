@@ -298,7 +298,28 @@ class RuntimeSession:
             )
             completion = self._success_payload(complete_response, "complete_plan")
             final_revision = _revision(completion.get("project_revision"), "project_revision")
-            gate.require_current(final_revision)
+
+            # Closing a Kdenlive Undo macro is adapter-owned state transition. A
+            # synchronous mutating plan may therefore publish a newer revision at
+            # complete_plan even though every operation/verification correctly ran
+            # against the prior moving token. Accept only an explicitly declared
+            # committed checkpoint and only a monotonic advance; every other
+            # completion revision mismatch remains stale/fail-closed.
+            current_expected = gate.expected_revision
+            if current_expected is None:
+                raise SessionError("moving revision gate unexpectedly closed at completion")
+            if final_revision != current_expected:
+                if (
+                    completion.get("checkpoint_committed") is True
+                    and completion.get("checkpoint_rollback_parity") is True
+                    and final_revision > current_expected
+                ):
+                    gate.advance(current_expected, final_revision)
+                else:
+                    gate.require_current(final_revision)
+            else:
+                gate.require_current(final_revision)
+
             gate.close()
             self.authorization_id = None
             self.approved_operation_ids = frozenset()
