@@ -172,12 +172,26 @@ void VibeCutAgent::approvePendingPlanInternal(bool humanDecisionPresent, bool hu
 
         const bool shouldExecute = humanApproved || !humanDecisionPresent;
         if (shouldExecute && !m_externalProtocolAdapter->hasAuthorization()) {
-            const QString authorizationError = QStringLiteral("Adapter did not grant an external runtime authorization. The plan remains unexecuted.");
+            const QString authorizationError = QStringLiteral("Adapter did not grant an external runtime authorization. The local review plan remains unexecuted and may be retried.");
             m_externalPlanExecuting = false;
             m_externalPlanId.clear();
             m_externalRuntimeError = authorizationError;
+
+            QString discardError;
+            if (!m_externalProtocolAdapter->discardUnapprovedHostPlan(&discardError)) {
+                // This should be unreachable when hasAuthorization()==false and
+                // no invoke has run. If it is not safe to discard, use normal
+                // governed stop/abort even though that may resolve the local plan.
+                if (m_externalRuntimeTransport->running()) {
+                    m_externalRuntimeTransport->stop(QStringLiteral("External runtime authorization failed and staged plan could not be safely discarded."));
+                }
+                Q_EMIT errorOccurred(QStringLiteral("%1 Adapter cleanup also failed: %2").arg(authorizationError, discardError));
+                return;
+            }
             if (m_externalRuntimeTransport->running()) {
-                m_externalRuntimeTransport->stop(QStringLiteral("External runtime authorization was not granted."));
+                // Adapter has no pending plan now, so stop() cannot emit a hosted
+                // abort for the local UI plan. A later retry restarts a clean child.
+                m_externalRuntimeTransport->stop(QStringLiteral("External runtime authorization was not granted; resetting child for retry."));
             }
             Q_EMIT errorOccurred(authorizationError);
             return;
