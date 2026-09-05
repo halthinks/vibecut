@@ -11,6 +11,7 @@
 #include <QJsonObject>
 #include <QObject>
 #include <QString>
+#include <QStringList>
 
 #include <memory>
 
@@ -19,6 +20,8 @@ class QNetworkReply;
 class VibeCutHooks;
 class VibeCutModelProvider;
 class VibeCutPlanRuntime;
+class VibeCutRuntimeProtocolAdapter;
+class VibeCutRuntimeStdioTransport;
 class VibeCutTools;
 class VibeCutToolSurface;
 
@@ -73,6 +76,17 @@ private:
     QString historyDiagnostic() const;
     void publishToolHook(const QString &eventName, const QString &tool, const QJsonObject &payload = QJsonObject());
 
+    // Optional out-of-process commercial runtime. It is activated only when
+    // VIBECUT_EXTERNAL_RUNTIME_PROGRAM is explicitly configured. If configured,
+    // execution fails closed rather than silently falling back in-process.
+    void initializeExternalRuntime();
+    bool ensureExternalRuntimeReady(QString *error = nullptr);
+    bool handoffPendingPlanToExternalRuntime(QString *error = nullptr);
+    void approvePendingPlanInternal(bool humanDecisionPresent, bool humanApproved);
+    void resolveHostedPlan(const QString &planId, bool success, const QString &summary, const QJsonObject &result);
+    bool externalRuntimeRequested() const { return !m_externalRuntimeProgram.isEmpty(); }
+    bool externalPlanExecuting() const { return m_externalPlanExecuting; }
+
     QNetworkAccessManager *m_nam;
     QNetworkReply *m_reply = nullptr;
     VibeCutTools *m_tools;
@@ -82,6 +96,14 @@ private:
     std::unique_ptr<VibeCutModelProvider> m_provider;
     QString m_providerError;
     SseParser m_sse;
+
+    VibeCutRuntimeProtocolAdapter *m_externalProtocolAdapter = nullptr;
+    VibeCutRuntimeStdioTransport *m_externalRuntimeTransport = nullptr;
+    QString m_externalRuntimeProgram;
+    QStringList m_externalRuntimeArguments;
+    QString m_externalRuntimeError;
+    QString m_externalPlanId;
+    bool m_externalPlanExecuting = false;
 
     QString m_systemPrompt;
     QString m_currentUserRequest;
