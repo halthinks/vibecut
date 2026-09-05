@@ -12,7 +12,7 @@
     "kind": {"type": "string", "enum": ["request", "response", "event"]},
     "type": {
       "type": "string",
-      "enum": ["hello", "inspect", "propose_plan", "authorize", "invoke", "verify", "complete_plan", "abort_plan", "job_update", "revision", "evidence_put", "evidence_get", "error"]
+      "enum": ["hello", "plan_handoff", "inspect", "propose_plan", "authorize", "invoke", "verify", "complete_plan", "abort_plan", "job_update", "revision", "evidence_put", "evidence_get", "error"]
     },
     "payload": {"type": "object"}
   }
