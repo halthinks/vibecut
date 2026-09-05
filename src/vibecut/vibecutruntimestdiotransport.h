@@ -2,6 +2,7 @@
 #pragma once
 
 #include "vibecutcontracts.h"
+#include "vibecutruntimecheckpoint.h"
 
 #include <QByteArray>
 #include <QJsonObject>
@@ -13,7 +14,8 @@ class VibeCutRuntimeProtocolAdapter;
 
 /** NDJSON transport to an out-of-process runtime. The transport has no editor
  * authority of its own; every inbound request passes through
- * VibeCutRuntimeProtocolAdapter. */
+ * VibeCutRuntimeProtocolAdapter. Adapter-side Undo checkpoint ownership remains
+ * GPL/Kdenlive-side and mirrors the integrated VibeCutPlanRuntime semantics. */
 class VibeCutRuntimeStdioTransport : public QObject
 {
     Q_OBJECT
@@ -45,6 +47,8 @@ private Q_SLOTS:
 
 private:
     bool writeEnvelope(const QJsonObject &envelope, QString *error = nullptr);
+    QJsonObject dispatchRequest(const QJsonObject &request);
+    QJsonObject transportError(const QJsonObject &request, const QString &code, const QString &message) const;
     void invalidatePlanForDisconnect(const QString &reason);
     void failProtocol(const QString &message);
 
@@ -52,5 +56,6 @@ private:
     QProcess *m_process = nullptr;
     QByteArray m_stdoutBuffer;
     VibeCutTrustMode m_helloMode = VibeCutTrustMode::Off;
+    VibeCutRuntimeCheckpoint m_checkpoint;
     bool m_stopping = false;
 };
