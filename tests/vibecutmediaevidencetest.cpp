@@ -55,8 +55,30 @@ TEST_CASE("media evidence rejects invalid provenance ranges and confidence", "[v
     CHECK_FALSE(VibeCutMediaEvidenceRecord::fromJson(valid, record, &error));
     CHECK(error.contains(QStringLiteral("confidence")));
 
-    valid.remove(QStringLiteral("source_fingerprint"));
+    valid.insert(QStringLiteral("confidence"), -0.5);
+    error.clear();
+    CHECK_FALSE(VibeCutMediaEvidenceRecord::fromJson(valid, record, &error));
+    CHECK(error.contains(QStringLiteral("confidence")));
+
+    valid.insert(QStringLiteral("confidence"), -1.0);
+    error.clear();
+    CHECK(VibeCutMediaEvidenceRecord::fromJson(valid, record, &error));
+    CHECK(error.isEmpty());
+    CHECK(record.confidence == -1.0);
+
+    valid.insert(QStringLiteral("confidence"), QStringLiteral("0.5"));
+    error.clear();
+    CHECK_FALSE(VibeCutMediaEvidenceRecord::fromJson(valid, record, &error));
+    CHECK(error.contains(QStringLiteral("numeric")));
+
     valid.insert(QStringLiteral("confidence"), 0.5);
+    valid.insert(QStringLiteral("metadata"), QStringLiteral("not-an-object"));
+    error.clear();
+    CHECK_FALSE(VibeCutMediaEvidenceRecord::fromJson(valid, record, &error));
+    CHECK(error.contains(QStringLiteral("metadata")));
+
+    valid.remove(QStringLiteral("metadata"));
+    valid.remove(QStringLiteral("source_fingerprint"));
     error.clear();
     CHECK_FALSE(VibeCutMediaEvidenceRecord::fromJson(valid, record, &error));
     CHECK(error.contains(QStringLiteral("requires")));
