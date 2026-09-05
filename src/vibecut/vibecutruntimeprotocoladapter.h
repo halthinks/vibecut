@@ -49,6 +49,11 @@ public:
     bool approvedOperationPolicy(const QString &operationId, VibeCutToolPolicy &policy,
                                  QString *error = nullptr) const;
     QString activePlanObjective() const;
+    /** Return the editor-authoritative project revision. */
+    quint64 protocolProjectRevision() const;
+    /** After the GPL transport closes a Kdenlive Undo macro, resynchronize the
+     * active moving execution token to the editor-authoritative revision. */
+    quint64 synchronizeExpectedRevision();
 
 Q_SIGNALS:
     /** Protocol event/error that an attached transport should send to runtime. */
