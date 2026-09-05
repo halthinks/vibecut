@@ -9,7 +9,9 @@ from dataclasses import dataclass
 from typing import Any, Mapping, Protocol
 
 PROTOCOL_VERSION = 1
-MAX_MESSAGE_BYTES = 4 * 1024 * 1024
+# Must remain byte-for-byte compatible with
+# VibeCutRuntimeStdioTransport::MaxProtocolLineBytes on the GPL adapter side.
+MAX_MESSAGE_BYTES = 2 * 1024 * 1024
 MESSAGE_KINDS = {"request", "response", "event"}
 MESSAGE_TYPES = {
     "hello",
