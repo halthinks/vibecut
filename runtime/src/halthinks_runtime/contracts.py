@@ -4,7 +4,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Iterable, Mapping
+from typing import Any, Mapping
 
 MAX_EXACT_JSON_INTEGER = 9_007_199_254_740_991
 
@@ -82,7 +82,12 @@ class EditPlan:
 
 
 def validate_plan(plan: EditPlan) -> tuple[str, ...]:
-    """Validate semantic EditPlan invariants and return deterministic execution order."""
+    """Validate semantic EditPlan invariants and return canonical execution order.
+
+    Dependency-compatible siblings are ordered lexicographically by operation id.
+    This makes execution order independent of proposal-array serialization order
+    and keeps the clean-room runtime identical to the GPL adapter gate.
+    """
     if not plan.id.strip():
         raise PlanValidationError("plan id is required")
     if not plan.objective.strip():
@@ -111,19 +116,21 @@ def validate_plan(plan: EditPlan) -> tuple[str, ...]:
                     f"operation {operation.id} depends on unknown operation {dependency}"
                 )
 
-    order: list[str] = []
+    remaining = set(by_id)
     complete: set[str] = set()
-    while len(order) < len(plan.operations):
-        progressed = False
-        for operation in plan.operations:
-            if operation.id in complete:
-                continue
-            if all(dependency in complete for dependency in operation.depends_on):
-                order.append(operation.id)
-                complete.add(operation.id)
-                progressed = True
-        if not progressed:
+    order: list[str] = []
+    while remaining:
+        ready = sorted(
+            operation_id
+            for operation_id in remaining
+            if all(dependency in complete for dependency in by_id[operation_id].depends_on)
+        )
+        if not ready:
             raise PlanValidationError("operation dependency graph contains a cycle")
+        for operation_id in ready:
+            order.append(operation_id)
+            complete.add(operation_id)
+            remaining.remove(operation_id)
     return tuple(order)
 
 
