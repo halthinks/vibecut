@@ -104,6 +104,9 @@ bool VibeCutAgent::ensureExternalRuntimeReady(QString *error)
     }
     if (!m_externalRuntimeTransport->waitUntilReady(3000, &readyError)) {
         m_externalRuntimeError = readyError;
+        if (m_externalRuntimeTransport->running()) {
+            m_externalRuntimeTransport->stop(QStringLiteral("External runtime missed the bounded startup readiness deadline."));
+        }
         if (error) *error = readyError;
         return false;
     }
@@ -169,11 +172,6 @@ void VibeCutAgent::approvePendingPlanInternal(bool humanDecisionPresent, bool hu
 
         const bool shouldExecute = humanApproved || !humanDecisionPresent;
         if (shouldExecute && !m_externalProtocolAdapter->hasAuthorization()) {
-            // Delivery success is not authorization success: authorizePending()
-            // may have produced a structured error event (stale revision,
-            // confirmation requirement, changed policy, etc.). Stop the child to
-            // force adapter-side abort/cleanup, keep the local review plan, and
-            // require a fresh handoff before any retry.
             const QString authorizationError = QStringLiteral("Adapter did not grant an external runtime authorization. The plan remains unexecuted.");
             m_externalPlanExecuting = false;
             m_externalPlanId.clear();
