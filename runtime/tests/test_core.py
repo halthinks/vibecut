@@ -12,7 +12,7 @@ from halthinks_runtime.contracts import EditPlan, PlanValidationError, validate_
 from halthinks_runtime.evidence import EvidenceError, EvidenceRecord, EvidenceStore
 from halthinks_runtime.jobs import JobError, JobManager, JobState, MAX_RESULT_BYTES
 from halthinks_runtime.policy import ToolPolicy, ToolRisk, TrustMode
-from halthinks_runtime.protocol import Envelope, ProtocolError, decode_line, request
+from halthinks_runtime.protocol import MAX_MESSAGE_BYTES, Envelope, ProtocolError, decode_line, request
 from halthinks_runtime.revision import RevisionGate, StaleRevisionError
 
 
@@ -191,6 +191,23 @@ class ProtocolTests(unittest.TestCase):
     def test_unknown_protocol_type_fails_closed(self) -> None:
         with self.assertRaises(ProtocolError):
             Envelope.from_json({"v": 1, "id": "x", "kind": "request", "type": "invented", "payload": {}})
+
+    def test_protocol_message_bound_is_exactly_two_mib(self) -> None:
+        self.assertEqual(MAX_MESSAGE_BYTES, 2 * 1024 * 1024)
+        small = request("inspect", {"operation": "project_snapshot", "input": {"padding": "x" * 1024}})
+        encoded = small.encode_line()
+        self.assertLessEqual(len(encoded) - 1, MAX_MESSAGE_BYTES)
+        self.assertEqual(decode_line(encoded), small)
+
+        oversized = request(
+            "inspect",
+            {"operation": "project_snapshot", "input": {"padding": "x" * (MAX_MESSAGE_BYTES + 1)}},
+        )
+        with self.assertRaisesRegex(ProtocolError, "exceeds"):
+            oversized.encode_line()
+
+        with self.assertRaisesRegex(ProtocolError, "exceeds"):
+            decode_line(b"{" + b"x" * (MAX_MESSAGE_BYTES + 1) + b"}\n")
 
 
 if __name__ == "__main__":
