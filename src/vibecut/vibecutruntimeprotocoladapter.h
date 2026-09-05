@@ -54,6 +54,10 @@ public:
     /** After the GPL transport closes a Kdenlive Undo macro, resynchronize the
      * active moving execution token to the editor-authoritative revision. */
     quint64 synchronizeExpectedRevision();
+    /** True only while jobId belongs to an async operation launched by the
+     * active protocol plan. Used to prevent unrelated editor jobs from leaking
+     * across the process boundary. */
+    bool ownsProtocolJob(const QString &jobId) const;
 
 Q_SIGNALS:
     /** Protocol event/error that an attached transport should send to runtime. */
