@@ -43,6 +43,13 @@ public:
     QString authorizationId() const { return m_authorizationId; }
     quint64 expectedRevision() const { return m_expectedRevision; }
 
+    /** GPL-only execution metadata for the stdio transport/checkpoint layer.
+     * The proprietary runtime never supplies these values. They are resolved
+     * from the exact stored approved plan and its authorization-time policy. */
+    bool approvedOperationPolicy(const QString &operationId, VibeCutToolPolicy &policy,
+                                 QString *error = nullptr) const;
+    QString activePlanObjective() const;
+
 Q_SIGNALS:
     /** Protocol event/error that an attached transport should send to runtime. */
     void outboundEnvelope(const QJsonObject &envelope);
