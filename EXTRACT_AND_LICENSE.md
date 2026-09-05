@@ -1,8 +1,8 @@
 # Extract and license the halthinks runtime
 
-**Status:** plan of record on `vibecut`
-**Date:** 2026-09-04
-**Repo:** `halthinks/vibecut`
+**Status:** plan of record on `vibecut`  
+**Date:** 2026-09-04  
+**Repo:** `halthinks/vibecut`  
 **This document is the source of truth** for how the halthinks layer can be sold without violating the Kdenlive / original VibeCut GPL lineage.
 
 Do not treat this as optional commentary. If a later commit contradicts this file, update this file in the same commit.
@@ -22,27 +22,29 @@ Those are GPL-3.0 (Kdenlive: GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL). Combi
 
 ### You can sell
 
-A **separable licensed runtime**: the editor-agnostic planning / policy / evidence / job / protocol layer, after it is extracted so it no longer contains Kdenlive types, Qt-KDE widgets, MLT, or copy-pasted GPL implementation.
+A **separable licensed runtime**: the editor-agnostic planning / policy / evidence / job / provider / protocol layer, after it is cleanly extracted so it no longer contains Kdenlive types, Qt/KDE UI, MLT, or copied GPL implementation.
 
-The Kdenlive-facing code stays in this fork, stays GPL, and becomes a **free adapter** that speaks the runtime protocol.
+The Kdenlive-facing code stays in this fork, stays GPL, and is the **free adapter** that owns live editor state and speaks the runtime protocol.
 
+```text
                     YOU MAY LICENSE COMMERCIALLY
                     after extraction (no Kdenlive types)
 +------------------------------------------------------------------+
 |  halthinks runtime                                                |
 |  schema · protocol · EditPlan validation · trust policy           |
-|  evidence store format · job state machine · revision gate        |
-|  model-provider request contract                                  |
+|  evidence store · job state machine · revision gate               |
+|  model-provider client · orchestration                            |
 +------------------------------------------------------------------+
-                 JSON / stdio / socket / local IPC
+                 versioned JSON / local process IPC
 +------------------------------------------------------------------+
 |  GPL adapter (stays in this fork, stays free)                     |
-|  VibeCutToolSurface Kdenlive bindings                             |
-|  native timeline / bin / effect / render / undo ops               |
-|  dock UI · project revision tracker wired to QUndoStack           |
+|  live VibeCutToolSurface · authorization · checkpoint/Undo        |
+|  native timeline / bin / effect / render / subtitle operations    |
+|  dock UI · project revision · JobManager                          |
 +------------------------------------------------------------------+
 |  Kdenlive + MLT + Qt + KF6          GPL                           |
 +------------------------------------------------------------------+
+```
 
 Rebranding is allowed for **your** extracted runtime and **your** adapter name. It is not allowed for Kdenlive itself, KDE marks, or a claim that the editor is no longer Kdenlive.
 
@@ -52,159 +54,168 @@ Rebranding is allowed for **your** extracted runtime and **your** adapter name. 
 
 A file belongs in the **runtime** only if all of these are true:
 
-1. It does not `#include` Kdenlive, MLT, KF6, or application UI headers.
-2. It does not call Kdenlive models / controllers / undo stacks.
-3. It can be built and tested with no editor present.
-4. Its public surface is JSON-serializable contracts and a process/socket protocol.
+1. It does not `#include` or import Kdenlive, MLT, KF6, Qt/KDE UI, `src/vibecut/`, or editor-private APIs.
+2. It does not call Kdenlive models/controllers/undo stacks.
+3. It builds and tests with no editor present.
+4. Its editor-facing public surface is JSON-serializable contracts over a process/socket protocol.
 5. It does not contain substantial copied implementation from original VibeCut or Kdenlive.
+6. Its implementation carries the halthinks runtime license, not the GPL/KDE SPDX header copied from editor files.
 
 A file belongs in the **GPL adapter** if it:
 
-- touches `TimelineItemModel`, bin, effects, render, titles, subtitles, QUndoStack, the dock, or any Kdenlive command
-- exists only to map protocol messages onto native editor operations
+- touches `TimelineItemModel`, bin, effects, render, titles, subtitles, `DocUndoStack` / `QUndoStack`, the dock, `VibeCutToolSurface`, or any Kdenlive command;
+- exists to translate protocol requests into native editor operations;
+- owns live revision, authorization, native checkpoint/Undo, verification, or Kdenlive job state.
 
-Today almost all of `src/vibecut/` is adapter-shaped C++ compiled into the GPL binary. That is why this tree, as it sits, is **not** a sellable proprietary plugin. Extraction is a real split, not a rename.
+Almost all of `src/vibecut/` remains adapter-shaped C++ compiled into the GPL binary. That is why this tree, as a whole, is **not** a proprietary plugin. Extraction is a real process and code boundary, not a rename.
 
 ---
 
 ## 3. What extracts vs what stays
 
-### Runtime (commercial after clean extraction)
+### Runtime (commercial implementation after clean extraction)
 
-| Concern | Current home in this fork | Extracted form |
+| Concern | GPL source/reference in this fork | Extracted implementation |
 |---|---|---|
-| Tool policy / risk / trust | `vibecutcontracts.*`, `vibecuttoolpolicies.cpp` | policy engine + JSON policy table |
-| EditPlan schema / validation | `VibeCutEditPlan` in `vibecutcontracts.*` | `schema/editplan.schema.json` + validator |
-| Stale-plan / revision gate | `vibecutplangate.*`, `vibecutprojectrevision.*` | revision token protocol + gate |
-| Plan execution orchestration | `vibecutplanruntime.*` | runtime that calls adapter ops over protocol |
-| Job lifecycle | `vibecutjobmanager.*` | job state machine + job ids |
-| Evidence sidecar format | `vibecutmediaevidence.*` | `.vibecutmedia.json` schema + store |
-| Rules / policy / memory files | `vibecutprojectrules.*`, `vibecutpolicyoverrides.*`, `vibecutprojectmemory.*` | file formats + loaders |
-| Model provider request contract | `vibecutmodelprovider.*` | provider-neutral request/stream events |
-| Conversation compaction rules | `vibecutconversationcontext.*` | bounded history policy |
-| Extractor provider contract | `vibecutextractorprovider.*`, `vibecutextractorrequest.*` | capability + sink protocol |
+| Tool policy / risk / trust | `vibecutcontracts.*`, live policy snapshot | `runtime/src/halthinks_runtime/policy.py` |
+| EditPlan schema / validation | `VibeCutEditPlan` / `VibeCutPlanOperation` | `contracts.py` + open JSON schema |
+| Stale/moving revision gate | `vibecutplangate.*`, integrated runtime behavior | `revision.py` |
+| Plan orchestration | `vibecutplanruntime.*` behavior + protocol | `session.py` |
+| Job lifecycle | `vibecutjobmanager.*` public shape | `jobs.py` |
+| Evidence sidecar format | `vibecutmediaevidence.*` public record shape | `evidence.py` |
+| Model-provider request contract | `vibecutmodelprovider.*` public concepts | `providers.py` |
+| Process protocol | new GPL adapter seam | `protocol.py`, `stdio.py`, `child_stdio.py` |
+
+The runtime implementation is a clean-room implementation of the public protocol/contracts. Do not copy GPL function bodies into it.
 
 ### GPL adapter (never proprietary)
 
 | Concern | Current home |
 |---|---|
 | Dock / chat UI | `vibecutdock.*` |
-| Agent loop wired to Kdenlive | `vibecutagent.*` |
-| Tool surface dispatch into Kdenlive | `vibecuttoolsurface.*`, `vibecuttools.*` |
-| Every `*tools.cpp` that mutates or reads live editor state | timeline, bin, effects, titles, render, subtitles, groups, tracks, … |
-| Undo checkpoints / macros | plan runtime pieces that call `QUndoStack` |
-| Project revision sourced from the undo stack | `vibecutprojectrevision.*` host wiring |
+| Agent/editor loop | `vibecutagent.*` |
+| Tool surface and native dispatch | `vibecuttoolsurface.*`, `vibecuttools.*`, editor `*tools.cpp` |
+| Tool-policy export / hello snapshot | `vibecutruntimecontract.cpp` |
+| Protocol authorization + exact stored plan | `vibecutruntimeprotocoladapter.*` |
+| GPL-only protocol execution metadata | `vibecutruntimeprotocolaccess.cpp` |
+| NDJSON parent/child transport | `vibecutruntimestdiotransport.*` |
+| Kdenlive Undo checkpoint ownership | `vibecutruntimecheckpoint.*` |
+| Project revision sourced from editor state | GPL adapter / project revision layer |
 | Packaging that installs an editor | `packaging/vibecut/` |
 
-Original VibeCut files that pre-existed this fork stay GPL and stay attributed.
+Original VibeCut/Kdenlive files remain GPL and attributed.
 
 ---
 
-## 4. Protocol (the legal and technical seam)
+## 4. Protocol: the legal and technical seam
 
-The runtime and the adapter must communicate **only** through a versioned protocol. No in-process linking of a proprietary runtime into the GPL editor.
+The proprietary runtime and GPL Kdenlive adapter communicate **only** through the public versioned protocol. No proprietary runtime is linked in-process into the GPL editor.
 
-Transport, in order of implementation:
+### Production topology
 
-1. newline-delimited JSON on stdio (first extract target)
-2. local Unix socket / named pipe
-3. optional TCP localhost with explicit bind policy
+The first production topology is:
 
-Every message is one JSON object with:
+```text
+Kdenlive/VibeCut GPL editor process
+        |
+        | QProcess launches child directly
+        v
+halthinks proprietary runtime process
+```
 
-{
-  "v": 1,
-  "id": "msg-…",
-  "kind": "request | response | event",
-  "type": "hello | inspect | propose_plan | authorize | invoke | verify | job_update | revision | evidence_put | evidence_get | error",
-  "payload": {}
-}
+The GPL editor owns live Kdenlive state. The proprietary runtime child receives `hello` on stdin, sends requests on stdout, receives responses/events on stdin, and writes diagnostics to stderr.
 
-### Minimum message types
+A reverse subprocess client (`runtime` launches an adapter) exists for fake-adapter/OEM tests; it does **not** replace the integrated GPL Kdenlive adapter as owner of live editor state.
 
-- `hello` — adapter announces editor id, protocol version, available tools + policies
-- `inspect` — runtime asks adapter for live state (clips, selection, revision, …)
-- `propose_plan` — runtime emits an `EditPlan` bound to immutable `base_revision`; adapter stores the accepted plan object for authorization
-- `authorize` — adapter/human returns Review / Auto / Turbo decision; approval creates an opaque `authorization_id` and starting `expected_revision`
-- `invoke` — runtime references only an approved `operation_id`; the adapter resolves the stored approved tool/input and refuses post-approval substitution
-- `verify` — runtime asks adapter for postconditions against live state using the current `expected_revision`
-- `job_update` — adapter pushes job lifecycle and current revision where continuation is revision-sensitive
-- `revision` — adapter pushes current project revision token
-- `evidence_put` / `evidence_get` — sidecar records, never treated as project truth
-- `error` — structured failure, never `ok: true` without evidence
+### V1 transport rules
+
+1. NDJSON over stdin/stdout.
+2. One UTF-8 JSON object per line.
+3. Stdout is protocol-only; diagnostics are stderr-only.
+4. Exact maximum encoded JSON record: **2 MiB excluding newline** on both sides.
+5. No shell invocation for the production child.
+6. Malformed/oversized protocol output fails closed and invalidates plan authority.
+7. Future Unix socket/named-pipe transport must preserve the same authority semantics.
+
+### V1 message families
+
+- `hello`
+- `inspect`
+- `propose_plan`
+- `authorize`
+- `invoke`
+- `verify`
+- `complete_plan`
+- `abort_plan`
+- `job_update`
+- `revision`
+- `evidence_put` / `evidence_get`
+- `error`
+
+See `runtime/protocol.md` and `runtime/schema/messages.schema.json` for the exact contract.
 
 ### Revision / authorization hardening (non-negotiable)
 
-`base_revision` and execution revision are **not the same thing**:
+- `base_revision` is immutable plan provenance.
+- `expected_revision` is the moving execution token after authorization.
+- Adapter stores the exact accepted plan.
+- `authorize` creates an opaque `authorization_id` bound to that exact plan/operation set.
+- `invoke` may identify only `plan_id` + `authorization_id` + `operation_id` + `expected_revision`.
+- Runtime may **not** supply replacement `tool` or `input` after approval.
+- GPL adapter resolves tool/input from the stored approved operation.
+- GPL transport performs preflight before opening an Undo checkpoint; adapter repeats all checks immediately before native invocation.
+- Effective tool policy is rechecked against the authorization-time policy.
+- Kdenlive/editor revision is authoritative and is resynchronized after a checkpoint macro closes.
 
-- `base_revision` is immutable plan provenance: the revision the plan was reasoned from.
-- `expected_revision` is the moving execution token. It starts when authorization is granted and advances only from successful adapter-reported operations/events.
+### Async information containment
 
-The adapter must store the exact approved plan. After approval the runtime is not allowed to send a replacement tool name or replacement JSON input. `invoke` identifies the stored approved operation by `plan_id` + `authorization_id` + `operation_id` + `expected_revision`.
+Only jobs launched by the active approved protocol operation may cross the process boundary as `job_update`. Unrelated editor/Whisper/render/model jobs remain inside the GPL editor.
 
-Before each operation the adapter checks current revision equals `expected_revision`. A legitimate approved mutation may advance the revision; the adapter returns `revision_after`, which becomes the next expected token. An unrelated user/project change makes the remaining plan stale.
+### Evidence contract
 
-This mirrors the current integrated `VibeCutPlanRuntime`, which tracks a moving expected revision while allowing its own approved operations to advance the undo-stack revision.
+Evidence remains non-project truth. V1 confidence is exactly:
 
-Kdenlive remains authoritative state. The runtime is not a second project database.
+- `-1` = unknown; or
+- `[0,1]` = normalized confidence.
 
-The v1 public contract lives at:
-
-- `runtime/protocol.md`
-- `runtime/schema/editplan.schema.json`
-- `runtime/schema/toolpolicy.schema.json`
-- `runtime/schema/evidence.schema.json`
-- `runtime/schema/job.schema.json`
-- `runtime/schema/envelope.schema.json`
-- `runtime/schema/messages.schema.json`
+Arbitrary negative values such as `-0.5` are invalid. A bounded frame query does not treat unknown-range evidence (`-1/-1`) as intersecting that range.
 
 ---
 
 ## 5. Licensing terms for the extracted runtime
 
-### Current tree (this fork)
+### Current editor tree
 
-Every file under `src/vibecut/` is currently marked:
+Files under `src/vibecut/` remain GPL/KDE-licensed according to their SPDX headers. Adding this plan does not relicense them.
 
-SPDX-License-Identifier: GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL
+### Extracted implementation
 
-That header controls **this** copy. You do not get to sell this copy as proprietary by adding a second file that says otherwise.
+`runtime/src/halthinks_runtime/` is being implemented as a separate clean-room work with:
 
-### After extraction
+`SPDX-License-Identifier: LicenseRef-halthinks-Proprietary`
 
-The extracted runtime is a **new work** in a new tree (`runtime/` here, later its own repo) that:
+The executable `runtime/verify.py` is designed to fail if the proprietary runtime implementation imports/references Kdenlive/MLT/KF6/Qt/KDE editor implementation, `src/vibecut/`, or GPL/KDE implementation markers.
 
-- reimplements contracts and protocol from this plan and the public schemas
-- does not copy GPL function bodies from Kdenlive or original VibeCut
-- carries a halthinks commercial license **and** an optional evaluation / source-available license if you want one
-
-Recommended split licenses:
+Recommended split:
 
 | Artifact | License |
 |---|---|
-| This fork, adapter, editor integration | GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL |
-| Protocol schemas (`runtime/schema/*`) | CC0-1.0 or Apache-2.0 (keep them public so adapters can exist) |
-| Extracted runtime implementation | Proprietary commercial license owned by halthinks |
-| Adapter in this repo | GPL, free, so any editor build can hook the runtime |
+| Kdenlive fork / GPL adapter / editor integration | GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL |
+| Public protocol schemas | Apache-2.0 or CC0-1.0 |
+| Extracted runtime implementation | proprietary commercial license owned by halthinks |
+| GPL adapter source | GPL/free |
 
-Schemas should stay open. The implementation of the planner, policy engine, evidence store, and job runtime is what you sell.
+Schemas stay open so adapters can interoperate. The runtime implementation, commercial updates/support and optional policy/provider packs are the paid SKU.
 
-### What a customer actually buys
+### Commercial deliverables must make clear
 
-1. **Studio license** — use the runtime binary / service against one or more GPL adapters they already have (this Kdenlive adapter, later others).
-2. **OEM license** — embed the runtime in their own product, provided they do not statically link it into a GPL editor binary they then close.
-3. **Support / updates** — protocol version guarantees, policy packs, extractor packs.
+- Kdenlive and original VibeCut remain GPL and are not the paid proprietary SKU;
+- GPL adapter source remains available under its GPL terms;
+- the protocol version is identified;
+- Kdenlive remains authoritative editor state;
+- Kdenlive is not rebranded as a proprietary original NLE.
 
-They do **not** buy the right to close Kdenlive.
-
-### What you must put on every commercial deliverable
-
-- Kdenlive and original VibeCut remain GPL and are not part of the paid SKU
-- the adapter source stays available under GPL
-- the protocol version the SKU speaks
-- that Kdenlive is the authoritative editor and is not rebranded as your editor
-
-This is not legal advice. Before the first paid invoice, have a lawyer who has shipped GPL-adjacent products read this file and the SPDX headers.
+This is not legal advice. Before the first paid invoice, have counsel experienced with GPL-adjacent commercial products review this plan, source boundaries and SPDX/license texts.
 
 ---
 
@@ -212,115 +223,134 @@ This is not legal advice. Before the first paid invoice, have a lawyer who has s
 
 Allowed:
 
-- name the runtime whatever you want (halthinks, VibeCut Runtime, something else)
-- name the adapter package as a VibeCut / halthinks capability layer
-- sell the runtime under that brand
+- brand the extracted runtime;
+- brand the GPL adapter/capability layer appropriately;
+- sell runtime licenses/support.
 
 Not allowed:
 
-- ship Kdenlive renamed as if it were your original NLE
-- remove Kdenlive / VibeCut copyright and license files from the editor tree
-- tell customers the editor itself is proprietary
-
-Keep Kdenlive as authoritative state in every user-facing doc.
+- present Kdenlive itself as a newly proprietary original editor;
+- remove required Kdenlive/VibeCut copyright/license attribution;
+- tell customers GPL editor code became proprietary.
 
 ---
 
-## 7. Extraction steps (do these in order)
+## 7. Extraction steps and current status
 
-### Step 0 — freeze the contract — LANDED IN SOURCE
+### Step 0 — freeze the contract — SOURCE-LANDED
 
-- [x] This file
+- [x] `EXTRACT_AND_LICENSE.md`
 - [x] `runtime/protocol.md`
-- [x] `runtime/schema/editplan.schema.json`
 - [x] `runtime/LICENSE.md`
-- [x] Tool policy table exported as JSON from `VibeCutToolSurface::runtimeContractSnapshot()` (generated from the live/effective schemas + policies; do not hand-edit a long-term policy dump)
+- [x] open public schemas
+- [x] live/effective tool+policy export via `VibeCutToolSurface::runtimeContractSnapshot()`
 
-### Step 1 — export schemas from the live C++ types — LANDED IN SOURCE
+### Step 1 — export public schemas — SOURCE-LANDED
 
-Mirror, as JSON Schema:
+- [x] EditPlan / operation
+- [x] tool policy
+- [x] job
+- [x] evidence
+- [x] envelope
+- [x] type-specific messages including complete/abort
 
-- [x] `VibeCutToolPolicy` → `runtime/schema/toolpolicy.schema.json`
-- [x] `VibeCutEditPlan` / `VibeCutPlanOperation` shape → `runtime/schema/editplan.schema.json`; graph/revision rules remain semantic validation
-- [x] job record → `runtime/schema/job.schema.json`
-- [x] evidence record → `runtime/schema/evidence.schema.json`
-- [x] common envelope → `runtime/schema/envelope.schema.json`
-- [x] hello / inspect / propose / authorize / invoke / verify / job / revision / evidence / error payloads → `runtime/schema/messages.schema.json`
+Schema shape is source-landed; release compatibility still requires the verification gates below.
 
-Keep field names stable. If C++ names change, version the protocol.
+### Step 2 — GPL process adapter seam — SOURCE-LANDED; KDENLIVE HOST VERIFICATION OPEN
 
-### Step 2 — write a protocol adapter shim inside this GPL tree — NEXT
+Implemented in the GPL tree:
 
-Add a small GPL adapter transport in this repo that:
+- [x] integrated GPL protocol adapter over live `VibeCutToolSurface`
+- [x] generated hello/tool-policy snapshot
+- [x] exact plan storage + authorization id
+- [x] no post-approval tool/input substitution
+- [x] moving expected revision
+- [x] read-only inspect / verify
+- [x] complete / abort lifecycle
+- [x] bounded NDJSON `QProcess` transport
+- [x] production topology: GPL editor parent launches proprietary runtime child
+- [x] protocol-owned async job filtering
+- [x] disconnect invalidates active plan authority
+- [x] C++ fake-surface/source regressions registered
+- [ ] full Kdenlive compile/link/test execution
+- [ ] hands-on production child process smoke inside Kdenlive
 
-- speaks stdio JSON to an out-of-process runtime
-- calls existing `VibeCutToolSurface` handlers
-- exports `runtimeContractSnapshot()` as the authoritative hello/tool-policy table
-- stores the exact proposed plan before authorization
-- binds authorization to an opaque `authorization_id`
-- resolves invoke tool/input from the stored approved operation rather than trusting replacement input from the runtime
-- enforces moving `expected_revision` around native calls
-- does **not** move Kdenlive handlers out of GPL
+No Kdenlive native handler was moved out of GPL.
 
-This shim is the proof that the runtime can be out-of-process.
+### Step 3 — clean-room runtime — SUBSTANTIAL SOURCE IMPLEMENTATION LANDED; EXACT GATE OPEN
 
-### Step 3 — reimplement the runtime outside Kdenlive types
+Implemented under `runtime/src/halthinks_runtime/`:
 
-New tree (`runtime/src` or a future `halthinks/runtime` repo):
+- [x] plan validator / deterministic dependency ordering
+- [x] trust-mode/tool-policy engine
+- [x] immutable base + moving revision gate
+- [x] bounded job state machine
+- [x] atomic provenance-scoped evidence store with no project mutation API
+- [x] provider-neutral model client
+- [x] governed runtime session
+- [x] read-only inspect-driven revision refresh
+- [x] fake/OEM adapter subprocess client
+- [x] production child inherited-stdio client (synchronous/thread-free)
+- [x] synchronous + async fake-adapter/process tests in source
+- [x] executable clean-room verifier (`python3 runtime/verify.py`)
+- [x] secure provider endpoint policy: remote HTTPS, loopback-only HTTP
+- [ ] run `python3 runtime/verify.py` against the **exact current branch checkout** and record the result
+- [ ] package/install smoke from a clean environment
 
-- plan validator
-- trust-mode policy engine
-- revision gate
-- job state machine
-- evidence store
-- model-provider client
+Prior reconstructed local test runs found and drove real fixes, including the child-stdio shutdown race. They are useful development evidence but do **not** substitute for the exact-tree verifier above.
 
-Tests must pass with a fake adapter. No Kdenlive linked.
+### Step 4 — out-of-process execution parity — SOURCE-LANDED; LIVE UNDO VERIFICATION OPEN
 
-### Step 4 — stop in-process plan execution from being the only path
+Current source mirrors the existing integrated `VibeCutPlanRuntime` checkpoint scope:
 
-`VibeCutPlanRuntime` in the editor keeps working for the integrated product. The commercial SKU uses the out-of-process runtime + GPL shim. Do not delete the integrated path until the protocol path has parity on:
+- [x] stale-plan rejection
+- [x] moving expected revision across approved operations
+- [x] exact approved-operation binding / no substitution
+- [x] Review / Auto / Turbo policy semantics
+- [x] consecutive synchronous mutating operations share one adapter-side Kdenlive Undo macro
+- [x] checkpoint commits before async work
+- [x] failed synchronous mutation rolls back the current open synchronous checkpoint
+- [x] abort rolls back the current open synchronous checkpoint
+- [x] already committed pre-async checkpoints are **not** falsely claimed as rolled back
+- [x] post-checkpoint editor revision resync
+- [x] job wait + external-only drift handling
+- [x] read-only postcondition inspection
+- [x] editor-independent checkpoint state tests registered
+- [ ] real Kdenlive Undo/Redo/checkpoint smoke for the process path
+- [ ] authoritative compile/test gate
 
-- stale-plan rejection
-- moving expected-revision handling across multiple approved operations
-- no post-approval operation substitution
-- Review / Auto / Turbo
-- undo checkpoint + rollback behavior (adapter-side)
-- job wait
-- postcondition verify
+Do not claim stronger all-plan atomic rollback than the integrated runtime actually provides.
 
-### Step 5 — license and ship
+### Step 5 — license and ship — NOT OPEN
 
-- commercial license text on the runtime repo
-- public schemas
-- GPL adapter remains in `halthinks/vibecut`
-- invoice SKUs: Studio / OEM / support
+Do not open paid distribution until Section 10 passes.
 
 ### Step 6 — do not fork-and-close
 
-Never take this whole repository private-as-proprietary. The editor half cannot follow.
+Never treat this whole GPL editor repository as the proprietary SKU.
 
 ---
 
-## 8. Studio / OEM pricing frame (not a quote)
+## 8. Studio / OEM packaging frame
 
-Use this as the internal packaging, not as published legal terms.
-
-| SKU | What is delivered | What is not |
+| SKU | Paid deliverable | Not included |
 |---|---|---|
-| Studio | runtime binary + protocol docs + updates for N seats | editor source relicensed |
-| OEM | runtime library / service + support to speak protocol from their host | right to statically link into a closed Kdenlive |
-| Adapter | this fork, GPL, no fee required | support is optional and separate |
+| Studio | runtime binary/service + protocol compatibility + updates for N seats | relicensing Kdenlive/editor source |
+| OEM | runtime library/service + protocol integration support | right to close a linked Kdenlive binary |
+| Adapter | GPL adapter source/binary under GPL | optional paid support is separate |
 
-Price is a business choice. License shape is not.
+Pricing is a business decision. The license boundary is not.
 
 ---
 
-## 9. File map for the extracted tree
+## 9. Current extracted-tree map
 
+```text
 runtime/
-  LICENSE.md                 commercial terms + GPL boundary
-  protocol.md                message catalog + revision/authorization semantics
+  LICENSE.md
+  protocol.md
+  verify.py
+  pyproject.toml
   schema/
     editplan.schema.json
     toolpolicy.schema.json
@@ -328,36 +358,63 @@ runtime/
     job.schema.json
     envelope.schema.json
     messages.schema.json
-  src/                       editor-agnostic implementation (future)
-  tests/                     fake-adapter tests (future)
+  src/halthinks_runtime/
+    __init__.py
+    contracts.py
+    policy.py
+    revision.py
+    jobs.py
+    evidence.py
+    protocol.py
+    providers.py
+    session.py
+    stdio.py
+    child_stdio.py
+  tests/
+    fake_adapter.py
+    fake_adapter_stdio.py
+    fake_runtime_child.py
+    test_core.py
+    test_session.py
+    test_inspect.py
+    test_providers.py
+    test_stdio.py
+    test_child_stdio.py
+```
 
-The GPL adapter stays at `src/vibecut/`.
+GPL adapter remains under `src/vibecut/`.
 
 ---
 
-## 10. Acceptance test for "extracted"
+## 10. Acceptance test for "extracted / licensable"
 
-Extraction is done only when all of these pass:
+Extraction is complete only when **all** of these pass:
 
-1. `runtime/` builds with no Kdenlive, MLT, KF6, or `src/` editor headers.
-2. A fake adapter can propose → authorize → invoke → verify a plan.
-3. A stale `base_revision` is rejected without calling mutate.
-4. Review mode never mutates before `authorize`.
-5. Approval binds the exact stored plan; the runtime cannot substitute tool/input after authorization.
-6. A legitimate approved mutation may advance `expected_revision`; unrelated revision drift stops remaining operations.
-7. Evidence writes cannot become project truth.
-8. SPDX / license text on runtime files is not GPL-3.0-only copied from Kdenlive files.
-9. This fork still builds and `bash scripts/vibecut-verify.sh` still passes.
-10. README still says Kdenlive is authoritative state.
+1. `python3 runtime/verify.py` passes from the exact source tree.
+2. The clean-room verifier confirms no Kdenlive/MLT/KF6/Qt/KDE/GPL implementation dependency in `runtime/src`.
+3. Public schema/implementation seam tests pass, including exact 2 MiB NDJSON bound and exact evidence-confidence semantics.
+4. Fake adapter proves inspect → propose → authorize → invoke → verify → complete.
+5. Stale `base_revision` is rejected before mutation.
+6. Moving expected revision accepts adapter-owned successful mutation revisions and rejects unrelated drift.
+7. Approval binds the exact plan; post-approval tool/input substitution is impossible.
+8. Review mode never mutates before required authorization; hard confirmation remains non-waivable.
+9. Async job events exported to the runtime are limited to active protocol-owned jobs.
+10. Evidence writes remain non-project truth and provenance/range semantics match the GPL adapter.
+11. GPL adapter compiles/links and all registered `vibecut*` tests pass.
+12. Live Kdenlive process-path checkpoint smoke proves synchronous rollback, async boundary, disconnect handling and user Undo/Redo behavior.
+13. `bash scripts/vibecut-verify.sh` passes from a clean Kdenlive build tree.
+14. Packaging/install/uninstall/coexistence smoke passes.
+15. README/user-facing material continues to state Kdenlive is authoritative editor state and preserves lineage/licenses.
+16. A lawyer experienced with GPL-adjacent commercial products reviews the final boundary before the first paid invoice.
 
-Until then, there is no licensed runtime. There is only this plan, public protocol/schema work, and the GPL layer in `src/vibecut/`.
+**Until every required technical/licensing gate above is satisfied, there is not yet a release-qualified licensed runtime SKU.** There is now a substantial clean-room runtime and GPL process seam in source, but source-landed is not the same as commercially verified.
 
 ---
 
-## 11. Related docs in this repo
+## 11. Related docs
 
-- `README.md` — product framing and lineage
-- `VIBECUT_ARCHITECTURE.md` — current in-process architecture
+- `README.md`
+- `VIBECUT_ARCHITECTURE.md`
 - `DESIGN_SPECS.md`
 - `TODO.md`
 - `VIBECUT_ROADMAP_STATUS.md`
