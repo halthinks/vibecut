@@ -105,3 +105,63 @@ TEST_CASE("protocol checkpoint revision resync is editor authoritative", "[vibec
     CHECK(adapter.expectedRevision() == 13);
     CHECK(adapter.protocolProjectRevision() == 13);
 }
+
+TEST_CASE("invoke preflight refuses stale or substituted requests before native execution", "[vibecut][runtime-protocol][preflight]")
+{
+    VibeCutTools base;
+    VibeCutToolSurface surface(&base);
+    quint64 revision = 21;
+    int mutationCalls = 0;
+
+    const QJsonObject schema{{QStringLiteral("name"), QStringLiteral("protocol_preflight_mutate")},
+                             {QStringLiteral("description"), QStringLiteral("preflight fixture")},
+                             {QStringLiteral("input_schema"), QJsonObject{{QStringLiteral("type"), QStringLiteral("object")}}}};
+    VibeCutToolPolicy policy;
+    policy.name = QStringLiteral("protocol_preflight_mutate");
+    policy.risk = VibeCutToolRisk::ReversibleEdit;
+    policy.reversible = true;
+    policy.mutatesProject = true;
+    QString error;
+    REQUIRE(surface.registerTool(schema, policy, [&mutationCalls](const QJsonObject &) {
+        ++mutationCalls;
+        return QJsonObject{{QStringLiteral("ok"), true}};
+    }, &error));
+    REQUIRE(error.isEmpty());
+
+    VibeCutRuntimeProtocolAdapter adapter(&surface, [&revision]() { return revision; });
+    adapter.handleRequest(request(QStringLiteral("propose_plan"), singleOperationPlan(revision, policy.name), QStringLiteral("p")));
+    const QJsonObject approved = adapter.authorizePending(VibeCutTrustMode::Off, true, true);
+    const QString auth = approved.value(QStringLiteral("payload")).toObject().value(QStringLiteral("authorization_id")).toString();
+
+    VibeCutToolPolicy preflightPolicy;
+    QString code;
+    error.clear();
+    const QJsonObject validInvoke = request(QStringLiteral("invoke"),
+        QJsonObject{{QStringLiteral("plan_id"), QStringLiteral("access-plan")},
+                    {QStringLiteral("authorization_id"), auth},
+                    {QStringLiteral("operation_id"), QStringLiteral("op-1")},
+                    {QStringLiteral("expected_revision"), static_cast<qint64>(revision)}}, QStringLiteral("i-valid"));
+    CHECK(adapter.preflightInvoke(validInvoke, preflightPolicy, &code, &error));
+    CHECK(code.isEmpty());
+    CHECK(error.isEmpty());
+    CHECK(preflightPolicy.name == policy.name);
+    CHECK(preflightPolicy.mutatesProject);
+    CHECK(mutationCalls == 0);
+
+    QJsonObject substituted = validInvoke;
+    QJsonObject substitutedPayload = substituted.value(QStringLiteral("payload")).toObject();
+    substitutedPayload.insert(QStringLiteral("input"), QJsonObject{{QStringLiteral("invented"), true}});
+    substituted.insert(QStringLiteral("payload"), substitutedPayload);
+    error.clear();
+    code.clear();
+    CHECK_FALSE(adapter.preflightInvoke(substituted, preflightPolicy, &code, &error));
+    CHECK(code == QStringLiteral("plan_substitution_attempt"));
+    CHECK(mutationCalls == 0);
+
+    ++revision;
+    error.clear();
+    code.clear();
+    CHECK_FALSE(adapter.preflightInvoke(validInvoke, preflightPolicy, &code, &error));
+    CHECK(code == QStringLiteral("stale_revision"));
+    CHECK(mutationCalls == 0);
+}
