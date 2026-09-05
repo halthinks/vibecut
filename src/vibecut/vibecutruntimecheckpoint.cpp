@@ -6,6 +6,7 @@
 #include "doc/docundostack.hpp"
 
 #include <memory>
+#include <utility>
 
 namespace {
 std::shared_ptr<DocUndoStack> currentUndoStack()
