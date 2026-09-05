@@ -30,6 +30,12 @@ VibeCutRuntimeStdioTransport::VibeCutRuntimeStdioTransport(VibeCutRuntimeProtoco
     if (m_adapter) {
         connect(m_adapter, &VibeCutRuntimeProtocolAdapter::outboundEnvelope, this,
                 [this](const QJsonObject &envelope) {
+            if (envelope.value(QStringLiteral("type")).toString() == QLatin1String("job_update")) {
+                const QString jobId = envelope.value(QStringLiteral("payload")).toObject()
+                                          .value(QStringLiteral("job")).toObject()
+                                          .value(QStringLiteral("id")).toString().trimmed();
+                if (!m_adapter || !m_adapter->ownsProtocolJob(jobId)) return;
+            }
             QString error;
             if (!writeEnvelope(envelope, &error) && !error.isEmpty()) Q_EMIT diagnostic(error);
         });
@@ -165,9 +171,6 @@ QJsonObject VibeCutRuntimeStdioTransport::dispatchRequest(const QJsonObject &req
 
         QJsonObject response = m_adapter->handleRequest(request);
         if (response.value(QStringLiteral("type")).toString() == QLatin1String("error")) {
-            // No native operation was admitted for this request. Mirror the
-            // integrated runtime by closing any previously successful open
-            // synchronous checkpoint rather than rolling it back.
             if (m_checkpoint.macroOpen()) {
                 QString commitError;
                 if (!m_checkpoint.commitForCompletion(&commitError)) {
