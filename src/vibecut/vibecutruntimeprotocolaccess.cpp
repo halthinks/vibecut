@@ -37,6 +37,22 @@ QJsonObject VibeCutRuntimeProtocolAdapter::stageHostPlan(const QJsonObject &plan
     return handleRequest(request);
 }
 
+bool VibeCutRuntimeProtocolAdapter::discardUnapprovedHostPlan(QString *error)
+{
+    if (error) error->clear();
+    if (!m_hasPlan) return true;
+    if (!m_authorizationId.isEmpty()) {
+        if (error) *error = QStringLiteral("Cannot discard a protocol plan after authorization; use governed abort instead.");
+        return false;
+    }
+    if (!m_waitingJobs.isEmpty() || !m_completedOperationIds.isEmpty()) {
+        if (error) *error = QStringLiteral("Cannot discard a protocol plan after execution state exists; use governed abort instead.");
+        return false;
+    }
+    clearPlan();
+    return true;
+}
+
 bool VibeCutRuntimeProtocolAdapter::approvedOperationPolicy(const QString &operationId,
                                                             VibeCutToolPolicy &policy,
                                                             QString *error) const
