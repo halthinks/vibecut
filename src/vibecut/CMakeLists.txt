@@ -94,7 +94,9 @@ set(kdenlive_SRCS
   vibecut/vibecutroughcutrelevance.cpp
   vibecut/vibecutroughcutsynthesis.cpp
   vibecut/vibecutroutingtools.cpp
+  vibecut/vibecutruntimecheckpoint.cpp
   vibecut/vibecutruntimecontract.cpp
+  vibecut/vibecutruntimeprotocolaccess.cpp
   vibecut/vibecutruntimeprotocoladapter.cpp
   vibecut/vibecutruntimestdiotransport.cpp
   vibecut/vibecutscript.cpp
