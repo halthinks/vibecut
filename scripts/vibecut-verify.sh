@@ -18,6 +18,18 @@ printf 'type:   %s\n\n' "$BUILD_TYPE"
 # deep in Kdenlive configuration on an incomplete machine.
 bash "$ROOT/scripts/vibecut-build-env-check.sh"
 
+# The clean-room runtime is a separately licensed/process-isolated component,
+# but its public schemas, boundary rules, hosted-worker entrypoint, and full
+# standalone regression suite are required for the external-runtime path to be
+# valid. Run its stdlib-only verifier before the expensive C++ build so the
+# authoritative local/CI gate cannot silently pass with a broken runtime.
+if ! command -v python3 >/dev/null 2>&1; then
+  printf 'ERROR: python3 is required for runtime/verify.py\n' >&2
+  exit 1
+fi
+printf '\n== Clean-room runtime verification ==\n'
+python3 "$ROOT/runtime/verify.py"
+
 cmake -S "$ROOT" -B "$BUILD_DIR" -G "$GENERATOR" \
   -DCMAKE_BUILD_TYPE="$BUILD_TYPE" \
   -DBUILD_TESTING=ON \
