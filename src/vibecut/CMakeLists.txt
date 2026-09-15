@@ -9,7 +9,6 @@ set(kdenlive_SRCS
   vibecut/vibecutagentprovider.cpp
   vibecut/vibecutaudioeventsetuptools.cpp
   vibecut/vibecudaudioeventsummary.cpp
-  vibecut/vibecudaudiomonitortools.cpp
   vibecut/vibecutbinfoldertools.cpp
   vibecut/vibecutbinmetadatatools.cpp
   vibecut/vibecutbintools.cpp
