@@ -90,6 +90,12 @@ TEST_CASE("runtime stdio startup sends hello before exact plan handoff and fails
     REQUIRE(transport.start(python, QStringList{QStringLiteral("-u"), QStringLiteral("-c"), childScript},
                             VibeCutTrustMode::Off, &error));
     REQUIRE(error.isEmpty());
+
+    QString earlyHandoffError;
+    CHECK_FALSE(transport.handoffPlan(startupPlan(revision), &earlyHandoffError));
+    CHECK(earlyHandoffError.contains(QStringLiteral("waitUntilReady")));
+    CHECK_FALSE(adapter.hasPendingPlan());
+
     REQUIRE(transport.waitUntilReady(3000, &error));
     REQUIRE(error.isEmpty());
     REQUIRE(transport.handoffPlan(startupPlan(revision), &error));

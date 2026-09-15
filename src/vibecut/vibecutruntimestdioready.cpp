@@ -14,7 +14,7 @@ bool VibeCutRuntimeStdioTransport::waitUntilReady(int timeoutMs, QString *error)
         if (error) *error = QStringLiteral("External runtime readiness timeout must be in 1..30000 ms.");
         return false;
     }
-    if (m_process->state() == QProcess::Running) return true;
+    if (m_process->state() == QProcess::Running) return sendHello(error);
     if (m_process->state() == QProcess::NotRunning) {
         if (error) {
             *error = m_process->errorString().trimmed().isEmpty()
@@ -31,5 +31,5 @@ bool VibeCutRuntimeStdioTransport::waitUntilReady(int timeoutMs, QString *error)
         }
         return false;
     }
-    return true;
+    return sendHello(error);
 }

@@ -83,11 +83,11 @@ bool VibeCutRuntimeStdioTransport::start(const QString &program, const QStringLi
     m_checkpoint.reset();
     m_stdoutBuffer.clear();
     m_helloMode = helloMode;
+    m_helloSent = false;
     m_stopping = false;
     connect(m_process, &QProcess::started, this, [this]() {
         QString writeError;
-        const QJsonObject hello = m_adapter->helloEnvelope(QUuid::createUuid().toString(QUuid::WithoutBraces), m_helloMode);
-        if (!writeEnvelope(hello, &writeError)) failProtocol(writeError);
+        if (!sendHello(&writeError)) failProtocol(writeError);
     }, Qt::SingleShotConnection);
     m_process->start(executable, arguments);
     return true;
@@ -109,6 +109,24 @@ bool VibeCutRuntimeStdioTransport::running() const
     return m_process && m_process->state() != QProcess::NotRunning;
 }
 
+bool VibeCutRuntimeStdioTransport::sendHello(QString *error)
+{
+    if (error) error->clear();
+    if (m_helloSent) return true;
+    if (!m_process || m_process->state() != QProcess::Running) {
+        if (error) *error = QStringLiteral("Runtime hello cannot be sent before the process reaches Running state.");
+        return false;
+    }
+    if (!m_adapter) {
+        if (error) *error = QStringLiteral("Protocol adapter is unavailable.");
+        return false;
+    }
+    const QJsonObject hello = m_adapter->helloEnvelope(QUuid::createUuid().toString(QUuid::WithoutBraces), m_helloMode);
+    if (!writeEnvelope(hello, error)) return false;
+    m_helloSent = true;
+    return true;
+}
+
 bool VibeCutRuntimeStdioTransport::handoffPlan(const QJsonObject &plan, QString *error)
 {
     if (error) error->clear();
@@ -118,6 +136,10 @@ bool VibeCutRuntimeStdioTransport::handoffPlan(const QJsonObject &plan, QString 
     }
     if (!m_adapter) {
         if (error) *error = QStringLiteral("Protocol adapter is unavailable.");
+        return false;
+    }
+    if (!m_helloSent) {
+        if (error) *error = QStringLiteral("Runtime hello has not been delivered; waitUntilReady() must succeed before plan handoff.");
         return false;
     }
 
@@ -362,6 +384,7 @@ void VibeCutRuntimeStdioTransport::runtimeFinished(int exitCode, int exitStatus)
 {
     if (!m_stopping) invalidatePlanForDisconnect(QStringLiteral("Runtime process exited before adapter lifecycle completion."));
     m_stdoutBuffer.clear();
+    m_helloSent = false;
     m_stopping = false;
     Q_EMIT stopped(exitCode, exitStatus);
 }

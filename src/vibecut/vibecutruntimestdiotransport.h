@@ -28,8 +28,9 @@ public:
     bool start(const QString &program, const QStringList &arguments = QStringList(),
                VibeCutTrustMode helloMode = VibeCutTrustMode::Off,
                QString *error = nullptr);
-    /** Wait until QProcess is actually Running. This closes the Starting->handoff
-     * race without making the whole protocol synchronous. */
+    /** Wait until QProcess is Running and the governed hello envelope has been
+     * queued exactly once. This closes the Starting->handoff ordering race
+     * without making the whole protocol synchronous. */
     bool waitUntilReady(int timeoutMs = 3000, QString *error = nullptr);
     void stop(const QString &reason = QStringLiteral("Runtime transport stopped by adapter."));
     bool running() const;
@@ -57,6 +58,7 @@ private Q_SLOTS:
     void runtimeFinished(int exitCode, int exitStatus);
 
 private:
+    bool sendHello(QString *error = nullptr);
     bool writeEnvelope(const QJsonObject &envelope, QString *error = nullptr);
     QJsonObject dispatchRequest(const QJsonObject &request);
     QJsonObject transportError(const QJsonObject &request, const QString &code, const QString &message) const;
@@ -68,5 +70,6 @@ private:
     QByteArray m_stdoutBuffer;
     VibeCutTrustMode m_helloMode = VibeCutTrustMode::Off;
     VibeCutRuntimeCheckpoint m_checkpoint;
+    bool m_helloSent = false;
     bool m_stopping = false;
 };
